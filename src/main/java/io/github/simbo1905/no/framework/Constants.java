@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
+//
 
 package io.github.simbo1905.no.framework;
 
@@ -11,8 +12,10 @@ enum Constants {
   SHORT(Short.BYTES, Tag.SHORT),
   CHARACTER(Character.BYTES, Tag.CHARACTER),
   INTEGER(Integer.BYTES, Tag.INTEGER),
+  // FIXME spending a bit to save a byte seems not worth it. Make it configurable to turn on?
   INTEGER_VAR(Integer.BYTES, Tag.INTEGER),
   LONG(Long.BYTES, Tag.LONG),
+  // FIXME time in ms saves three bytes but we spend a byte and do work. Make it configurable to turn on?
   LONG_VAR(Long.BYTES, Tag.LONG),
   FLOAT(Float.BYTES, Tag.FLOAT),
   DOUBLE(Double.BYTES, Tag.DOUBLE),

@@ -13,18 +13,18 @@ import java.util.concurrent.ConcurrentHashMap;
 final class PicklerRoot<T> implements Pickler<T> {
 
   @SuppressWarnings("rawtypes")
-  public static final Map<Class, Pickler> REGISTRY = new ConcurrentHashMap<>();
+  public static final Map<Class, RecordPickler> REGISTRY = new ConcurrentHashMap<>();
 
   final Class<?>[] userTypes;
-  final RecordPickler<?>[] picklers;
-  final Map<Integer, RecordPickler<?>> recordToPicklerOrdinal;
-  final Map<Class<?>, Integer> classToRecorPicklerOrdinal;
+  final Pickler<?>[] picklers;
+  final Map<Long, RecordPickler<?>> typeSignatureToPicklerMap;
+  final Map<Class<?>, Long> recordClassToTypeSignatureMap;
 
   public PicklerRoot(Class<?>[] sortedUserTypes) {
     this.userTypes = sortedUserTypes;
-    this.picklers = new RecordPickler<?>[sortedUserTypes.length];
-    final Map<Integer, RecordPickler<?>> recordToPicklerOrdinal = new HashMap<>();
-    final Map<Class<?>, Integer> classToRecorPicklerOrdinal = new HashMap<>();
+    this.picklers = new Pickler<?>[sortedUserTypes.length];
+    final Map<Long, RecordPickler<?>> typeSignatureToPickler = new HashMap<>();
+    final Map<Class<?>, Long> recordClassToTypeSignature = new HashMap<>();
     // To avoid null picklers in the array, we use NilPickler for non-record types
     Arrays.setAll(this.picklers, i -> {
       final var clazz = sortedUserTypes[i];
@@ -37,13 +37,14 @@ final class PicklerRoot<T> implements Pickler<T> {
         // Only create a given RecordPickler once per class and cache it.
         //noinspection rawtypes,unchecked
         final var p = REGISTRY.computeIfAbsent(clazz, aClass -> new RecordPickler(aClass, sortedUserTypes));
-        recordToPicklerOrdinal.put(i, (RecordPickler<?>) p);
-        classToRecorPicklerOrdinal.put(clazz, i);
+        final long typeSignature = p.typeSignature;
+        typeSignatureToPickler.put(typeSignature, (RecordPickler<?>) p);
+        recordClassToTypeSignature.put(clazz, typeSignature);
         return p;
       }
     });
-    this.recordToPicklerOrdinal = Map.copyOf(recordToPicklerOrdinal);
-    this.classToRecorPicklerOrdinal = Map.copyOf(classToRecorPicklerOrdinal);
+    this.typeSignatureToPicklerMap = Map.copyOf(typeSignatureToPickler);
+    this.recordClassToTypeSignatureMap = Map.copyOf(recordClassToTypeSignature);
     LOGGER.info(() -> "PicklerRoot construction complete - ready for high-performance serialization");
   }
 
@@ -54,16 +55,17 @@ final class PicklerRoot<T> implements Pickler<T> {
     if (!record.getClass().isRecord()) {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
-    final var pickler = REGISTRY.getOrDefault(record.getClass(), NilPickler.INSTANCE);
-    if (pickler == NilPickler.INSTANCE) {
+    final var pickler = REGISTRY.getOrDefault(record.getClass(), null);
+    if (pickler == null) {
       throw new IllegalArgumentException("No pickler registered for record type: " + record.getClass());
     }
     // Write out the ordinal of the record type to the buffer
-    final Integer ordinal = classToRecorPicklerOrdinal.get(record.getClass());
-    if (ordinal == null) {
-      throw new IllegalArgumentException("No ordinal found for record type: " + record.getClass());
+    final Long typeSignature = recordClassToTypeSignatureMap.get(record.getClass());
+    if (typeSignature == null) {
+      throw new IllegalArgumentException("No type signature found for record type: " + record.getClass());
     }
-    ZigZagEncoding.putInt(buffer, ordinal);
+    LOGGER.fine(() -> "Serializing record of type " + record.getClass() + " with ordinal " + typeSignature);
+    buffer.putLong(typeSignature);
     //noinspection unchecked
     return pickler.serialize(buffer, record);
   }
@@ -76,7 +78,7 @@ final class PicklerRoot<T> implements Pickler<T> {
     if (ordinal < 0 || ordinal >= picklers.length) {
       throw new IllegalArgumentException("Invalid ordinal: " + ordinal + ". Must be between 0 and " + (picklers.length - 1));
     }
-    final var pickler = recordToPicklerOrdinal.get(ordinal);
+    final var pickler = typeSignatureToPicklerMap.get(ordinal);
     if (pickler == null) {
       throw new IllegalArgumentException("No pickler found for ordinal: " + ordinal);
     }
@@ -90,8 +92,8 @@ final class PicklerRoot<T> implements Pickler<T> {
     if (!record.getClass().isRecord()) {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
-    final var pickler = REGISTRY.getOrDefault(record.getClass(), NilPickler.INSTANCE);
-    if (pickler == NilPickler.INSTANCE) {
+    final var pickler = REGISTRY.getOrDefault(record.getClass(), null);
+    if (pickler == null) {
       throw new IllegalArgumentException("No pickler registered for record type: " + record.getClass());
     }
     //noinspection unchecked
