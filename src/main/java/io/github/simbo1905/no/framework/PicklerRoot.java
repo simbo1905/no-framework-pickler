@@ -85,8 +85,8 @@ final class PicklerRoot<R> implements Pickler<R> {
           " buffer remaining bytes: " + buffer.remaining() + " limit: " +
           buffer.limit() + " capacity: " + buffer.capacity()
       );
-      //noinspection
-      return pickler.serialize(buffer, record); // TODO this does a double up of requireNotNull checks
+      //noinspection,unchecked
+      return ((RecordPickler<R>) pickler).writeToWire(buffer, record);
     } else {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
