@@ -380,7 +380,7 @@ final class RecordPickler<T> implements Pickler<T> {
           final var otherPickler = resolvePicker(inner.getClass());
           switch (otherPickler) {
             case RecordPickler<?> rp -> {
-              delegatedWritetoWire(buffer, rp, inner);
+              delegatedWriteToWire(buffer, rp, inner);
             }
             case EmptyRecordPickler<?> erp -> {
               // Write the type signature first
@@ -389,9 +389,6 @@ final class RecordPickler<T> implements Pickler<T> {
             default ->
                 throw new IllegalArgumentException("RecordPickler " + userType + " unexpected pickler type: " + otherPickler.getClass());
           }
-
-          //noinspection
-          otherPickler.serialize(buffer, inner);
         };
       } else if (clz.isInterface() && clz.isSealed()) {
         LOGGER.fine(() -> "Building delegating writer chain for interface type " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
@@ -421,7 +418,7 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static <X> void delegatedWritetoWire(ByteBuffer buffer, RecordPickler<X> rp, Object inner) {
+  static <X> void delegatedWriteToWire(ByteBuffer buffer, RecordPickler<X> rp, Object inner) {
     //noinspection unchecked
     rp.writeToWire(buffer, (X) inner);
   }
