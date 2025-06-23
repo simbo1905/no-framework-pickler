@@ -150,6 +150,7 @@ final class PicklerImpl<T> implements Pickler<T> {
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
+  /// TODO i am in two minds about using the getSimpleName() or the full getName() or Class.getCanonicalName() or ...
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeStructure[] componentTypes) {
     try {
       MessageDigest digest = MessageDigest.getInstance(SHA_256);

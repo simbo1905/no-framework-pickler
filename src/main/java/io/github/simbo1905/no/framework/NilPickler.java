@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 /// NilPickler is a marker pickler that is a placeholder rather than having a null in an array of picklers.
 /// This allows us to have a pickler for every user record type but no pickler for enum or sealed interface types.
 /// It would be a bug to try to serialize or deserialize using this pickler, as it is not intended for any data.
+/// FIXME i have done cold on this idea delete this class and use null in the array of picklers instead
 @SuppressWarnings("rawtypes")
 enum NilPickler implements Pickler {
   INSTANCE;

@@ -18,6 +18,11 @@ public class RecordPicklerTests {
     }
   }
 
+  public record LinkedListNoInterface(Inner inner, LinkedListNoInterface next) {
+    public record Inner(int value) {
+    }
+  }
+
   // inner interface of enum and record
   public sealed interface Link permits Link.LinkedRecord, Link.LinkEnd {
 
@@ -109,13 +114,16 @@ public class RecordPicklerTests {
   @DisplayName("Test linked record serialization and deserialization")
   void testLinkedRecordRoundTrip() {
     // Create a pickler for the Link interface
+    LOGGER.fine(() -> "-------------\nPickler for Link creation:");
     Pickler<Link> pickler = Pickler.forClass(Link.class);
 
     // Serialize the linked list with two nodes
     ByteBuffer buffer = ByteBuffer.allocate(1024);
+    LOGGER.fine(() -> "-------------\nserialize");
     int size = pickler.serialize(buffer, linkedListTwoNodes);
     buffer.flip(); // Prepare for reading
 
+    LOGGER.fine(() -> "-------------\ndeserialize");
     // Deserialize the linked list
     Link deserialized = pickler.deserialize(buffer);
 
@@ -124,6 +132,32 @@ public class RecordPicklerTests {
 
     // check the size is less than the maxSizeOf
     int maxSizeOf = pickler.maxSizeOf(linkedListTwoNodes);
+    assertThat(size).isLessThanOrEqualTo(maxSizeOf);
+  }
+
+  @Test
+  public void testLinedListNoInterfaceRoundTrip() {
+    // Create a pickler for the LinkedListNoInterface record
+    Pickler<LinkedListNoInterface> pickler = Pickler.forClass(LinkedListNoInterface.class);
+
+    // Create an instance of LinkedListNoInterface
+    LinkedListNoInterface original = new LinkedListNoInterface(
+        new LinkedListNoInterface.Inner(1),
+        new LinkedListNoInterface(new LinkedListNoInterface.Inner(2), null));
+
+    // Serialize the original record to a ByteBuffer
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    int size = pickler.serialize(buffer, original);
+    buffer.flip(); // Prepare for reading
+
+    // Deserialize the record from the ByteBuffer
+    LinkedListNoInterface deserialized = pickler.deserialize(buffer);
+
+    // Assert that the original and deserialized records are equal
+    assertThat(deserialized).isEqualTo(original);
+
+    // check the size is less than the maxSizeOf
+    int maxSizeOf = pickler.maxSizeOf(original);
     assertThat(size).isLessThanOrEqualTo(maxSizeOf);
   }
 }

@@ -3,100 +3,143 @@
 //
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.NotNull;
+
+import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.HashMap;
+import java.nio.ByteOrder;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
-final class PicklerRoot<T> implements Pickler<T> {
+final class PicklerRoot<R> implements Pickler<R> {
 
-  @SuppressWarnings("rawtypes")
-  public static final Map<Class, RecordPickler> REGISTRY = new ConcurrentHashMap<>();
+  static final Map<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
-  final Class<?>[] userTypes;
-  final Pickler<?>[] picklers;
-  final Map<Long, RecordPickler<?>> typeSignatureToPicklerMap;
+  final List<Class<?>> userTypes;
+  final Map<Long, Pickler<?>> typeSignatureToPicklerMap;
   final Map<Class<?>, Long> recordClassToTypeSignatureMap;
+  final Map<Class<?>, Pickler<?>> picklers;
 
-  public PicklerRoot(Class<?>[] sortedUserTypes) {
+  public PicklerRoot(final List<Class<?>> sortedUserTypes) {
     this.userTypes = sortedUserTypes;
-    this.picklers = new Pickler<?>[sortedUserTypes.length];
-    final Map<Long, RecordPickler<?>> typeSignatureToPickler = new HashMap<>();
-    final Map<Class<?>, Long> recordClassToTypeSignature = new HashMap<>();
     // To avoid null picklers in the array, we use NilPickler for non-record types
-    Arrays.setAll(this.picklers, i -> {
-      final var clazz = sortedUserTypes[i];
-      if (clazz == null) {
-        throw new IllegalArgumentException("User type cannot be null at index " + i);
-      }
-      if (!clazz.isRecord()) {
-        return NilPickler.INSTANCE;
-      } else {
-        // Only create a given RecordPickler once per class and cache it.
-        //noinspection rawtypes,unchecked
-        final var p = REGISTRY.computeIfAbsent(clazz, aClass -> new RecordPickler(aClass, sortedUserTypes));
-        final long typeSignature = p.typeSignature;
-        typeSignatureToPickler.put(typeSignature, (RecordPickler<?>) p);
-        recordClassToTypeSignature.put(clazz, typeSignature);
-        return p;
-      }
-    });
-    this.typeSignatureToPicklerMap = Map.copyOf(typeSignatureToPickler);
-    this.recordClassToTypeSignatureMap = Map.copyOf(recordClassToTypeSignature);
-    LOGGER.info(() -> "PicklerRoot construction complete - ready for high-performance serialization");
+    picklers = sortedUserTypes.stream().collect(Collectors.toMap(
+        clz -> clz,
+        clz -> REGISTRY.computeIfAbsent(clz, aClass -> componentPicker(clz))
+    ));
+
+    this.typeSignatureToPicklerMap = picklers.values().stream().map(
+            pickler -> Map.entry(
+                switch (pickler) {
+                  case RecordPickler<?> rp -> rp.typeSignature;
+                  case EmptyRecordPickler<?> erp -> erp.typeSignature;
+                  default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
+                }, pickler)
+        )
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(
+            classAndPickler -> Map.entry(classAndPickler.getKey(),
+                switch (classAndPickler.getValue()) {
+                  case RecordPickler<?> rp -> rp.typeSignature;
+                  case EmptyRecordPickler<?> erp -> erp.typeSignature;
+                  default -> throw new IllegalArgumentException("Unexpected pickler type: " + classAndPickler.getValue());
+                })
+        )
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    LOGGER.fine(() -> "PicklerRoot construction complete for user types: " +
+        userTypes.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
+  }
+
+  static @NotNull Pickler<?> componentPicker(Class<?> userType) {
+    RecordComponent[] components = userType.getRecordComponents();
+    if (components.length == 0) {
+      //noinspection rawtypes,unchecked
+      return new EmptyRecordPickler(userType);
+    } else {
+      //noinspection rawtypes,unchecked
+      return new RecordPickler(userType);
+    }
   }
 
   @Override
-  public int serialize(ByteBuffer buffer, T record) {
+  public int serialize(ByteBuffer buffer, R record) {
     Objects.requireNonNull(buffer, "Buffer must not be null");
     Objects.requireNonNull(record, "Record must not be null");
-    if (!record.getClass().isRecord()) {
+    if (record.getClass().isRecord()) {
+      Class<?> userType = record.getClass();
+      final var pickler = resolvePicker(userType);
+      // Write out the ordinal of the record type to the buffer
+      final Long typeSignature = recordClassToTypeSignatureMap.get(record.getClass());
+      if (typeSignature == null) {
+        throw new IllegalArgumentException("No type signature found for record type: " + record.getClass());
+      }
+
+      LOGGER.fine(() -> "PicklerRoot Serializing record  " + userType.getSimpleName() +
+          " hashCode " + record.hashCode() +
+          " position " + buffer.position() +
+          " typeSignature 0x" + Long.toHexString(typeSignature) +
+          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+          buffer.limit() + " capacity: " + buffer.capacity()
+      );
+      //noinspection
+      return pickler.serialize(buffer, record); // TODO this does a double up of requireNotNull checks
+    } else {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
-    final var pickler = REGISTRY.getOrDefault(record.getClass(), null);
-    if (pickler == null) {
-      throw new IllegalArgumentException("No pickler registered for record type: " + record.getClass());
-    }
-    // Write out the ordinal of the record type to the buffer
-    final Long typeSignature = recordClassToTypeSignatureMap.get(record.getClass());
-    if (typeSignature == null) {
-      throw new IllegalArgumentException("No type signature found for record type: " + record.getClass());
-    }
-    LOGGER.fine(() -> "Serializing record of type " + record.getClass() + " with ordinal " + typeSignature);
-    buffer.putLong(typeSignature);
-    //noinspection unchecked
-    return pickler.serialize(buffer, record);
   }
 
   @Override
-  public T deserialize(ByteBuffer buffer) {
+  public R deserialize(ByteBuffer buffer) {
     Objects.requireNonNull(buffer, "Buffer must not be null");
-    // Read the ordinal of the record type from the buffer
-    final int ordinal = ZigZagEncoding.getInt(buffer);
-    if (ordinal < 0 || ordinal >= picklers.length) {
-      throw new IllegalArgumentException("Invalid ordinal: " + ordinal + ". Must be between 0 and " + (picklers.length - 1));
-    }
-    final var pickler = typeSignatureToPicklerMap.get(ordinal);
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    final long startPosition = buffer.position();
+    final var typeSignature = buffer.getLong();
+    final var pickler = typeSignatureToPicklerMap.get(typeSignature);
+
     if (pickler == null) {
-      throw new IllegalArgumentException("No pickler found for ordinal: " + ordinal);
+      throw new IllegalArgumentException("PicklerRoot no pickler found for typeSignature: " + typeSignature + " at position " + startPosition +
+          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+          buffer.limit() + " capacity: " + buffer.capacity());
     }
-    //noinspection unchecked
-    return (T) pickler.deserialize(buffer);
+
+    LOGGER.fine(() -> "PicklerRoot deserializing position " + startPosition +
+        " typeSignature 0x" + Long.toHexString(typeSignature) +
+        " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+        buffer.limit() + " capacity: " + buffer.capacity()
+    );
+
+    switch (pickler) {
+      case RecordPickler<?> rp -> {
+        //noinspection unchecked
+        return (R) rp.deserialize(buffer);
+      }
+      case EmptyRecordPickler<?> erp -> {
+        // EmptyRecordPickler is a special case for records with no components
+        //noinspection unchecked
+        return (R) erp.singleton;
+      }
+      default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
+    }
   }
 
   @Override
-  public int maxSizeOf(T record) {
+  public int maxSizeOf(R record) {
     Objects.requireNonNull(record);
-    if (!record.getClass().isRecord()) {
+    final Class<?> userType = record.getClass();
+    if (!userType.isRecord()) {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
-    final var pickler = REGISTRY.getOrDefault(record.getClass(), null);
-    if (pickler == null) {
-      throw new IllegalArgumentException("No pickler registered for record type: " + record.getClass());
-    }
-    //noinspection unchecked
+    final var pickler = resolvePicker(userType);
     return pickler.maxSizeOf(record);
+  }
+
+  static <R> @NotNull Pickler<R> resolvePicker(Class<?> userType) {
+    final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType));
+    //noinspection unchecked
+    return (Pickler<R>) pickler;
   }
 }
