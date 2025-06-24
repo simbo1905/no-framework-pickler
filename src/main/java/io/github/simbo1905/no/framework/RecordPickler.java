@@ -440,6 +440,7 @@ final class RecordPickler<T> implements Pickler<T> {
             }
             LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing enum type signature 0x" + Long.toHexString(typeSignature) + " for enum: " + concreteType.getSimpleName() + " at position: " + buffer.position());
             buffer.putLong(typeSignature);
+            buffer.putInt(((Enum<?>) inner).ordinal());
           }
         };
       }
@@ -447,9 +448,7 @@ final class RecordPickler<T> implements Pickler<T> {
     return (ByteBuffer buffer, Object record) -> {
       LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for record type: " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
       throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
-    }
-
-        ;
+    };
   }
 
   static <X> void delegatedWriteToWire(ByteBuffer buffer, RecordPickler<X> rp, Object inner) {
