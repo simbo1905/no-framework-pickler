@@ -476,12 +476,12 @@ final class RecordPickler<T> implements Pickler<T> {
           final int positionBeforeRead = buffer.position();
           final long typeSignature = buffer.getLong();
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + " for nested type " + clz.getSimpleName());
-          
+
           final var otherPickler = typeSignatureToPicklerMap.get(typeSignature);
           if (otherPickler == null) {
             throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " unknown nested record type signature: 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + " for expected type " + clz.getSimpleName());
           }
-          
+
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader delegating to pickler for " + clz.getSimpleName() + " after reading signature");
           switch (otherPickler) {
             case RecordPickler<?> rp -> {
@@ -492,7 +492,8 @@ final class RecordPickler<T> implements Pickler<T> {
               LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader returning singleton for empty record " + erp.userType.getSimpleName());
               return erp.singleton;
             }
-            default -> throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " unexpected nested pickler type: " + otherPickler.getClass());
+            default ->
+                throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " unexpected nested pickler type: " + otherPickler.getClass());
           }
         };
       }
@@ -810,7 +811,7 @@ final class RecordPickler<T> implements Pickler<T> {
 
   static @NotNull ToIntFunction<Object> buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType, MethodHandle ignored) {
     return switch (primitiveType) {
-      case BOOLEAN, BYTE -> (Object record) ->  Byte.BYTES;
+      case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
       case SHORT -> (Object record) -> Short.BYTES;
       case CHARACTER -> (Object record) -> Character.BYTES;
       case INTEGER -> (Object record) -> Integer.BYTES;
@@ -1125,4 +1126,77 @@ final class RecordPickler<T> implements Pickler<T> {
     final long signature = buffer.getLong();
     LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " deserialize() read type signature 0x" + Long.toHexString(signature) + " at position " + typeSigPosition + ", expected 0x" + Long.toHexString(typeSignature));
     if (signature == this.typeSignature) {
-      LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " deserializing record " + this.userType.
+      LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " position " +
+          typeSigPosition + " signature 0x" + Long.toHexString(signature) +
+          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+          buffer.limit() + " capacity: " + buffer.capacity());
+      return readFromWire(buffer);
+    } else {
+      throw new IllegalStateException("Type signature mismatch: expected " +
+          Long.toHexString(this.typeSignature) + " but got " +
+          Long.toHexString(signature) + " at position: " + typeSigPosition);
+    }
+  }
+
+  T readFromWire(ByteBuffer buffer) {
+    Object[] components = new Object[componentReaders.length];
+    IntStream.range(0, componentReaders.length).forEach(i -> {
+      final int componentIndex = i; // final for lambda capture
+      final int beforePosition = buffer.position();
+      LOGGER.fine(() -> "RecordPricker reading component " + componentIndex +
+          " at position " + beforePosition +
+          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+          buffer.limit() + " capacity: " + buffer.capacity()
+      );
+      components[i] = componentReaders[i].apply(buffer);
+      final Object componentValue = components[i]; // final for lambda capture
+      final int afterPosition = buffer.position();
+      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " moved from position " + beforePosition + " to " + afterPosition);
+    });
+
+    // Invoke constructor
+    try {
+      LOGGER.finer(() -> "Constructing record at position " + buffer.position() + " with components: " + Arrays.toString(components));
+      //noinspection unchecked we know by static inspection that this is safe
+      return (T) this.recordConstructor.invokeWithArguments(components);
+    } catch (Throwable e) {
+      throw new RuntimeException("Failed to construct record", e);
+    }
+  }
+
+  @Override
+  public int maxSizeOf(T record) {
+    Objects.requireNonNull(record);
+    if (!this.userType.isAssignableFrom(record.getClass())) {
+      throw new IllegalArgumentException("Expected a record type " + this.userType.getName() +
+          " but got: " + record.getClass().getName());
+    }
+    int size = CLASS_SIG_BYTES + Integer.BYTES; // signature bytes then ordinal marker
+    size += maxSizeOfRecordComponents((Record) record);
+    return size;
+  }
+
+  /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
+  static long hashEnumSignature(Class<?> enumClass) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance(SHA_256);
+
+      Object[] enumConstants = enumClass.getEnumConstants();
+      assert enumConstants != null : "Not an enum class: " + enumClass;
+
+      String input = Stream.concat(
+          Stream.of(enumClass.getSimpleName()),
+          Arrays.stream(enumConstants)
+              .map(e -> ((Enum<?>) e).name())
+      ).collect(Collectors.joining("!"));
+
+      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+
+      return IntStream.range(0, CLASS_SIG_BYTES)
+          .mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8))
+          .reduce(0L, (a, b) -> a | b);
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(SHA_256 + " not available", e);
+    }
+  }
+}
