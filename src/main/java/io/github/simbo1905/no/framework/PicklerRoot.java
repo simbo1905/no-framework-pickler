@@ -23,10 +23,10 @@ final class PicklerRoot<R> implements Pickler<R> {
   final Map<Class<?>, Long> recordClassToTypeSignatureMap;
   final Map<Class<?>, Pickler<?>> picklers;
 
-  public PicklerRoot(final List<Class<?>> sortedUserTypes) {
-    this.userTypes = sortedUserTypes;
+  public PicklerRoot(final List<Class<?>> recordClasses) {
+    this.userTypes = recordClasses;
     // To avoid null picklers in the array, we use NilPickler for non-record types
-    picklers = sortedUserTypes.stream().collect(Collectors.toMap(
+    picklers = recordClasses.stream().collect(Collectors.toMap(
         clz -> clz,
         clz -> REGISTRY.computeIfAbsent(clz, aClass -> componentPicker(clz))
     ));
