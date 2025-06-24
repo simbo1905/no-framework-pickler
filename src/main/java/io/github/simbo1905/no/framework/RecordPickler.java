@@ -423,7 +423,10 @@ final class RecordPickler<T> implements Pickler<T> {
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " inner type for interface " + typeExpr.toTreeString() + " is: " + concreteType.getSimpleName());
           if (concreteType.isRecord()) {
             if (this.userType.isAssignableFrom(concreteType)) {
-
+              // If the inner type is assignable to the user type, we can write it directly
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing self-referential record at position: " + buffer.position());
+              //noinspection unchecked
+              writeToWire(buffer, (T) inner);
             } else {
               final var otherPickler = resolvePicker(concreteType);
               LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing interface implementation record " + concreteType.getSimpleName() + " at position: " + buffer.position());
@@ -463,6 +466,7 @@ final class RecordPickler<T> implements Pickler<T> {
       final var referenceType = refValueNode.type();
       final var recordJavaType = refValueNode.javaType();
       if (recordJavaType instanceof Class<?> clz && this.userType.isAssignableFrom(clz)) {
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
         return selfPickle(typeExpr);
       } else if (recordJavaType instanceof Class<?> clz && clz.isRecord()) {
         // nested record reader
@@ -502,7 +506,33 @@ final class RecordPickler<T> implements Pickler<T> {
             return null;
           }
           if (typeSignature == this.typeSignature) {
-            selfPickle(typeExpr);
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
+            Object[] args = new Object[componentAccessors.length];
+            IntStream.range(0, componentAccessors.length).forEach(i -> {
+              final int componentPosition = buffer.position();
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader reading component " + i + " at position " + componentPosition);
+              args[i] = componentReaders[i].apply(buffer);
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read component " + i + " value: " + args[i] + " moved to position " + buffer.position());
+            });
+            // Read the record using the record constructor
+            try {
+              Object result = recordConstructor.invokeWithArguments(args);
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader constructed record: " + result);
+              return result;
+            } catch (Throwable e) {
+              throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to construct record of type: " + userType.getSimpleName(), e);
+            }
+          } else if (typeSignatureToPicklerMap.containsKey(typeSignature)) {
+            // If the type signature matches a record, we read it using the pickler
+            final var otherPickler = typeSignatureToPicklerMap.get(typeSignature);
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader found record pickler: " + otherPickler.getClass().getSimpleName() + " for type signature 0x" + Long.toHexString(typeSignature));
+            if (otherPickler instanceof RecordPickler<?> rp) {
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader calling readFromWire for " + rp.userType.getSimpleName());
+              return rp.readFromWire(buffer);
+            } else if (otherPickler instanceof EmptyRecordPickler<?> erp) {
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader returning singleton for empty record " + erp.userType.getSimpleName());
+              return erp.singleton;
+            }
           } else if (typeSignatureToEnumMap.containsKey(typeSignature)) {
             // If the type signature matches an enum, we read it as an enum
             final var enumClass = typeSignatureToEnumMap.get(typeSignature);
@@ -518,14 +548,17 @@ final class RecordPickler<T> implements Pickler<T> {
         };
       }
     }
-    return (ByteBuffer buffer) -> {
+    return (
+        ByteBuffer buffer) ->
+
+    {
       throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record with method handle: ");
-    };
+    }
+
+        ;
   }
 
   @NotNull Function<ByteBuffer, Object> selfPickle(final TypeExpr typeExpr) {
-    // self picker
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
     return (ByteBuffer buffer) -> {
       final int positionBeforeRead = buffer.position();
       final long typeSignature = buffer.getLong();
@@ -1158,22 +1191,8 @@ final class RecordPickler<T> implements Pickler<T> {
     return totalBytes;
   }
 
-  void serializeRecordComponents(ByteBuffer buffer, T record) {
-    IntStream.range(0, componentWriters.length).forEach(i -> {
-      final int componentIndex = i; // final for lambda capture
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex +
-          " at position " + buffer.position() +
-          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
-          buffer.limit() + " capacity: " + buffer.capacity()
-      );
-      componentWriters[componentIndex].accept(buffer, record);
-    });
-  }
-
+  /// Deserialize a record from the given buffer, first checking the type signature.
   @Override
-  /**
-   * Deserialize a record from the given buffer, first checking the type signature.
-   */
   public T deserialize(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
@@ -1189,6 +1208,18 @@ final class RecordPickler<T> implements Pickler<T> {
     }
 
     return deserializeWithoutSignature(buffer);
+  }
+
+  void serializeRecordComponents(ByteBuffer buffer, T record) {
+    IntStream.range(0, componentWriters.length).forEach(i -> {
+      final int componentIndex = i; // final for lambda capture
+      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex +
+          " at position " + buffer.position() +
+          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
+          buffer.limit() + " capacity: " + buffer.capacity()
+      );
+      componentWriters[componentIndex].accept(buffer, record);
+    });
   }
 
   /**
@@ -1227,15 +1258,23 @@ final class RecordPickler<T> implements Pickler<T> {
   }
 
   @Override
-  public int maxSizeOf(T record) {
-    Objects.requireNonNull(record);
-    if (!this.userType.isAssignableFrom(record.getClass())) {
-      throw new IllegalArgumentException("Expected a record type " + this.userType.getName() +
-          " but got: " + record.getClass().getName());
+  public int maxSizeOf(T object) {
+    Objects.requireNonNull(object);
+    if (this.userType.isAssignableFrom(object.getClass())) {
+      int size = CLASS_SIG_BYTES + Integer.BYTES; // signature bytes then ordinal marker
+      size += maxSizeOfRecordComponents((Record) object);
+      return size;
+    } else if (object instanceof Enum<?>) {
+      // For enums, we store the ordinal and type signature
+      return Long.BYTES + Integer.BYTES; // typeSignature + ordinal
+    } else if (object instanceof Record) {
+      final var otherPickler = resolvePicker(object.getClass());
+      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " maxSizeOf() delegating to other pickler for record type: " + object.getClass().getSimpleName());
+      return otherPickler.maxSizeOf(object);
+    } else {
+      throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " expected a record type " + this.userType.getName() +
+          " but got: " + object.getClass().getName());
     }
-    int size = CLASS_SIG_BYTES + Integer.BYTES; // signature bytes then ordinal marker
-    size += maxSizeOfRecordComponents((Record) record);
-    return size;
   }
 
   /// Compute a CLASS_SIG_BYTES signature from enum class and constant names

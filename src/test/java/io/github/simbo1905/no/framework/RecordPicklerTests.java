@@ -23,7 +23,7 @@ public class RecordPicklerTests {
     }
   }
 
-  // inner interface of enum and record
+  // inner interface of nested records and empty record end
   public sealed interface Link permits Link.LinkedRecord, Link.LinkEnd {
 
     // record implementing interface
