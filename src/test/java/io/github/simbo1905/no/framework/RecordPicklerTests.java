@@ -111,7 +111,7 @@ public class RecordPicklerTests {
   }
 
   @Test
-  @DisplayName("Test linked record serialization and deserialization")
+  @DisplayName("Test linked record interface serialization and deserialization")
   void testLinkedRecordRoundTrip() {
     // Create a pickler for the Link interface
     LOGGER.fine(() -> "-------------\nPickler for Link creation:");
