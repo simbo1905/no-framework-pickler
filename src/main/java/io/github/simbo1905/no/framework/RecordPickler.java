@@ -412,14 +412,12 @@ final class RecordPickler<T> implements Pickler<T> {
       } else if (clz.isInterface() && clz.isSealed()) {
         LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating writer chain for interface type " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
         return (ByteBuffer buffer, Object object) -> {
-
           final Object inner;
           try {
             inner = methodHandle.invokeWithArguments(object);
           } catch (Throwable t) {
             throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value: " + t.getMessage(), t);
           }
-
 
           final var concreteType = inner.getClass();
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " inner type for interface " + typeExpr.toTreeString() + " is: " + concreteType.getSimpleName());
@@ -455,46 +453,17 @@ final class RecordPickler<T> implements Pickler<T> {
     rp.writeToWire(buffer, (X) inner);
   }
 
-  Function<ByteBuffer, Object> buildReaderChain(TypeExpr typeExpr) {
+  Function<ByteBuffer, Object> buildReaderChain(final TypeExpr typeExpr) {
     if (typeExpr.isPrimitive()) {
       LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for primitive type: " + typeExpr.toTreeString());
       final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
       return buildPrimitiveValueReader(primitiveType);
     } else {
       final TypeExpr.RefValueNode refValueNode = (TypeExpr.RefValueNode) typeExpr;
+      final var referenceType = refValueNode.type();
       final var recordJavaType = refValueNode.javaType();
       if (recordJavaType instanceof Class<?> clz && this.userType.isAssignableFrom(clz)) {
-        // self picker
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
-        return (ByteBuffer buffer) -> {
-          final int positionBeforeRead = buffer.position();
-          final long typeSignature = buffer.getLong();
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + ", expected 0x" + Long.toHexString(this.typeSignature));
-          if (typeSignature == 0L) {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record " + typeExpr.toTreeString() + " at position: " + positionBeforeRead);
-            return null;
-          }
-          if (typeSignature != this.typeSignature) {
-            throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " type signature mismatch: expected " +
-                Long.toHexString(this.typeSignature) + " but got " +
-                Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
-          }
-          Object[] args = new Object[componentAccessors.length];
-          IntStream.range(0, componentAccessors.length).forEach(i -> {
-            final int componentPosition = buffer.position();
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader reading component " + i + " at position " + componentPosition);
-            args[i] = componentReaders[i].apply(buffer);
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read component " + i + " value: " + args[i] + " moved to position " + buffer.position());
-          });
-          // Read the record using the record constructor
-          try {
-            Object result = recordConstructor.invokeWithArguments(args);
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader constructed record: " + result);
-            return result;
-          } catch (Throwable e) {
-            throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to construct record of type: " + userType.getSimpleName(), e);
-          }
-        };
+        return selfPickle(typeExpr);
       } else if (recordJavaType instanceof Class<?> clz && clz.isRecord()) {
         // nested record reader
         LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for nested record type: " + typeExpr.toTreeString());
@@ -522,11 +491,70 @@ final class RecordPickler<T> implements Pickler<T> {
                 throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " unexpected nested pickler type: " + otherPickler.getClass());
           }
         };
+      } else if (referenceType == TypeExpr.RefValueType.INTERFACE) {
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating reader chain for interface type " + typeExpr.toTreeString());
+        return (ByteBuffer buffer) -> {
+          final int positionBeforeRead = buffer.position();
+          final long typeSignature = buffer.getLong();
+          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead);
+          if (typeSignature == 0L) {
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record " + typeExpr.toTreeString() + " at position: " + positionBeforeRead);
+            return null;
+          }
+          if (typeSignature == this.typeSignature) {
+            selfPickle(typeExpr);
+          } else if (typeSignatureToEnumMap.containsKey(typeSignature)) {
+            // If the type signature matches an enum, we read it as an enum
+            final var enumClass = typeSignatureToEnumMap.get(typeSignature);
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader found enum class: " + enumClass.getSimpleName() + " for type signature 0x" + Long.toHexString(typeSignature));
+            final int ordinal = buffer.getInt();
+            try {
+              return enumClass.getEnumConstants()[ordinal];
+            } catch (ArrayIndexOutOfBoundsException e) {
+              throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " invalid ordinal: " + ordinal + " for enum class: " + enumClass.getSimpleName(), e);
+            }
+          }
+          throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented reader for: " + typeExpr.toTreeString());
+        };
       }
-      return (ByteBuffer buffer) -> {
-        throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented reader for: " + typeExpr.toTreeString());
-      };
     }
+    return (ByteBuffer buffer) -> {
+      throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record with method handle: ");
+    };
+  }
+
+  @NotNull Function<ByteBuffer, Object> selfPickle(final TypeExpr typeExpr) {
+    // self picker
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
+    return (ByteBuffer buffer) -> {
+      final int positionBeforeRead = buffer.position();
+      final long typeSignature = buffer.getLong();
+      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + ", expected 0x" + Long.toHexString(this.typeSignature));
+      if (typeSignature == 0L) {
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record " + typeExpr.toTreeString() + " at position: " + positionBeforeRead);
+        return null;
+      }
+      if (typeSignature != this.typeSignature) {
+        throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " type signature mismatch: expected " +
+            Long.toHexString(this.typeSignature) + " but got " +
+            Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
+      }
+      Object[] args = new Object[componentAccessors.length];
+      IntStream.range(0, componentAccessors.length).forEach(i -> {
+        final int componentPosition = buffer.position();
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader reading component " + i + " at position " + componentPosition);
+        args[i] = componentReaders[i].apply(buffer);
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read component " + i + " value: " + args[i] + " moved to position " + buffer.position());
+      });
+      // Read the record using the record constructor
+      try {
+        Object result = recordConstructor.invokeWithArguments(args);
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader constructed record: " + result);
+        return result;
+      } catch (Throwable e) {
+        throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to construct record of type: " + userType.getSimpleName(), e);
+      }
+    };
   }
 
   ToIntFunction<Object> buildSizerChain(TypeExpr typeExpr, MethodHandle methodHandle) {
