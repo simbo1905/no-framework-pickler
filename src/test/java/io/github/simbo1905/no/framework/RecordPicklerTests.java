@@ -12,13 +12,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class RecordPicklerTests {
 
-  public record SimpleLikedList(int value, SimpleLikedList next) {
-    public SimpleLikedList(int value) {
+  public record SimpleLinkedList(int value, SimpleLinkedList next) {
+    public SimpleLinkedList(int value) {
       this(value, null);
     }
   }
 
-  public record LinkedListNoInterface(Inner inner, LinkedListNoInterface next) {
+  public record InnerRecordNullEndLinkedList(Inner inner, InnerRecordNullEndLinkedList next) {
     public record Inner(int value) {
     }
   }
@@ -61,7 +61,7 @@ public class RecordPicklerTests {
   }
 
   @Test
-  @DisplayName("Test record value round trips")
+  @DisplayName("Test simple record value round trips")
   void testBoxedRoundTrip() {
     // Create a pickler for the Boxed record
     Pickler<Link.Boxed> pickler = Pickler.forClass(Link.Boxed.class);
@@ -86,13 +86,13 @@ public class RecordPicklerTests {
   }
 
   @Test
-  @DisplayName("Test linked record serialization and deserialization")
+  @DisplayName("Test linked record null end serialization and deserialization")
   void testSimpleLinkedListRoundTrip() {
     // Create a linked list with two nodes
-    SimpleLikedList linkedList = new SimpleLikedList(1, new SimpleLikedList(2));
+    SimpleLinkedList linkedList = new SimpleLinkedList(1, new SimpleLinkedList(2));
 
     // Create a pickler for the SimpleLikedList record
-    Pickler<SimpleLikedList> pickler = Pickler.forClass(SimpleLikedList.class);
+    Pickler<SimpleLinkedList> pickler = Pickler.forClass(SimpleLinkedList.class);
 
     // Serialize the linked list to a ByteBuffer
     ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -100,7 +100,7 @@ public class RecordPicklerTests {
     buffer.flip(); // Prepare for reading
 
     // Deserialize the linked list from the ByteBuffer
-    SimpleLikedList deserialized = pickler.deserialize(buffer);
+    SimpleLinkedList deserialized = pickler.deserialize(buffer);
 
     // Assert that the original and deserialized linked lists are equal
     assertThat(deserialized).isEqualTo(linkedList);
@@ -111,8 +111,8 @@ public class RecordPicklerTests {
   }
 
   @Test
-  @DisplayName("Test linked record interface serialization and deserialization")
-  void testLinkedRecordRoundTrip() {
+  @DisplayName("Test linked nested record interface with empty end")
+  void testLinkedNestedRecordEmptyEnd() {
     // Create a pickler for the Link interface
     LOGGER.fine(() -> "-------------\nPickler for Link creation:");
     Pickler<Link> pickler = Pickler.forClass(Link.class);
@@ -136,14 +136,15 @@ public class RecordPicklerTests {
   }
 
   @Test
-  public void testLinedListNoInterfaceRoundTrip() {
+  @DisplayName("Test nested record linked list null end")
+  public void testLinedListNullEnd() {
     // Create a pickler for the LinkedListNoInterface record
-    Pickler<LinkedListNoInterface> pickler = Pickler.forClass(LinkedListNoInterface.class);
+    Pickler<InnerRecordNullEndLinkedList> pickler = Pickler.forClass(InnerRecordNullEndLinkedList.class);
 
     // Create an instance of LinkedListNoInterface
-    LinkedListNoInterface original = new LinkedListNoInterface(
-        new LinkedListNoInterface.Inner(1),
-        new LinkedListNoInterface(new LinkedListNoInterface.Inner(2), null));
+    InnerRecordNullEndLinkedList original = new InnerRecordNullEndLinkedList(
+        new InnerRecordNullEndLinkedList.Inner(1),
+        new InnerRecordNullEndLinkedList(new InnerRecordNullEndLinkedList.Inner(2), null));
 
     // Serialize the original record to a ByteBuffer
     ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -151,7 +152,7 @@ public class RecordPicklerTests {
     buffer.flip(); // Prepare for reading
 
     // Deserialize the record from the ByteBuffer
-    LinkedListNoInterface deserialized = pickler.deserialize(buffer);
+    InnerRecordNullEndLinkedList deserialized = pickler.deserialize(buffer);
 
     // Assert that the original and deserialized records are equal
     assertThat(deserialized).isEqualTo(original);
