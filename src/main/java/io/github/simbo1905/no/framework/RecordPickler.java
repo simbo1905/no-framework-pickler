@@ -421,25 +421,25 @@ final class RecordPickler<T> implements Pickler<T> {
 
           final var concreteType = inner.getClass();
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " inner type for interface " + typeExpr.toTreeString() + " is: " + concreteType.getSimpleName());
-          if (concreteType.isRecord()) {
-            if (this.userType.isAssignableFrom(concreteType)) {
-              // If the inner type is assignable to the user type, we can write it directly
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing self-referential record at position: " + buffer.position());
-              //noinspection unchecked
-              writeToWire(buffer, (T) inner);
-            } else {
-              final var otherPickler = resolvePicker(concreteType);
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing interface implementation record " + concreteType.getSimpleName() + " at position: " + buffer.position());
-              // Delegate serialization to the resolved pickler
-              otherPickler.serialize(buffer, inner);
-            }
+          if (this.userType.isAssignableFrom(clz)) {
+            // If the inner type is assignable to the user type, we can write it directly
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing self-referential record at position: " + buffer.position());
+            //noinspection unchecked
+            writeToWire(buffer, (T) inner);
+          } else if (concreteType.isRecord()) {
+            final var otherPickler = resolvePicker(concreteType);
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing interface implementation record " + concreteType.getSimpleName() + " at position: " + buffer.position());
+            // Delegate serialization to the resolved pickler
+            otherPickler.serialize(buffer, inner);
           } else if (concreteType.isEnum()) {
             LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing interface implementation enum " + concreteType.getSimpleName() + " at position: " + buffer.position());
-            final var enumPickler = (EmptyRecordPickler<?>) resolvePicker(concreteType);
-            //enumPickler.serialize(buffer, object);
-            throw new AssertionError("not implemented yet: " + typeExpr.toTreeString() + " for enum: " + concreteType.getSimpleName());
-          } else {
-            throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " expected enum or record of interface: " + typeExpr.toTreeString() + " yet got : " + concreteType.getName());
+            // Write the type signature first
+            final var typeSignature = enumToTypeSignatureMap.get(concreteType);
+            if (typeSignature == null) {
+              throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " no type signature found for enum: " + concreteType.getSimpleName());
+            }
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing enum type signature 0x" + Long.toHexString(typeSignature) + " for enum: " + concreteType.getSimpleName() + " at position: " + buffer.position());
+            buffer.putLong(typeSignature);
           }
         };
       }
@@ -447,7 +447,9 @@ final class RecordPickler<T> implements Pickler<T> {
     return (ByteBuffer buffer, Object record) -> {
       LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for record type: " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
       throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record: " + record.getClass().getSimpleName() + " with method handle: " + methodHandle);
-    };
+    }
+
+        ;
   }
 
   static <X> void delegatedWriteToWire(ByteBuffer buffer, RecordPickler<X> rp, Object inner) {

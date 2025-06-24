@@ -138,6 +138,7 @@ final class PicklerRoot<R> implements Pickler<R> {
   }
 
   static <R> @NotNull Pickler<R> resolvePicker(Class<?> userType) {
+    LOGGER.fine(() -> "PicklerRoot resolvePicker for userType: " + userType.getSimpleName());
     final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType));
     //noinspection unchecked
     return (Pickler<R>) pickler;

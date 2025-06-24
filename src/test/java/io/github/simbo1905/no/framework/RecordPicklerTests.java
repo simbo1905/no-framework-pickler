@@ -24,14 +24,14 @@ public class RecordPicklerTests {
   }
 
   // inner interface of nested records and empty record end
-  public sealed interface Link permits Link.LinkedRecord, Link.LinkEnd {
+  public sealed interface LinkListEmptyEnd permits LinkListEmptyEnd.LinkedRecord, LinkListEmptyEnd.LinkEnd {
 
     // record implementing interface
-    record LinkedRecord(Boxed value, Link next) implements Link {
+    record LinkedRecord(Boxed value, LinkListEmptyEnd next) implements LinkListEmptyEnd {
     }
 
     // enum implementing interface
-    record LinkEnd() implements Link {
+    record LinkEnd() implements LinkListEmptyEnd {
     }
 
     // inner record
@@ -40,10 +40,10 @@ public class RecordPicklerTests {
   }
 
   // A linked list with two nodes to test with
-  static Link linkedListTwoNodes =
-      new Link.LinkedRecord(new Link.Boxed(1),
-          new Link.LinkedRecord(new Link.Boxed(2),
-              new Link.LinkEnd()));
+  static LinkListEmptyEnd linkedListTwoNodes =
+      new LinkListEmptyEnd.LinkedRecord(new LinkListEmptyEnd.Boxed(1),
+          new LinkListEmptyEnd.LinkedRecord(new LinkListEmptyEnd.Boxed(2),
+              new LinkListEmptyEnd.LinkEnd()));
 
   @BeforeAll
   static void setupLogging() {
@@ -64,10 +64,10 @@ public class RecordPicklerTests {
   @DisplayName("Test simple record value round trips")
   void testBoxedRoundTrip() {
     // Create a pickler for the Boxed record
-    Pickler<Link.Boxed> pickler = Pickler.forClass(Link.Boxed.class);
+    Pickler<LinkListEmptyEnd.Boxed> pickler = Pickler.forClass(LinkListEmptyEnd.Boxed.class);
 
     // Create an instance of Boxed
-    Link.Boxed original = new Link.Boxed(42);
+    LinkListEmptyEnd.Boxed original = new LinkListEmptyEnd.Boxed(42);
 
     // Serialize the original record to a ByteBuffer
     ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -75,7 +75,7 @@ public class RecordPicklerTests {
     buffer.flip(); // Prepare for reading
 
     // Deserialize the record from the ByteBuffer
-    Link.Boxed deserialized = pickler.deserialize(buffer);
+    LinkListEmptyEnd.Boxed deserialized = pickler.deserialize(buffer);
 
     // Assert that the original and deserialized records are equal
     assertThat(deserialized).isEqualTo(original);
@@ -115,7 +115,7 @@ public class RecordPicklerTests {
   void testLinkedNestedRecordEmptyEnd() {
     // Create a pickler for the Link interface
     LOGGER.fine(() -> "-------------\nPickler for Link creation:");
-    Pickler<Link> pickler = Pickler.forClass(Link.class);
+    Pickler<LinkListEmptyEnd> pickler = Pickler.forClass(LinkListEmptyEnd.class);
 
     // Serialize the linked list with two nodes
     ByteBuffer buffer = ByteBuffer.allocate(1024);
@@ -125,7 +125,7 @@ public class RecordPicklerTests {
 
     LOGGER.fine(() -> "-------------\ndeserialize");
     // Deserialize the linked list
-    Link deserialized = pickler.deserialize(buffer);
+    LinkListEmptyEnd deserialized = pickler.deserialize(buffer);
 
     // Assert that the deserialized structure matches the original
     assertThat(deserialized).isEqualTo(linkedListTwoNodes);
@@ -161,4 +161,44 @@ public class RecordPicklerTests {
     int maxSizeOf = pickler.maxSizeOf(original);
     assertThat(size).isLessThanOrEqualTo(maxSizeOf);
   }
+
+  // inner interface of nested records and empty record end
+  public sealed interface LinkListEnumEnd permits LinkListEnumEnd.LinkedRecord, LinkListEnumEnd.LinkEnd {
+
+    record LinkedRecord(int value, LinkListEnumEnd next) implements LinkListEnumEnd {
+    }
+
+    // enum implementing interface
+    enum LinkEnd implements LinkListEnumEnd {
+      INSTANCE
+    }
+  }
+
+  final LinkListEnumEnd linkedListEnumTwoNodes =
+      new LinkListEnumEnd.LinkedRecord(1,
+          new LinkListEnumEnd.LinkedRecord(2, LinkListEnumEnd.LinkEnd.INSTANCE));
+
+  @Test
+  @DisplayName("Test linked record enum end serialization and deserialization")
+  void testLinkedRecordEnumEndRoundTrip() {
+    // Create a pickler for the LinkListEnumEnd interface
+    Pickler<LinkListEnumEnd> pickler = Pickler.forClass(LinkListEnumEnd.class);
+
+    // Serialize the linked list with two nodes
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    int size = pickler.serialize(buffer, linkedListEnumTwoNodes);
+    buffer.flip(); // Prepare for reading
+
+    // Deserialize the linked list
+    LinkListEnumEnd deserialized = pickler.deserialize(buffer);
+
+    // Assert that the deserialized structure matches the original
+    assertThat(deserialized).isEqualTo(linkedListEnumTwoNodes);
+
+    // check the size is less than the maxSizeOf
+    int maxSizeOf = pickler.maxSizeOf(linkedListEnumTwoNodes);
+    assertThat(size).isLessThanOrEqualTo(maxSizeOf);
+  }
+
 }
+
