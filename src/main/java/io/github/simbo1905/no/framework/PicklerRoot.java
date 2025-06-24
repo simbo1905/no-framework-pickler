@@ -114,8 +114,8 @@ final class PicklerRoot<R> implements Pickler<R> {
 
     switch (pickler) {
       case RecordPickler<?> rp -> {
-        //noinspection unchecked
-        return (R) rp.deserialize(buffer);
+        // The type signature was already validated at the root level
+        return (R) rp.readFromWire(buffer);
       }
       case EmptyRecordPickler<?> erp -> {
         // EmptyRecordPickler is a special case for records with no components

@@ -1118,24 +1118,33 @@ final class RecordPickler<T> implements Pickler<T> {
   }
 
   @Override
+  /**
+   * Deserialize a record from the given buffer, first checking the type signature.
+   */
   public T deserialize(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
     final int typeSigPosition = buffer.position();
     // read the type signature first as it is a cryptographic hash of the class name and component metadata and fixed size
-    final long signature = buffer.getLong();
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " deserialize() read type signature 0x" + Long.toHexString(signature) + " at position " + typeSigPosition + ", expected 0x" + Long.toHexString(typeSignature));
-    if (signature == this.typeSignature) {
-      LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " position " +
-          typeSigPosition + " signature 0x" + Long.toHexString(signature) +
-          " buffer remaining bytes: " + buffer.remaining() + " limit: " +
-          buffer.limit() + " capacity: " + buffer.capacity());
-      return readFromWire(buffer);
-    } else {
+    final long incomingSignature = buffer.getLong();
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " deserialize() read type signature 0x" + Long.toHexString(incomingSignature) + " at position " + typeSigPosition + ", expected 0x" + Long.toHexString(typeSignature));
+
+    if (incomingSignature != this.typeSignature) {
       throw new IllegalStateException("Type signature mismatch: expected " +
           Long.toHexString(this.typeSignature) + " but got " +
-          Long.toHexString(signature) + " at position: " + typeSigPosition);
+          Long.toHexString(incomingSignature) + " at position: " + typeSigPosition);
     }
+
+    return deserializeWithoutSignature(buffer);
+  }
+
+  /**
+   * Deserialize a record from the given buffer, assuming the type signature has already been validated.
+   */
+  T deserializeWithoutSignature(ByteBuffer buffer) {
+    LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " buffer remaining bytes: " +
+        buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
+    return readFromWire(buffer);
   }
 
   T readFromWire(ByteBuffer buffer) {
@@ -1143,7 +1152,7 @@ final class RecordPickler<T> implements Pickler<T> {
     IntStream.range(0, componentReaders.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
       final int beforePosition = buffer.position();
-      LOGGER.fine(() -> "RecordPricker reading component " + componentIndex +
+      LOGGER.fine(() -> "RecordPickler reading component " + componentIndex +
           " at position " + beforePosition +
           " buffer remaining bytes: " + buffer.remaining() + " limit: " +
           buffer.limit() + " capacity: " + buffer.capacity()
