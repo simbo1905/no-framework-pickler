@@ -322,7 +322,11 @@ sealed interface TypeExpr permits
     BOOLEAN, BYTE, SHORT, CHARACTER,
     INTEGER, LONG, FLOAT, DOUBLE,
     STRING, UUID, ENUM, RECORD,
-    INTERFACE
+    INTERFACE;
+
+    boolean isUserType() {
+      return this == ENUM || this == RECORD || this == INTERFACE;
+    }
   }
 
   record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr {

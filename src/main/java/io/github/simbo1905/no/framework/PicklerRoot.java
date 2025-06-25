@@ -25,10 +25,13 @@ final class PicklerRoot<R> implements Pickler<R> {
 
   public PicklerRoot(final List<Class<?>> recordClasses) {
     this.userTypes = recordClasses;
-    // To avoid null picklers in the array, we use NilPickler for non-record types
+
+    // TODO had to not cache here due to circular cache updates that can be fixed later
+    LOGGER.fine(() -> "PicklerRoot resolve componentPicker for " + recordClasses.stream().map(Class::getSimpleName)
+        .collect(Collectors.joining(", ")) + " followed by type signatures for enums ");
     picklers = recordClasses.stream().collect(Collectors.toMap(
         clz -> clz,
-        clz -> REGISTRY.computeIfAbsent(clz, aClass -> componentPicker(clz))
+        PicklerRoot::resolvePicker
     ));
 
     this.typeSignatureToPicklerMap = picklers.values().stream().map(
@@ -138,7 +141,7 @@ final class PicklerRoot<R> implements Pickler<R> {
   }
 
   static <R> @NotNull Pickler<R> resolvePicker(Class<?> userType) {
-    LOGGER.fine(() -> "PicklerRoot resolvePicker for userType: " + userType.getSimpleName());
+    LOGGER.fine(() -> "PicklerRoot " + userType + " resolve componentPicker for userType: " + userType.getSimpleName());
     final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType));
     //noinspection unchecked
     return (Pickler<R>) pickler;

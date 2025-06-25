@@ -16,7 +16,7 @@ import static io.github.simbo1905.no.framework.PicklerImpl.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordPickler, NilPickler, PicklerImpl, PicklerRoot, RecordPickler {
+public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerImpl, PicklerRoot, RecordPickler {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -77,9 +77,12 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, NilPickler, Pickl
 
     if (recordClasses.size() == 1) {
       // If there is only one record class, we can return a RecordPickler
+      LOGGER.info("Creating RecordPickler for single record class: " + recordClasses.getFirst().getSimpleName());
       return new RecordPickler<>(recordClasses.getFirst());
     } else {
       // If there are multiple record classes return a RecordPickler that will delegate to a RecordPickler
+      LOGGER.info("Creating PicklerRoot for multiple record classes: " +
+          recordClasses.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
       return new PicklerRoot<>(recordClasses);
     }
   }
