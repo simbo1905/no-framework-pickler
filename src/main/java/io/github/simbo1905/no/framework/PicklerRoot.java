@@ -34,15 +34,16 @@ final class PicklerRoot<R> implements Pickler<R> {
         PicklerRoot::resolvePicker
     ));
 
-    this.typeSignatureToPicklerMap = picklers.values().stream().map(
-            pickler -> Map.entry(
-                switch (pickler) {
-                  case RecordPickler<?> rp -> rp.typeSignature;
-                  case EmptyRecordPickler<?> erp -> erp.typeSignature;
-                  default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
-                }, pickler)
-        )
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    this.typeSignatureToPicklerMap = new ConcurrentHashMap<>();
+    picklers.values().stream().forEach(pickler -> {
+        final long signature = switch (pickler) {
+            case RecordPickler<?> rp -> rp.typeSignature;
+            case EmptyRecordPickler<?> erp -> erp.typeSignature;
+            default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
+        };
+        LOGGER.fine(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
+        typeSignatureToPicklerMap.put(signature, pickler);
+    });
 
     this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(
             classAndPickler -> Map.entry(classAndPickler.getKey(),
