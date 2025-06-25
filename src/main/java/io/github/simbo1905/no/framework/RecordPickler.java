@@ -77,6 +77,11 @@ final class RecordPickler<T> implements Pickler<T> {
           throw new IllegalArgumentException("Record Pickler " + userType.getSimpleName() + " unexpected pickler type: " + pickler.getClass());
     }, pickler)).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
+    LOGGER.fine(() -> "RecordPickler " + userType + " typeSignatureToPicklerMap contents: " +
+        typeSignatureToPicklerMap.entrySet().stream()
+            .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue())
+            .collect(Collectors.joining(", ")));
+
     // Create the inverse map of picklers to type signatures
     this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(classAndPickler -> Map.entry(classAndPickler.getKey(), switch (classAndPickler.getValue()) {
       case RecordPickler<?> rp -> rp.typeSignature;
@@ -344,7 +349,7 @@ final class RecordPickler<T> implements Pickler<T> {
 
     if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
       if (!type.isUserType()) {
-        // For primitive wrapper types, we can directly write the value using the method handle
+        // For boxed types, we can directly write the value using the method handle
         LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for built in value type: " + typeExpr.toTreeString());
         return buildValueWriter(type, methodHandle);
       }
@@ -496,6 +501,11 @@ final class RecordPickler<T> implements Pickler<T> {
       }
     }
     if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
+      if (!type.isUserType()) {
+        // For boxed types, we can directly read the value using the method handle
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for built in value type: " + typeExpr.toTreeString());
+        return buildValueReader(type);
+      }
       if (type == TypeExpr.RefValueType.ENUM) {
         LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for enum type: " + typeExpr.toTreeString());
         //noinspection unchecked
@@ -600,9 +610,7 @@ final class RecordPickler<T> implements Pickler<T> {
         };
       }
     }
-    return (ByteBuffer buffer) -> {
-      throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record with method handle: ");
-    };
+    throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record with method handle: ");
   }
 
   @NotNull Function<ByteBuffer, Object> selfPickle(final TypeExpr typeExpr) {
@@ -880,9 +888,7 @@ final class RecordPickler<T> implements Pickler<T> {
       case DOUBLE -> ByteBuffer::getDouble;
       case INTEGER -> (buffer) -> {
         final var position = buffer.position();
-        LOGGER.finer(() -> "INTEGER reader: starting at position=" + position);
         final int marker = ZigZagEncoding.getInt(buffer);
-        LOGGER.finer(() -> "INTEGER reader: read marker=" + marker + " INTEGER_VAR.marker=" + INTEGER_VAR.marker() + " INTEGER.marker=" + Constants.INTEGER.marker() + " at position=" + position);
         if (marker == INTEGER_VAR.marker()) {
           int value = ZigZagEncoding.getInt(buffer);
           LOGGER.finer(() -> "INTEGER reader: read INTEGER_VAR value=" + value + " at position=" + buffer.position());
@@ -896,15 +902,13 @@ final class RecordPickler<T> implements Pickler<T> {
       };
       case LONG -> (buffer) -> {
         final var position = buffer.position();
-        // First check if we have space for a raw long
-        if (buffer.remaining() >= Long.BYTES) {
-          return buffer.getLong();
-        }
         // If not enough space, read marker
         final int marker = ZigZagEncoding.getInt(buffer);
         if (marker == Constants.LONG_VAR.marker()) {
+          LOGGER.finer(() -> "LONG reader: read LONG_VAR marker=" + marker + " at position=" + position);
           return ZigZagEncoding.getLong(buffer);
         } else if (marker == Constants.LONG.marker()) {
+          LOGGER.finer(() -> "LONG reader: read LONG marker=" + marker + " at position=" + position);
           return buffer.getLong();
         } else {
           throw new IllegalStateException("Expected LONG or LONG_VAR marker but got: " + marker + " at position: " + position);

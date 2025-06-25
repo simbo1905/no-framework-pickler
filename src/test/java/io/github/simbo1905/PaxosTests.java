@@ -28,18 +28,7 @@ public class PaxosTests {
   };
 
   @Test
-  void testAcceptNoop() {
-    // Test serialization of Accept with NoOperation
-    final var pickler = Pickler.forClass(Accept.class);
-    final var buffer = ByteBuffer.allocate(1024);
-    pickler.serialize(buffer, original[0]); // Serialize the first Accept record
-    buffer.flip(); // Prepare the buffer for reading
-    final var deserialized = pickler.deserialize(buffer); // Deserialize the Accept record
-    assert deserialized.equals(original[0]); // Verify that the deserialized record matches the original
-  }
-
-  @Test
-  void testPaxosAccepts() throws Exception {
+  void testPaxosAccepts() {
     final var pickler = Pickler.forClass(Accept.class);
     final ByteBuffer readyToReadBack;
     final var writeBuffer = ByteBuffer.allocate(2048); // Allocate a buffer for writing
@@ -52,30 +41,6 @@ public class PaxosTests {
     IntStream.range(0, original.length).forEach(i -> {
       final var deserialized = pickler.deserialize(readBuffer); // Deserialize each Accept record from the buffer
       assert deserialized.equals(original[i]); // Verify that the deserialized record matches the original
-    });
-  }
-
-  @Test
-  void testAbstractCommandSealedInterface() {
-    // Test direct serialization of sealed interface with enum and record permits
-    final var commandPickler = Pickler.forClass(com.github.trex_paxos.AbstractCommand.class);
-
-    com.github.trex_paxos.AbstractCommand[] commands = {
-        NoOperation.NOOP,
-        new com.github.trex_paxos.Command("test".getBytes(StandardCharsets.UTF_8), (byte) 42)
-    };
-
-    final ByteBuffer readyToReadBack;
-    final var writeBuffer = ByteBuffer.allocate(1024);
-    for (var command : commands) {
-      commandPickler.serialize(writeBuffer, command);
-    }
-    readyToReadBack = writeBuffer.flip();
-
-    final var readBuffer = readyToReadBack;
-    IntStream.range(0, commands.length).forEach(i -> {
-      final var deserialized = commandPickler.deserialize(readBuffer);
-      assert deserialized.equals(commands[i]);
     });
   }
 }

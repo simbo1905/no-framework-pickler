@@ -35,15 +35,19 @@ final class PicklerRoot<R> implements Pickler<R> {
     ));
 
     this.typeSignatureToPicklerMap = new ConcurrentHashMap<>();
-    picklers.values().stream().forEach(pickler -> {
+    picklers.values().forEach(pickler -> {
       final long signature = switch (pickler) {
         case RecordPickler<?> rp -> rp.typeSignature;
         case EmptyRecordPickler<?> erp -> erp.typeSignature;
         default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
       };
-      LOGGER.fine(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
+      LOGGER.finer(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
       typeSignatureToPicklerMap.put(signature, pickler);
     });
+    LOGGER.fine(() -> "PicklerRoot typeSignatureToPicklerMap contents: " +
+        typeSignatureToPicklerMap.entrySet().stream()
+            .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue())
+            .collect(Collectors.joining(", ")));
 
     this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(
             classAndPickler -> Map.entry(classAndPickler.getKey(),
