@@ -5,10 +5,7 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -46,10 +43,17 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerImpl, Pick
       throw new IllegalArgumentException("Class must be a record, enum, or sealed interface: " + clazz);
     }
 
+    final Set<Class<?>> BOXED_PRIMITIVES = Set.of(
+        Byte.class, Short.class, Integer.class, Long.class,
+        Float.class, Double.class, Character.class, Boolean.class
+    );
+
     // Partition the class hierarchy into legal and illegal classes
     final Map<Boolean, List<Class<?>>> legalAndIllegalClasses =
         recordClassHierarchy(clazz, new HashSet<>()).collect(Collectors.partitioningBy(
-            cls -> cls.isRecord() || cls.isEnum() || cls.isSealed()
+            cls -> cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive()
+                || String.class.equals(cls) || UUID.class.isAssignableFrom(cls)
+                || BOXED_PRIMITIVES.contains(cls)
         ));
 
     final var illegalClasses = legalAndIllegalClasses.get(Boolean.FALSE);

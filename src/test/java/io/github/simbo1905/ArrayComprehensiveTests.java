@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
@@ -25,13 +28,13 @@ public class ArrayComprehensiveTests {
     // Copy LoggingControl code inline
     String logLevel = System.getProperty("java.util.logging.ConsoleHandler.level");
     Level level = (logLevel != null) ? Level.parse(logLevel) : Level.WARNING;
-    
+
     Logger rootLogger = Logger.getLogger("");
-    
+
     for (Handler handler : rootLogger.getHandlers()) {
       rootLogger.removeHandler(handler);
     }
-    
+
     ConsoleHandler consoleHandler = new ConsoleHandler();
     consoleHandler.setLevel(level);
     consoleHandler.setFormatter(new java.util.logging.Formatter() {
@@ -40,21 +43,23 @@ public class ArrayComprehensiveTests {
         return String.format("%-7s %s - %s%n", record.getLevel(), record.getLoggerName(), record.getMessage());
       }
     });
-    
+
     rootLogger.addHandler(consoleHandler);
     rootLogger.setLevel(level);
   }
 
   // Test data types
-  public enum Color implements Serializable { RED, GREEN, BLUE, YELLOW, PURPLE }
-  
-  public record SimpleRecord(String name, int value) implements Serializable {}
-  
+  public enum Color implements Serializable {RED, GREEN, BLUE, YELLOW, PURPLE}
+
+  public record SimpleRecord(String name, int value) implements Serializable {
+  }
+
   public record ComplexRecord(
       String id,
       List<Integer> numbers,
       Map<String, Double> scores
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   // Container records for various array scenarios
   public record BoxedArraysRecord(
@@ -63,47 +68,55 @@ public class ArrayComprehensiveTests {
       Double[] doubles,
       Long[] longs,
       Character[] characters
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record RecordArrayRecord(
       SimpleRecord[] simpleRecords,
       ComplexRecord[] complexRecords
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record EnumArrayRecord(
       Color[] colors,
       Color[][] colorMatrix
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record VarintArrayRecord(
       int[] smallInts,  // Should use varint encoding
       int[] largeInts,  // Should not use varint encoding
       long[] mixedLongs // Mix of small and large values
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record OptionalArrayRecord(
       Optional<Integer>[] optionalInts,
       Optional<String>[] optionalStrings,
       Optional<SimpleRecord>[] optionalRecords
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record CollectionArrayRecord(
       List<String>[] stringLists,
       List<Optional<Integer>>[] optionalIntLists,
       Set<Double>[] doubleSets
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record MapArrayRecord(
       Map<Integer, String>[] intStringMaps,
       Map<String, int[]>[] stringIntArrayMaps,
       Map<Long, List<String>>[] complexMaps
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record DeepNestedArrayRecord(
       int[][][] threeDimInts,
       List<Map<String, int[]>>[] crazyNested,
       Map<String, List<Optional<Integer>[]>>[] ultraNested
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record MixedContainerRecord(
       List<int[]> intArrayList,
@@ -111,14 +124,16 @@ public class ArrayComprehensiveTests {
       Set<Optional<Double>[]> optionalArraySet,
       int[][] beforeArray,
       Map<Integer, List<String[]>> afterArray
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record ExtremeSizeRecord(
       int[] empty,
       String[] single,
       Double[] large,
       List<Integer>[] largeListArray
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record NullPatternRecord(
       String[] allNulls,
@@ -126,7 +141,8 @@ public class ArrayComprehensiveTests {
       Double[] endNull,
       Boolean[] alternatingNull,
       SimpleRecord[] sparseRecords
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   // Additional test records for missing coverage
   public record StringArrayRecord(
@@ -134,25 +150,29 @@ public class ArrayComprehensiveTests {
       String[][] nestedStrings,
       String[] emptyStrings,
       String[] unicodeStrings
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record UUIDArrayRecord(
       UUID[] uuids,
       UUID[][] nestedUuids
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record PrimitiveEdgeCaseRecord(
       byte[] boundaryBytes,
       char[] unicodeChars,
       float[] specialFloats,
       double[] specialDoubles
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record NestedPrimitiveArrayRecord(
       int[][] matrix2d,
       double[][] doubles2d,
       byte[][][] bytes3d
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record MixedPrimitiveObjectArrayRecord(
       int[] primitiveInts,
@@ -160,7 +180,8 @@ public class ArrayComprehensiveTests {
       String[] strings,
       SimpleRecord[] records,
       double[][] nestedDoubles
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record EmptyArraysRecord(
       Color[] emptyColors,
@@ -168,25 +189,27 @@ public class ArrayComprehensiveTests {
       int[] emptyInts,
       String[] emptyStrings,
       List<String>[] emptyLists
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   public record SingleElementArraysRecord(
       Color[] singleColor,
       SimpleRecord[] singleRecord,
       int[] singleInt,
       String[] singleString
-  ) implements Serializable {}
+  ) implements Serializable {
+  }
 
   @Test
   void testBoxedArrays() {
     LOGGER.fine("Testing boxed type arrays");
-    
+
     BoxedArraysRecord original = new BoxedArraysRecord(
         new Integer[]{1, 2, 3, null, 5, -100, Integer.MAX_VALUE},
         new Boolean[]{true, false, null, true, false},
         new Double[]{1.1, 2.2, null, Double.MAX_VALUE, Double.MIN_VALUE},
         new Long[]{1L, null, Long.MAX_VALUE, Long.MIN_VALUE, 0L},
-        new Character[]{'a', 'Z', null, '中', '🙂'}
+        new Character[]{'a', 'Z', null, '中'}
     );
 
     testRoundTrip(original, BoxedArraysRecord.class);
@@ -195,7 +218,7 @@ public class ArrayComprehensiveTests {
   @Test
   void testRecordArrays() {
     LOGGER.fine("Testing arrays of records");
-    
+
     SimpleRecord[] simpleRecords = {
         new SimpleRecord("first", 1),
         new SimpleRecord("second", 2),
@@ -204,16 +227,18 @@ public class ArrayComprehensiveTests {
     };
 
     ComplexRecord[] complexRecords = {
-        new ComplexRecord("c1", 
-            List.of(1, 2, 3), 
+        new ComplexRecord("c1",
+            List.of(1, 2, 3),
             Map.of("score", 95.5, "rating", 4.8)),
         null,
-        new ComplexRecord("c2", 
-            Collections.emptyList(), 
+        new ComplexRecord("c2",
+            Collections.emptyList(),
             Collections.emptyMap()),
         new ComplexRecord("c3",
             Arrays.asList(null, 42, null),
-            new HashMap<>() {{ put("key", null); }})
+            new HashMap<>() {{
+              put("key", null);
+            }})
     };
 
     RecordArrayRecord original = new RecordArrayRecord(simpleRecords, complexRecords);
@@ -223,7 +248,7 @@ public class ArrayComprehensiveTests {
   @Test
   void testEnumArrays() {
     LOGGER.fine("Testing enum arrays");
-    
+
     Color[] colors = {Color.RED, null, Color.BLUE, Color.GREEN, Color.YELLOW};
     Color[][] colorMatrix = {
         {Color.RED, Color.GREEN},
@@ -239,15 +264,15 @@ public class ArrayComprehensiveTests {
   @Test
   void testVarintEncoding() {
     LOGGER.fine("Testing varint encoding scenarios");
-    
+
     // Small ints that should use varint encoding (0-127)
     int[] smallInts = IntStream.range(0, 100).toArray();
-    
+
     // Large ints that should not benefit from varint encoding
     int[] largeInts = IntStream.range(0, 50)
         .map(i -> Integer.MAX_VALUE - i)
         .toArray();
-    
+
     // Mixed longs
     long[] mixedLongs = {
         0L, 1L, 127L, 128L, 255L, 256L,
@@ -263,7 +288,7 @@ public class ArrayComprehensiveTests {
   @Test
   void testOptionalArrays() {
     LOGGER.fine("Testing arrays of Optional");
-    
+
     Optional<Integer>[] optionalInts = new Optional[]{
         Optional.of(1),
         Optional.empty(),
@@ -296,7 +321,7 @@ public class ArrayComprehensiveTests {
   @Test
   void testCollectionArrays() {
     LOGGER.fine("Testing arrays of collections");
-    
+
     List<String>[] stringLists = new List[]{
         List.of("a", "b", "c"),
         Collections.emptyList(),
@@ -327,12 +352,15 @@ public class ArrayComprehensiveTests {
   @Test
   void testMapArrays() {
     LOGGER.fine("Testing arrays of maps");
-    
+
     Map<Integer, String>[] intStringMaps = new Map[]{
         Map.of(1, "one", 2, "two"),
         Collections.emptyMap(),
         null,
-        new HashMap<>() {{ put(3, null); put(null, "null-key"); }}
+        new HashMap<>() {{
+          put(3, null);
+          put(null, "null-key");
+        }}
     };
 
     Map<String, int[]>[] stringIntArrayMaps = new Map[]{
@@ -345,9 +373,9 @@ public class ArrayComprehensiveTests {
     Map<Long, List<String>>[] complexMaps = new Map[]{
         Map.of(1L, List.of("a", "b"), 2L, Collections.emptyList()),
         null,
-        new HashMap<>() {{ 
-            put(3L, Arrays.asList("bool", null, "z"));
-            put(null, null);
+        new HashMap<>() {{
+          put(3L, Arrays.asList("bool", null, "z"));
+          put(null, null);
         }}
     };
 
@@ -360,7 +388,7 @@ public class ArrayComprehensiveTests {
   @Test
   void testDeepNestedArrays() {
     LOGGER.fine("Testing deeply nested array structures");
-    
+
     int[][][] threeDimInts = {
         {{1, 2}, {3, 4}},
         null,
@@ -396,7 +424,7 @@ public class ArrayComprehensiveTests {
   @Test
   void testMixedContainersWithArrays() {
     LOGGER.fine("Testing mixed containers with arrays before and after");
-    
+
     List<int[]> intArrayList = List.of(
         new int[]{1, 2, 3},
         new int[]{},
@@ -434,7 +462,7 @@ public class ArrayComprehensiveTests {
         new String[]{"only"},
         IntStream.range(0, 1000).mapToDouble(i -> i * 1.1).boxed().toArray(Double[]::new),
         IntStream.range(0, 100)
-            .mapToObj(i -> List.of(i, i+1, i+2))
+            .mapToObj(i -> List.of(i, i + 1, i + 2))
             .toArray(List[]::new)
     );
 
@@ -451,10 +479,10 @@ public class ArrayComprehensiveTests {
         new Double[]{1.1, 2.2, 3.3, null, null},
         new Boolean[]{true, null, false, null, true},
         new SimpleRecord[]{
-            null, 
-            new SimpleRecord("sparse", 1), 
-            null, 
-            null, 
+            null,
+            new SimpleRecord("sparse", 1),
+            null,
+            null,
             new SimpleRecord("data", 2),
             null
         }
@@ -509,7 +537,7 @@ public class ArrayComprehensiveTests {
 
     PrimitiveEdgeCaseRecord original = new PrimitiveEdgeCaseRecord(
         new byte[]{Byte.MIN_VALUE, -1, 0, 1, Byte.MAX_VALUE},
-        new char[]{'\u0000', 'A', '中', '\uFFFF', '🎭'},
+        new char[]{'\u0000', 'A', '中', '\uFFFF'},
         new float[]{Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, 0.0f, -0.0f, Float.MIN_VALUE, Float.MAX_VALUE},
         new double[]{Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 0.0, -0.0, Double.MIN_VALUE, Double.MAX_VALUE}
     );
@@ -581,31 +609,31 @@ public class ArrayComprehensiveTests {
   // Helper method for round-trip testing
   <T extends Serializable> void testRoundTrip(T original, Class<T> clazz) {
     LOGGER.fine(() -> "Testing round-trip for " + clazz.getSimpleName() + ": " + original);
-    
+
     Pickler<T> pickler = Pickler.forClass(clazz);
-    
+
     // Calculate size and allocate buffer
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
     LOGGER.fine(() -> "Buffer size: " + buffer.capacity() + " bytes");
-    
+
     // Serialize
     pickler.serialize(buffer, original);
     var position = buffer.position();
     LOGGER.fine(() -> "Serialized size: " + position + " bytes");
-    
+
     // Prepare for deserialization
     var buf = buffer.flip();
-    
+
     // Deserialize
     T deserialized = pickler.deserialize(buf);
-    
+
     // Basic equality check
-    assertEquals(original, deserialized, 
+    assertEquals(original, deserialized,
         "Deserialized object should equal the original");
-    
+
     // Detailed verification for arrays
     verifyArrayContents(original, deserialized);
-    
+
     LOGGER.fine(() -> "Round-trip successful for " + clazz.getSimpleName());
   }
 
