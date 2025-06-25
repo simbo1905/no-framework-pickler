@@ -10,6 +10,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -341,7 +342,7 @@ final class RecordPickler<T> implements Pickler<T> {
       }
     }
 
-    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, java.lang.reflect.Type javaType)) {
+    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
       if (!type.isUserType()) {
         // For primitive wrapper types, we can directly write the value using the method handle
         LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for built in value type: " + typeExpr.toTreeString());
@@ -494,7 +495,7 @@ final class RecordPickler<T> implements Pickler<T> {
         throw new IllegalStateException("Unexpected value: " + typeExpr);
       }
     }
-    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, java.lang.reflect.Type javaType)) {
+    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
       if (type == TypeExpr.RefValueType.ENUM) {
         LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for enum type: " + typeExpr.toTreeString());
         //noinspection unchecked
@@ -526,7 +527,9 @@ final class RecordPickler<T> implements Pickler<T> {
 
             final var otherPickler = typeSignatureToPicklerMap.get(typeSignature);
             if (otherPickler == null) {
-              throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " unknown nested record type signature: 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + " for expected type " + clz.getSimpleName());
+              throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " unknown nested record type signature: 0x" + Long.toHexString(typeSignature)
+                  + " at position " + positionBeforeRead + " for expected type " + clz.getSimpleName() + " where we have " + typeSignatureToPicklerMap.entrySet().stream()
+                  .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue()).collect(Collectors.joining(",")));
             }
             LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader delegating to pickler for " + clz.getSimpleName() + " after reading signature");
             switch (otherPickler) {
@@ -1371,5 +1374,13 @@ final class RecordPickler<T> implements Pickler<T> {
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(SHA_256 + " not available", e);
     }
+  }
+
+  @Override
+  public String toString() {
+    return "RecordPickler{" +
+        "userType=" + userType +
+        ", typeSignature=" + typeSignature +
+        '}';
   }
 }

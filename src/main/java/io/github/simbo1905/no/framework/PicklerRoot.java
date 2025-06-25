@@ -36,13 +36,13 @@ final class PicklerRoot<R> implements Pickler<R> {
 
     this.typeSignatureToPicklerMap = new ConcurrentHashMap<>();
     picklers.values().stream().forEach(pickler -> {
-        final long signature = switch (pickler) {
-            case RecordPickler<?> rp -> rp.typeSignature;
-            case EmptyRecordPickler<?> erp -> erp.typeSignature;
-            default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
-        };
-        LOGGER.fine(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
-        typeSignatureToPicklerMap.put(signature, pickler);
+      final long signature = switch (pickler) {
+        case RecordPickler<?> rp -> rp.typeSignature;
+        case EmptyRecordPickler<?> erp -> erp.typeSignature;
+        default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
+      };
+      LOGGER.fine(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
+      typeSignatureToPicklerMap.put(signature, pickler);
     });
 
     this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(
@@ -146,5 +146,13 @@ final class PicklerRoot<R> implements Pickler<R> {
     final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType));
     //noinspection unchecked
     return (Pickler<R>) pickler;
+  }
+
+  @Override
+  public String toString() {
+    return "PicklerRoot{" +
+        "typeSignatureToPicklerMap=" + typeSignatureToPicklerMap.entrySet().stream()
+        .map(e -> e.getKey() + "->" + e.getValue()) +
+        '}';
   }
 }

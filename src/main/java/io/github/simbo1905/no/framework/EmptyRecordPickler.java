@@ -88,4 +88,12 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
   public int maxSizeOf(T record) {
     return Long.BYTES; // only the type signature is serialized
   }
+
+  @Override
+  public String toString() {
+    return "EmptyRecordPickler{" +
+        "userType=" + userType +
+        ", typeSignature=" + typeSignature +
+        '}';
+  }
 }
