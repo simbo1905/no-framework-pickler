@@ -805,32 +805,42 @@ final class RecordPickler<T> implements Pickler<T> {
       case INTEGER -> {
         LOGGER.fine(() -> "Building writer chain for int.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
+          final int result;
           try {
-            int result = (int) methodHandle.invokeWithArguments(record);
-            LOGGER.finer(() -> "INTEGER writer: value=" + result + " position=" + buffer.position() + " zigzag_size=" + ZigZagEncoding.sizeOf(result));
-            if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
-              LOGGER.finer(() -> "Writing INTEGER_VAR marker=" + INTEGER_VAR.marker() + " at position: " + buffer.position());
-              ZigZagEncoding.putInt(buffer, INTEGER_VAR.marker());
-              LOGGER.finer(() -> "Writing INTEGER_VAR value=" + result + " at position: " + buffer.position());
-              ZigZagEncoding.putInt(buffer, result);
-            } else {
-              LOGGER.finer(() -> "Writing INTEGER marker=" + Constants.INTEGER.marker() + " at position: " + buffer.position());
-              ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
-              LOGGER.finer(() -> "Writing INTEGER value=" + result + " at position: " + buffer.position());
-              buffer.putInt(result);
-            }
+            result = (int) methodHandle.invokeWithArguments(record);
           } catch (Throwable e) {
             throw new RuntimeException(e.getMessage(), e);
+          }
+          final var position = buffer.position();
+          if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
+            ZigZagEncoding.putInt(buffer, INTEGER_VAR.marker());
+            LOGGER.fine(() -> "Writing INTEGER_VAR value=" + result + " at position: " + position);
+            ZigZagEncoding.putInt(buffer, result);
+          } else {
+            ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+            LOGGER.fine(() -> "Writing INTEGER value=" + result + " at position: " + position);
+            buffer.putInt(result);
           }
         };
       }
       case LONG -> {
         LOGGER.fine(() -> "Building writer chain for long.class primitive type");
         yield (ByteBuffer buffer, Object record) -> {
+          final long result;
           try {
-            buffer.putLong((long) methodHandle.invokeWithArguments(record));
+            result = (long) methodHandle.invokeWithArguments(record);
           } catch (Throwable e) {
             throw new RuntimeException(e.getMessage(), e);
+          }
+          final var position = buffer.position();
+          if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
+            ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
+            LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
+            ZigZagEncoding.putLong(buffer, result);
+          } else {
+            ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
+            LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
+            buffer.putLong(result);
           }
         };
       }
@@ -883,13 +893,19 @@ final class RecordPickler<T> implements Pickler<T> {
       };
       case LONG -> (buffer) -> {
         final var position = buffer.position();
+        // First check if we have space for a raw long
+        if (buffer.remaining() >= Long.BYTES) {
+          return buffer.getLong();
+        }
+        // If not enough space, read marker
         final int marker = ZigZagEncoding.getInt(buffer);
         if (marker == Constants.LONG_VAR.marker()) {
           return ZigZagEncoding.getLong(buffer);
         } else if (marker == Constants.LONG.marker()) {
           return buffer.getLong();
-        } else
+        } else {
           throw new IllegalStateException("Expected LONG or LONG_VAR marker but got: " + marker + " at position: " + position);
+        }
       };
     };
   }
