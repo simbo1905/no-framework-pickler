@@ -10,17 +10,19 @@ import java.lang.reflect.Type;
 import java.util.*;
 import java.util.stream.IntStream;
 
-import static io.github.simbo1905.no.framework.Tag.*;
 
-record TagWithType(Tag tag, Class<?> type) {
+@Deprecated
+record TagWithType(Object tag, Class<?> type) {
 }
 
+/// FIXME delete this by using TypeExpr to build the full type expression plus permits
 /// TypeStructure record for analyzing generic types
+@Deprecated
 record TypeStructure(List<TagWithType> tagTypes) {
 
   static final int MAP_TYPE_ARG_COUNT = 2;
 
-  TypeStructure(List<Tag> tags, List<Class<?>> types) {
+  TypeStructure(List<Object> tags, List<Class<?>> types) {
     this(IntStream.range(0, Math.min(tags.size(), types.size()))
         .mapToObj(i -> new TagWithType(tags.get(i), types.get(i)))
         .toList());
@@ -51,7 +53,7 @@ record TypeStructure(List<TagWithType> tagTypes) {
   /// The pattern supports arbitrary nesting depth - e.g., List<Map<String, Optional<Integer[]>[]>>
   /// is fully supported without any special-case code.
   static TypeStructure analyze(Type type) {
-    List<Tag> tags = new ArrayList<>();
+    List<Object> tags = new ArrayList<>();
     List<Class<?>> types = new ArrayList<>();
 
     Object current = type;
@@ -62,12 +64,10 @@ record TypeStructure(List<TagWithType> tagTypes) {
           Type rawType = paramType.getRawType();
 
           if (rawType.equals(List.class)) {
-            tags.add(LIST);
             types.add(List.class); // Container class for symmetry with Arrays.class pattern
             Type[] typeArgs = paramType.getActualTypeArguments();
             current = typeArgs.length > 0 ? typeArgs[0] : null;
           } else if (rawType.equals(Map.class)) {
-            tags.add(MAP);
             types.add(Map.class); // Container class for symmetry
             Type[] typeArgs = paramType.getActualTypeArguments();
             if (typeArgs.length == MAP_TYPE_ARG_COUNT) {
@@ -88,7 +88,6 @@ record TypeStructure(List<TagWithType> tagTypes) {
             }
             return new TypeStructure(tags, types);
           } else if (rawType.equals(Optional.class)) {
-            tags.add(OPTIONAL);
             types.add(Optional.class); // Container class for symmetry
             Type[] typeArgs = paramType.getActualTypeArguments();
             current = typeArgs.length > 0 ? typeArgs[0] : null;
@@ -99,7 +98,6 @@ record TypeStructure(List<TagWithType> tagTypes) {
         }
         case GenericArrayType arrayType -> {
           // Handle arrays of parameterized types like Optional<String>[]
-          tags.add(ARRAY);
           types.add(Arrays.class); // Arrays.class as marker
 
           current = arrayType.getGenericComponentType(); // Continue processing element type
@@ -107,12 +105,10 @@ record TypeStructure(List<TagWithType> tagTypes) {
         case Class<?> clazz -> {
           if (clazz.isArray()) {
             // Array container with element type, e.g. short[] -> [ARRAY, SHORT]
-            tags.add(ARRAY);
             types.add(Arrays.class); // Arrays.class as marker, not concrete array type
             current = clazz.getComponentType(); // Continue processing element type
           } else {
             // Regular class - terminal case
-            tags.add(fromClass(clazz));
             types.add(clazz);
             return new TypeStructure(tags, types);
           }

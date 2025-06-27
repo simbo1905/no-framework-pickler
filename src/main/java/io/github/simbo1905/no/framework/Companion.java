@@ -19,10 +19,10 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import static io.github.simbo1905.no.framework.Constants.INTEGER;
 import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
-import static io.github.simbo1905.no.framework.Tag.INTEGER;
 
 class Companion {
   /// Discover all reachable types from a root class including sealed hierarchies and record components
@@ -226,7 +226,7 @@ class Companion {
           }
         } else {
           LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER + " with length=" + Array.getLength(inner) + " at position " + buffer.position());
-          ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+          ZigZagEncoding.putInt(buffer, INTEGER.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (int i : integers) {
             buffer.putInt(i);
@@ -291,7 +291,7 @@ class Companion {
           LOGGER.fine(() -> "Writing INTEGER_VAR value=" + result + " at position: " + position);
           ZigZagEncoding.putInt(buffer, result);
         } else {
-          ZigZagEncoding.putInt(buffer, Constants.INTEGER.marker());
+          ZigZagEncoding.putInt(buffer, INTEGER.marker());
           LOGGER.fine(() -> "Writing INTEGER value=" + result + " at position: " + position);
           buffer.putInt(result);
         }
@@ -332,7 +332,7 @@ class Companion {
           int value = ZigZagEncoding.getInt(buffer);
           LOGGER.finer(() -> "INTEGER reader: read INTEGER_VAR value=" + value + " at position=" + buffer.position());
           return value;
-        } else if (marker == Constants.INTEGER.marker()) {
+        } else if (marker == INTEGER.marker()) {
           int value = buffer.getInt();
           LOGGER.finer(() -> "INTEGER reader: read INTEGER value=" + value + " at position=" + buffer.position());
           return value;
@@ -417,7 +417,7 @@ class Companion {
           int[] integers = new int[length];
           IntStream.range(0, length).forEach(i -> integers[i] = ZigZagEncoding.getInt(buffer));
           return integers;
-        } else if (marker == Constants.INTEGER.marker()) {
+        } else if (marker == INTEGER.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           int[] integers = new int[length];
           IntStream.range(0, length).forEach(i -> integers[i] = buffer.getInt());

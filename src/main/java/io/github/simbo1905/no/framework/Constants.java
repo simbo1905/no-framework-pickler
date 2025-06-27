@@ -6,37 +6,35 @@ package io.github.simbo1905.no.framework;
 
 /// Enum containing constants used throughout the Pickler implementation
 enum Constants {
-  NULL(0, null),
-  BOOLEAN(1, Tag.BOOLEAN),
-  BYTE(Byte.BYTES, Tag.BYTE),
-  SHORT(Short.BYTES, Tag.SHORT),
-  CHARACTER(Character.BYTES, Tag.CHARACTER),
-  INTEGER(Integer.BYTES, Tag.INTEGER),
+  NULL(0),
+  BOOLEAN(1),
+  BYTE(Byte.BYTES),
+  SHORT(Short.BYTES),
+  CHARACTER(Character.BYTES),
+  INTEGER(Integer.BYTES),
   // FIXME spending a bit to save a byte seems not worth it. Make it configurable to turn on?
-  INTEGER_VAR(Integer.BYTES, Tag.INTEGER),
-  LONG(Long.BYTES, Tag.LONG),
+  INTEGER_VAR(Integer.BYTES),
+  LONG(Long.BYTES),
   // FIXME time in ms saves three bytes but we spend a byte and do work. Make it configurable to turn on?
-  LONG_VAR(Long.BYTES, Tag.LONG),
-  FLOAT(Float.BYTES, Tag.FLOAT),
-  DOUBLE(Double.BYTES, Tag.DOUBLE),
-  STRING(0, Tag.STRING),
-  OPTIONAL_EMPTY(0, Tag.OPTIONAL),
-  OPTIONAL_OF(0, Tag.OPTIONAL),
-  ENUM(0, Tag.ENUM),
-  ARRAY(0, Tag.ARRAY),
-  ARRAY_OBJ(0, Tag.ARRAY),
-  ARRAY_REF(0, Tag.ARRAY),
-  MAP(0, Tag.MAP),
-  LIST(0, Tag.LIST),
-  RECORD(0, Tag.RECORD),
-  UUID(16, Tag.UUID);
+  LONG_VAR(Long.BYTES),
+  FLOAT(Float.BYTES),
+  DOUBLE(Double.BYTES),
+  STRING(0),
+  OPTIONAL_EMPTY(0),
+  OPTIONAL_OF(0),
+  ENUM(0),
+  ARRAY(0),
+  ARRAY_OBJ(0),
+  ARRAY_REF(0),
+  MAP(0),
+  LIST(0),
+  RECORD(0),
+  UUID(16);
 
   final int sizeInBytes;
-  final Tag tag;
 
-  Constants(int sizeInBytes, Tag tag) {
+  Constants(int sizeInBytes) {
     this.sizeInBytes = sizeInBytes;
-    this.tag = tag;
   }
 
   int marker() {
