@@ -172,15 +172,8 @@ final class RecordPickler<T> implements Pickler<T> {
     //      Byte Index:   0       1       2        3        4        5        6        7
     //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
     //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-    result = IntStream.range(0, PicklerImpl.CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+    result = IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     return result;
-  }
-
-  /// This is simply a type witness for generics to compile correctly
-  static <X> void delegatedWriteToWire(ByteBuffer buffer, RecordPickler<X> rp, Object inner) {
-    LOGGER.fine(() -> "RecordPickler delegatedWriteToWire calling writeToWire for " + rp.userType.getSimpleName() + " at position: " + buffer.position());
-    //noinspection unchecked
-    rp.writeToWire(buffer, (X) inner);
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
@@ -301,6 +294,7 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
+  ///  FIXME this is a fast path for self-pickling records so we need to add it back in
   @NotNull Function<ByteBuffer, Object> selfPickle(final TypeExpr typeExpr) {
     return (ByteBuffer buffer) -> {
       final int positionBeforeRead = buffer.position();
@@ -368,7 +362,6 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  /// FIXME why are we not just using this and usibng buildReaderChain ?
   static ToIntFunction<Object> buildSizerChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Building sizer chain from AST for type: " + typeExpr.toTreeString());
     return extractAndDelegate(buildSizerChainFromASTInner(typeExpr), accessor);
@@ -376,7 +369,7 @@ final class RecordPickler<T> implements Pickler<T> {
 
   static ToIntFunction<Object> buildSizerChainFromASTInner(TypeExpr typeExpr) {
     switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type j) -> {
+      case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type ignored) -> {
         LOGGER.fine(() -> "Building sizer chain for primitive type: " + primitiveType);
         return Companion.buildPrimitiveValueSizer(primitiveType);
       }
@@ -397,7 +390,7 @@ final class RecordPickler<T> implements Pickler<T> {
           }
         }
       }
-      case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type j) -> {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored) -> {
         LOGGER.fine(() -> "Building sizer chain for reference value type: " + refValueType);
         return Companion.buildValueSizerInner(refValueType);
       }
@@ -489,11 +482,6 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static ToIntFunction<Object> createListSizer(ToIntFunction<Object> elementSizer, MethodHandle accessor) {
-    LOGGER.fine(() -> "Creating list sizer outer with delegate elementSizer: " + elementSizer);
-    return extractAndDelegate(createListSizerInner(elementSizer), accessor);
-  }
-
   static BiConsumer<ByteBuffer, Object> createArrayWriterInner(BiConsumer<ByteBuffer, Object> elementWriter) {
     return (buffer, value) -> {
       Object[] array = (Object[]) value;
@@ -505,11 +493,6 @@ final class RecordPickler<T> implements Pickler<T> {
         elementWriter.accept(buffer, item);
       }
     };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createArrayWriter(BiConsumer<java.nio.ByteBuffer, java.lang.Object> elementWriter,
-                                                          MethodHandle accessor) {
-    return extractAndDelegate(createArrayWriterInner(elementWriter), accessor);
   }
 
   static BiConsumer<ByteBuffer, Object> createMapWriterInner(
@@ -526,13 +509,6 @@ final class RecordPickler<T> implements Pickler<T> {
         valueWriter.accept(buffer, value);
       });
     };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createMapWriter(
-      BiConsumer<ByteBuffer, Object> keyWriter,
-      BiConsumer<ByteBuffer, Object> valueWriter,
-      MethodHandle accessor) {
-    return extractAndDelegate(createMapWriterInner(keyWriter, valueWriter), accessor);
   }
 
   static Function<ByteBuffer, Object> createListReader(Function<ByteBuffer, Object> elementReader) {
@@ -592,12 +568,10 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  // FIXME why is this not the only way we build a writer chain rather than buildWriterChain?
   static BiConsumer<ByteBuffer, Object> buildWriterChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
     return extractAndDelegate(buildWriterChainFromASTInner(typeExpr), accessor);
   }
 
-  /// FIXME why are we not using using this and are using buildSizerChain ?
   static @NotNull BiConsumer<ByteBuffer, Object> buildWriterChainFromASTInner(TypeExpr typeExpr) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
@@ -636,7 +610,6 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  ///  FIXME why are we not using using this and are using buildSizerChain ?
   static Function<ByteBuffer, Object> buildReaderChainFromAST(TypeExpr typeExpr) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
@@ -689,11 +662,6 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static BiConsumer<ByteBuffer, Object> createListWriter(BiConsumer<ByteBuffer, Object> elementWriter,
-                                                         MethodHandle accessor) {
-    return extractAndDelegate(createListWriterInner(elementWriter), accessor);
-  }
-
   static BiConsumer<ByteBuffer, Object> createOptionalWriterInner(BiConsumer<ByteBuffer, Object> valueWriter) {
     LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
     return (buffer, value) -> {
@@ -705,11 +673,6 @@ final class RecordPickler<T> implements Pickler<T> {
         valueWriter.accept(buffer, optional.get());
       }
     };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createOptionalWriter(BiConsumer<ByteBuffer, Object> valueWriter, MethodHandle accessor) {
-    LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
-    return extractAndDelegate(createOptionalWriterInner(valueWriter), accessor);
   }
 
   public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle accessor) {

@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.*;
 
+import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -50,7 +51,7 @@ class ArrayInternalTests {
     }
 
     // Test that recordClassHierarchy discovers array types
-    Set<Class<?>> discovered = PicklerImpl.recordClassHierarchy(TestRecord.class, new HashSet<>())
+    Set<Class<?>> discovered = recordClassHierarchy(TestRecord.class, new HashSet<>())
         .collect(java.util.stream.Collectors.toSet());
 
     // Log what was discovered

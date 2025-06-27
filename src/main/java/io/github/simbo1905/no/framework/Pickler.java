@@ -9,11 +9,12 @@ import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import static io.github.simbo1905.no.framework.PicklerImpl.recordClassHierarchy;
+import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
+
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerImpl, PicklerRoot, RecordPickler {
+public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerRoot, RecordPickler {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 

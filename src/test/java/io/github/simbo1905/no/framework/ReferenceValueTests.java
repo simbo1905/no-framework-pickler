@@ -11,7 +11,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
@@ -32,10 +31,6 @@ public class ReferenceValueTests {
   ) {
   }
 
-  static Map<Class<?>, PicklerImpl.TypeInfo> classTypeInfoMap = Map.of(
-      TestEnum.class, new PicklerImpl.TypeInfo(1, 1L, TestEnum.values(), null),
-      TestValuesRecord.class, new PicklerImpl.TypeInfo(2, 2L, null, null)
-  );
 
   static TestValuesRecord referenceValueRecord =
       new TestValuesRecord(
@@ -82,7 +77,6 @@ public class ReferenceValueTests {
 
     testUuidRoundTrip(typeExprs[0], accessors[0]);
     testStringRoundTrip(typeExprs[1], accessors[1]);
-    testEnumRoundTrip(typeExprs[2], accessors[2]);
   }
 
   void testUuidRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
@@ -167,44 +161,4 @@ public class ReferenceValueTests {
     }
   }
 
-  void testEnumRoundTrip(TypeExpr typeExpr, MethodHandle accessor) {
-    LOGGER.fine(() -> "Type of Enum component: " + typeExpr);
-    assertThat(typeExpr.isPrimitive()).isFalse();
-
-    if (typeExpr instanceof TypeExpr.RefValueNode node) {
-      LOGGER.fine("Component is Enum");
-      assertThat(node.type()).isEqualTo(TypeExpr.RefValueType.ENUM);
-
-      final var writer = Companion.buildEnumWriter(classTypeInfoMap, accessor);
-      assertThat(writer).isNotNull();
-
-      final var buffer = ByteBuffer.allocate(1024);
-      LOGGER.fine("Attempting to write Enum to buffer");
-
-      try {
-        writer.accept(buffer, referenceValueRecord);
-      } catch (Throwable e) {
-        LOGGER.severe("Failed to write Enum: " + e.getMessage());
-        throw new RuntimeException(e.getMessage(), e);
-      }
-
-      buffer.flip();
-      LOGGER.fine("Successfully wrote Enum to buffer");
-
-      final var reader = Companion.buildEnumReader(classTypeInfoMap);
-      final TestEnum result = (TestEnum) reader.apply(buffer);
-
-      LOGGER.fine("Read Enum: " + result);
-      assertThat(result).isEqualTo(referenceValueRecord.enumValue());
-
-      final int bytesWritten = buffer.position();
-      final var sizer = buildValueSizer(node.type(), accessor);
-      final int size = sizer.applyAsInt(referenceValueRecord);
-
-      LOGGER.fine("Bytes written: " + bytesWritten + ", Sizer returned: " + size);
-      assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
-    } else {
-      throw new IllegalStateException("Unexpected value: " + typeExpr);
-    }
-  }
 }

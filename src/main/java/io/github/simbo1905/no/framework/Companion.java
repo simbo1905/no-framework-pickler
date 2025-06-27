@@ -20,7 +20,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
-import static io.github.simbo1905.no.framework.PicklerImpl.*;
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
 import static io.github.simbo1905.no.framework.Tag.INTEGER;
 
 class Companion {
@@ -256,6 +257,26 @@ class Companion {
     };
   }
 
+  static int estimateAverageSizeLong(long[] longs, int length) {
+    final var sampleLength = Math.min(length, SAMPLE_SIZE);
+    final var sampleSize = IntStream.range(0, sampleLength)
+        .map(i -> ZigZagEncoding.sizeOf(longs[i]))
+        .sum();
+    return sampleSize / sampleLength;
+  }
+
+
+  static final int SAMPLE_SIZE = 32;
+
+  static int estimateAverageSizeInt(int[] integers, int length) {
+    final var sampleLength = Math.min(length, SAMPLE_SIZE);
+    final var sampleSize = IntStream.range(0, sampleLength)
+        .map(i -> ZigZagEncoding.sizeOf(integers[i]))
+        .sum();
+    return sampleSize / sampleLength;
+  }
+
+
   static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
@@ -467,26 +488,6 @@ class Companion {
     };
   }
 
-  /// Build a writer for an Enum type
-  /// This has to write out the typeOrdinal first as they would be more than one enum type in the system
-  /// Then it writes out the typeSignature for the enum class
-  /// Finally, it writes out the ordinal of the enum constant
-  static @NotNull BiConsumer<ByteBuffer, Object> buildEnumWriter(final Map<Class<?>, TypeInfo> classToTypeInfo, final MethodHandle methodHandle) {
-    LOGGER.fine(() -> "Building writer chain for Enum");
-    return (ByteBuffer buffer, Object record) -> {
-      try {
-        // FIXME: we may have many user types that are enums so we need to write out the typeOrdinal and typeSignature
-        Enum<?> enumValue = (Enum<?>) methodHandle.invokeWithArguments(record);
-        final var typeInfo = classToTypeInfo.get(enumValue.getDeclaringClass());
-        ZigZagEncoding.putInt(buffer, typeInfo.typeOrdinal());
-        ZigZagEncoding.putLong(buffer, typeInfo.typeSignature());
-        int ordinal = enumValue.ordinal();
-        ZigZagEncoding.putInt(buffer, ordinal);
-      } catch (Throwable e) {
-        throw new RuntimeException("Failed to write Enum: " + e.getMessage(), e);
-      }
-    };
-  }
 
   static @NotNull BiConsumer<ByteBuffer, Object> buildValueWriter(final TypeExpr.RefValueType refValueType, final MethodHandle methodHandle) {
     return switch (refValueType) {
@@ -675,24 +676,6 @@ class Companion {
   static <X> void writeToWireWitness(RecordPickler<X> rp, ByteBuffer buffer, Object record) {
     //noinspection unchecked
     rp.writeToWire(buffer, (X) record);
-  }
-
-  static @NotNull Function<ByteBuffer, Object> buildEnumReader(final Map<Class<?>, TypeInfo> classToTypeInfo) {
-    LOGGER.fine(() -> "Building reader chain for Enum");
-    return (ByteBuffer buffer) -> {
-      try {
-        LOGGER.fine(() -> "Reading Enum from buffer at position: " + buffer.position());
-        // FIXME: we may have many user types that are enums so we need to write out the typeOrdinal and typeSignature
-        int typeOrdinal = ZigZagEncoding.getInt(buffer);
-        long typeSignature = ZigZagEncoding.getLong(buffer);
-        Class<?> enumClass = classToTypeInfo.entrySet().stream().filter(e -> e.getValue().typeOrdinal() == typeOrdinal && e.getValue().typeSignature() == typeSignature).map(Map.Entry::getKey).findFirst().orElseThrow(() -> new IllegalArgumentException("Unknown enum type ordinal: " + typeOrdinal + " with signature: " + Long.toHexString(typeSignature)));
-
-        int ordinal = ZigZagEncoding.getInt(buffer);
-        return enumClass.getEnumConstants()[ordinal];
-      } catch (Throwable e) {
-        throw new RuntimeException("Failed to read Enum: " + e.getMessage(), e);
-      }
-    };
   }
 
   static @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
