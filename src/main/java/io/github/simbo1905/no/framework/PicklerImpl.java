@@ -1456,20 +1456,7 @@ final class PicklerImpl<T> implements Pickler<T> {
     };
   }
 
-  /// Build sizer chain for a component - creates type-specific sizers at construction time
-  ///
-  /// This method implements the recursive metaprogramming pattern for computing serialized sizes.
-  /// Given a TypeStructure representing nested containers, it builds a delegation chain of sizers
-  /// from right-to-left (leaf to outer container).
-  ///
-  /// The pattern follows: (ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)
-  ///
-  /// Each container sizer knows how to compute the size of its structure metadata (e.g., array
-  /// length encoding) plus the sum of its elements' sizes by delegating to the component sizer.
-  /// This enables efficient size computation for arbitrarily nested structures.
-  ///
-  /// The computed size is used to allocate exactly the right buffer size before serialization,
-  /// avoiding reallocation and ensuring optimal memory usage.
+
   ToIntFunction<Object> buildSizerChain(TypeStructure typeStructure, MethodHandle accessor) {
     // Build the type-specific sizer
     ToIntFunction<Object> typeSizer = buildTypeSizerChain(typeStructure);

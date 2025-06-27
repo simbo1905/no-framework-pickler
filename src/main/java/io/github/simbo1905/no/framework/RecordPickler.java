@@ -32,248 +32,6 @@ import static io.github.simbo1905.no.framework.PicklerRoot.resolvePicker;
 final class RecordPickler<T> implements Pickler<T> {
   static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
 
-  static BiConsumer<ByteBuffer, Object> createArrayWriterInner(BiConsumer<ByteBuffer, Object> elementWriter) {
-    return (buffer, value) -> {
-      Object[] array = (Object[]) value;
-      // Write ARRAY_OBJ marker and length
-      ZigZagEncoding.putInt(buffer, Constants.ARRAY_OBJ.marker());
-      ZigZagEncoding.putInt(buffer, array.length);
-      // Write each element
-      for (Object item : array) {
-        elementWriter.accept(buffer, item);
-      }
-    };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createArrayWriter(BiConsumer<java.nio.ByteBuffer, java.lang.Object> elementWriter,
-                                                          MethodHandle accessor) {
-    return extractAndDelegate(createArrayWriterInner(elementWriter), accessor);
-  }
-
-  static BiConsumer<ByteBuffer, Object> createMapWriterInner(
-      BiConsumer<ByteBuffer, Object> keyWriter,
-      BiConsumer<ByteBuffer, Object> valueWriter) {
-    return (buffer, obj) -> {
-      Map<?, ?> map = (Map<?, ?>) obj;
-      // Write MAP marker and size
-      ZigZagEncoding.putInt(buffer, Constants.MAP.marker());
-      ZigZagEncoding.putInt(buffer, map.size());
-      // Write each key-value pair
-      map.forEach((key, value) -> {
-        keyWriter.accept(buffer, key);
-        valueWriter.accept(buffer, value);
-      });
-    };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createMapWriter(
-      BiConsumer<ByteBuffer, Object> keyWriter,
-      BiConsumer<ByteBuffer, Object> valueWriter,
-      MethodHandle accessor) {
-    return extractAndDelegate(createMapWriterInner(keyWriter, valueWriter), accessor);
-  }
-
-  static Function<ByteBuffer, Object> createListReader(Function<ByteBuffer, Object> elementReader) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.LIST.marker() : "Expected LIST marker";
-      int size = ZigZagEncoding.getInt(buffer);
-      List<Object> list = new ArrayList<>(size);
-      for (int i = 0; i < size; i++) {
-        list.add(elementReader.apply(buffer));
-      }
-      return list;
-    };
-  }
-
-  static Function<ByteBuffer, Object> createOptionalReader(Function<ByteBuffer, Object> valueReader) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      if (marker == Constants.OPTIONAL_EMPTY.marker()) {
-        return Optional.empty();
-      } else if (marker == Constants.OPTIONAL_OF.marker()) {
-        return Optional.of(valueReader.apply(buffer));
-      } else {
-        throw new IllegalStateException("Invalid optional marker: " + marker);
-      }
-    };
-  }
-
-  static Function<ByteBuffer, Object> createArrayReader(
-      Function<ByteBuffer, Object> elementReader, Class<?> componentType) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.ARRAY_OBJ.marker() : "Expected ARRAY_OBJ marker";
-      int length = ZigZagEncoding.getInt(buffer);
-      Object[] array = (Object[]) Array.newInstance(componentType, length);
-      for (int i = 0; i < length; i++) {
-        array[i] = elementReader.apply(buffer);
-      }
-      return array;
-    };
-  }
-
-  static Function<ByteBuffer, Object> createMapReader(
-      Function<ByteBuffer, Object> keyReader,
-      Function<ByteBuffer, Object> valueReader) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.MAP.marker() : "Expected MAP marker";
-      int size = ZigZagEncoding.getInt(buffer);
-      Map<Object, Object> map = new HashMap<>(size);
-      for (int i = 0; i < size; i++) {
-        Object key = keyReader.apply(buffer);
-        Object value = valueReader.apply(buffer);
-        map.put(key, value);
-      }
-      return map;
-    };
-  }
-
-  /**
-   * Core recursive method to build writer chains from TypeExpr AST.
-   * This is the main algorithm that walks the AST depth-first and builds
-   * delegation chains bottom-up.
-   */
-  static BiConsumer<ByteBuffer, Object> buildWriterChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
-    return extractAndDelegate(buildWriterChainFromASTInner(typeExpr), accessor);
-  }
-
-  static @NotNull BiConsumer<ByteBuffer, Object> buildWriterChainFromASTInner(TypeExpr typeExpr) {
-    return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
-          Companion.buildPrimitiveValueWriterInner(primitiveType);
-
-      case TypeExpr.RefValueNode(var refType, var ignored) -> Companion.buildValueWriterInner(refType);
-
-      case TypeExpr.ArrayNode(var element) -> {
-        if (element.isPrimitive()) {
-          var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
-          yield Companion.buildPrimitiveArrayWriterInner(primitiveType);
-        } else if (element instanceof TypeExpr.RefValueNode(var refType, var ignored)) {
-          yield Companion.buildReferenceArrayWriterInner(refType);
-        } else {
-          // Nested container arrays
-          var elementWriter = buildWriterChainFromASTInner(element);
-          yield createArrayWriterInner(elementWriter);
-        }
-      }
-
-      case TypeExpr.ListNode(var element) -> {
-        var elementWriter = buildWriterChainFromASTInner(element);
-        yield createListWriterInner(elementWriter);
-      }
-
-      case TypeExpr.OptionalNode(var wrapped) -> {
-        var valueWriter = buildWriterChainFromASTInner(wrapped);
-        yield createOptionalWriterInner(valueWriter);
-      }
-
-      case TypeExpr.MapNode(var key, var value) -> {
-        var keyWriter = buildWriterChainFromASTInner(key);
-        var valueWriter = buildWriterChainFromASTInner(value);
-        yield createMapWriterInner(keyWriter, valueWriter);
-      }
-    };
-  }
-
-  /**
-   * Core recursive method to build reader chains from TypeExpr AST.
-   * This is the dual of the writer chain builder.
-   */
-  static Function<ByteBuffer, Object> buildReaderChainFromAST(TypeExpr typeExpr) {
-    return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
-          Companion.buildPrimitiveValueReader(primitiveType);
-
-      case TypeExpr.RefValueNode(var refType, var ignored) -> Companion.buildValueReader(refType);
-
-      case TypeExpr.ArrayNode(var element) -> {
-        if (element.isPrimitive()) {
-          var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
-          yield Companion.buildPrimitiveArrayReader(primitiveType);
-        } else if (element instanceof TypeExpr.RefValueNode(var refType, var ignored)) {
-          yield Companion.buildReferenceArrayReader(refType);
-        } else {
-          // Nested container arrays
-          var elementReader = buildReaderChainFromAST(element);
-          var componentType = Companion.extractComponentType(element);
-          yield createArrayReader(elementReader, componentType);
-        }
-      }
-
-      case TypeExpr.ListNode(var element) -> {
-        var elementReader = buildReaderChainFromAST(element);
-        yield createListReader(elementReader);
-      }
-
-      case TypeExpr.OptionalNode(var wrapped) -> {
-        var valueReader = buildReaderChainFromAST(wrapped);
-        yield createOptionalReader(valueReader);
-      }
-
-      case TypeExpr.MapNode(var key, var value) -> {
-        var keyReader = buildReaderChainFromAST(key);
-        var valueReader = buildReaderChainFromAST(value);
-        yield createMapReader(keyReader, valueReader);
-      }
-    };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createListWriterInner(BiConsumer<ByteBuffer, Object> elementWriter) {
-    return (buffer, value) -> {
-      List<?> list = (List<?>) value;
-      // Write LIST marker and size
-      ZigZagEncoding.putInt(buffer, Constants.LIST.marker());
-      ZigZagEncoding.putInt(buffer, list.size());
-      // Write each element
-      for (Object item : list) {
-        elementWriter.accept(buffer, item);
-      }
-    };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createListWriter(BiConsumer<ByteBuffer, Object> elementWriter,
-                                                         MethodHandle accessor) {
-    return extractAndDelegate(createListWriterInner(elementWriter), accessor);
-  }
-
-  static BiConsumer<ByteBuffer, Object> createOptionalWriterInner(BiConsumer<ByteBuffer, Object> valueWriter) {
-    LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
-    return (buffer, value) -> {
-      Optional<?> optional = (Optional<?>) value;
-      if (optional.isEmpty()) {
-        ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.marker());
-      } else {
-        ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.marker());
-        valueWriter.accept(buffer, optional.get());
-      }
-    };
-  }
-
-  static BiConsumer<ByteBuffer, Object> createOptionalWriter(BiConsumer<ByteBuffer, Object> valueWriter, MethodHandle accessor) {
-    LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
-    return extractAndDelegate(createOptionalWriterInner(valueWriter), accessor);
-  }
-
-  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle accessor) {
-    LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
-    return extractAndDelegate(Companion.buildPrimitiveArrayWriterInner(primitiveType), accessor);
-  }
-
-  static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle methodHandle) {
-    return extractAndDelegate(Companion.buildPrimitiveValueWriterInner(primitiveType), methodHandle);
-  }
-
-
-  @Override
-  public String toString() {
-    return "RecordPickler{" +
-        "userType=" + userType +
-        ", typeSignature=" + typeSignature +
-        '}';
-  }
-
   static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
   // Global lookup tables indexed by ordinal - the core of the unified architecture
@@ -393,9 +151,9 @@ final class RecordPickler<T> implements Pickler<T> {
       final var typeExpr = componentTypeExpressions[i];
       LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " begin building writer/reader/sizer chains for component " + i + " with type " + typeExpr.toTreeString());
       // Build writer, reader, and sizer chains
-      componentWriters[i] = buildWriterChain(typeExpr, accessor);
-      componentSizers[i] = buildSizerChain(typeExpr, accessor);
-      componentReaders[i] = buildReaderChain(typeExpr);
+      componentWriters[i] = buildWriterChainFromAST(typeExpr, accessor);
+      componentSizers[i] = buildSizerChainFromAST(typeExpr, accessor);
+      componentReaders[i] = buildReaderChainFromAST(typeExpr);
       LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " end writer/reader/sizer chains for component " + i + " with type " + typeExpr.toTreeString());
     });
 
@@ -418,444 +176,11 @@ final class RecordPickler<T> implements Pickler<T> {
     return result;
   }
 
-  BiConsumer<ByteBuffer, Object> buildWriterChain(TypeExpr typeExpr, MethodHandle accessor) {
-    if (typeExpr.isPrimitive()) {
-      // For primitive types, we can directly write the value using the method handle
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for primitive type: " + typeExpr.toTreeString());
-      final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
-      return buildPrimitiveValueWriter(primitiveType, accessor);
-    } else if (typeExpr.isContainer()) {
-      switch (typeExpr) {
-        case TypeExpr.ArrayNode(TypeExpr element) -> {
-          if (element.isPrimitive()) {
-            final TypeExpr.PrimitiveValueNode node = (TypeExpr.PrimitiveValueNode) element;
-            final TypeExpr.PrimitiveValueType primitiveType = node.type();
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for array type: " + typeExpr.toTreeString());
-            return buildPrimitiveArrayWriter(primitiveType, accessor);
-          } else {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for array type: " + typeExpr.toTreeString());
-            final var elementWriter = buildWriterChainFromASTInner(element);
-            return createArrayWriter(elementWriter, accessor);
-          }
-        }
-        case TypeExpr.OptionalNode(TypeExpr wrapped) -> {
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for optional type: " + typeExpr.toTreeString());
-          final var valueWriter = buildWriterChainFromASTInner(wrapped);
-          return createOptionalWriter(valueWriter, accessor);
-        }
-        case TypeExpr.ListNode(TypeExpr element) -> {
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for list type: " + typeExpr.toTreeString());
-          final var elementWriter = buildWriterChainFromASTInner(element);
-          return createListWriter(elementWriter, accessor);
-        }
-        case TypeExpr.MapNode(TypeExpr key, TypeExpr value) -> {
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for map type: " + typeExpr.toTreeString());
-          final var keyWriter = buildWriterChainFromASTInner(key);
-          final var valueWriter = buildWriterChainFromASTInner(value);
-          return createMapWriter(keyWriter, valueWriter, accessor);
-        }
-        default -> throw new IllegalStateException("Unexpected value: " + typeExpr);
-      }
-    }
-    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
-      if (!type.isUserType()) {
-        // For boxed types, we can directly write the value using the method handle
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for built in value type: " + typeExpr.toTreeString());
-        return Companion.buildValueWriter(type, accessor);
-      }
-      if (javaType instanceof Class<?> clz) {
-        switch (type) {
-          case RECORD -> {
-            if (this.userType.isAssignableFrom(clz)) {
-              // self picker
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for self record type: " + typeExpr.toTreeString() + " with method handle: " + accessor);
-              return (ByteBuffer buffer, Object record) -> {
-                if (record.getClass() != userType) {
-                  throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " record type mismatch: expected " + userType.getSimpleName() + " but got " + record.getClass().getSimpleName());
-                }
-                final Object inner;
-                try {
-                  inner = accessor.invokeWithArguments(record);
-                } catch (Throwable e) {
-                  throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to write boolean value", e);
-                }
-                if (inner == null) {
-                  LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing 0L typeSignature for null record type: " + typeExpr.toTreeString() + " at position: " + buffer.position());
-                  buffer.putLong(0L);
-                } else {
-                  LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing self-referential record at position: " + buffer.position());
-                  //noinspection unchecked
-                  writeToWire(buffer, (T) inner);
-                }
-              };
-            } else {
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating writer chain for self record type " + typeExpr.toTreeString() + " with method handle: " + accessor);
-              return (ByteBuffer buffer, Object record) -> {
-                final Object inner;
-                try {
-                  inner = accessor.invokeWithArguments(record);
-                } catch (Throwable t) {
-                  throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value for sizing: " + t.getMessage(), t);
-                }
-                if (inner == null) {
-                  LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing 0L typeSignature for null record type: " + typeExpr.toTreeString() + " at position: " + buffer.position());
-                  buffer.putLong(0L);
-                } else {
-                  final var concreteType = inner.getClass();
-                  LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " inner concrete " + typeExpr.toTreeString() + " is: " + concreteType.getSimpleName());
-                  final var otherPickler = resolvePicker(inner.getClass());
-                  LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " delegating to pickler for " + inner.getClass().getSimpleName() + " at position: " + buffer.position());
-                  switch (otherPickler) {
-                    case RecordPickler<?> rp -> {
-                      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " calling delegatedWriteToWire for " + inner.getClass().getSimpleName() + " at position: " + buffer.position());
-                      delegatedWriteToWire(buffer, rp, inner);
-                    }
-                    case EmptyRecordPickler<?> erp -> {
-                      // Write the type signature first
-                      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing empty record type signature for " + inner.getClass().getSimpleName() + " at position: " + buffer.position());
-                      buffer.putLong(erp.typeSignature);
-                    }
-                    default ->
-                        throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " unexpected pickler type: " + otherPickler.getClass());
-                  }
-                }
-              };
-            }
-          }
-          case INTERFACE -> {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating writer chain for interface type " + typeExpr.toTreeString() + " with method handle: " + accessor);
-            return (ByteBuffer buffer, Object object) -> {
-              final Object inner;
-              try {
-                inner = accessor.invokeWithArguments(object);
-              } catch (Throwable t) {
-                throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value: " + t.getMessage(), t);
-              }
-              final var concreteType = inner.getClass();
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " inner type for interface " + typeExpr.toTreeString() + " is: " + concreteType.getSimpleName());
-              if (this.userType.isAssignableFrom(clz)) {
-                // If the inner type is assignable to the user type, we can write it directly
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing self-referential record at position: " + buffer.position());
-                //noinspection unchecked
-                writeToWire(buffer, (T) inner);
-              } else if (concreteType.isRecord()) {
-                final var otherPickler = resolvePicker(concreteType);
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing interface implementation record " + concreteType.getSimpleName() + " at position: " + buffer.position());
-                // Delegate serialization to the resolved pickler
-                otherPickler.serialize(buffer, inner);
-              } else if (concreteType.isEnum()) {
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing interface implementation enum " + concreteType.getSimpleName() + " at position: " + buffer.position());
-                // Write the type signature first
-                final var typeSignature = enumToTypeSignatureMap.get(concreteType);
-                if (typeSignature == null) {
-                  throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " no type signature found for enum: " + concreteType.getSimpleName());
-                }
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing enum type signature 0x" + Long.toHexString(typeSignature) + " for enum: " + concreteType.getSimpleName() + " at position: " + buffer.position());
-                buffer.putLong(typeSignature);
-                buffer.putInt(((Enum<?>) inner).ordinal());
-              }
-            };
-          }
-          case ENUM -> {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building writer chain for enum type: " + typeExpr.toTreeString() + " with method handle: " + accessor);
-            return (ByteBuffer buffer, Object record) -> {
-              final Object inner;
-              try {
-                inner = accessor.invokeWithArguments(record);
-              } catch (Throwable t) {
-                throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value: " + t.getMessage(), t);
-              }
-              if (inner == null) {
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing 0L typeSignature for null enum type: " + typeExpr.toTreeString() + " at position: " + buffer.position());
-                buffer.putLong(0L);
-              } else {
-                final var concreteType = inner.getClass();
-                final var typeSignature = enumToTypeSignatureMap.get(concreteType);
-                if (typeSignature == null) {
-                  throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " no type signature found for enum: " + concreteType.getSimpleName());
-                }
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing enum type signature 0x" + Long.toHexString(typeSignature) + " for enum: " + concreteType.getSimpleName() + " at position: " + buffer.position());
-                buffer.putLong(typeSignature);
-                buffer.putInt(((Enum<?>) inner).ordinal());
-              }
-            };
-          }
-        }
-      }
-    }
-    throw new AssertionError("RecordPickler " + userType.getSimpleName() +
-        " not implemented: " + typeExpr.toTreeString() + " with method handle: " + accessor);
-  }
-
   /// This is simply a type witness for generics to compile correctly
   static <X> void delegatedWriteToWire(ByteBuffer buffer, RecordPickler<X> rp, Object inner) {
     LOGGER.fine(() -> "RecordPickler delegatedWriteToWire calling writeToWire for " + rp.userType.getSimpleName() + " at position: " + buffer.position());
     //noinspection unchecked
     rp.writeToWire(buffer, (X) inner);
-  }
-
-  Function<ByteBuffer, Object> buildReaderChain(final TypeExpr typeExpr) {
-    if (typeExpr.isPrimitive()) {
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for primitive type: " + typeExpr.toTreeString());
-      final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
-      return Companion.buildPrimitiveValueReader(primitiveType);
-    } else if (typeExpr.isContainer()) {
-      if (typeExpr instanceof TypeExpr.ArrayNode(TypeExpr element)) {
-        if (element.isPrimitive()) {
-          final TypeExpr.PrimitiveValueNode node = (TypeExpr.PrimitiveValueNode) element;
-          final TypeExpr.PrimitiveValueType primitiveType = node.type();
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building read chain for array type: " + typeExpr.toTreeString());
-          return Companion.buildPrimitiveArrayReader(primitiveType);
-        } else if (element instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type ignored)) {
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for reference array type: " + typeExpr.toTreeString());
-          return Companion.buildReferenceArrayReader(type);
-        } else {
-          // Nested container arrays
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for nested array type: " + typeExpr.toTreeString());
-          final var elementReader = buildReaderChainFromAST(element);
-          final var componentType = Companion.extractComponentType(element);
-          return createArrayReader(elementReader, componentType);
-        }
-      } else if (typeExpr instanceof TypeExpr.OptionalNode(TypeExpr wrapped)) {
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for optional type: " + typeExpr.toTreeString());
-        final var valueReader = buildReaderChainFromAST(wrapped);
-        return createOptionalReader(valueReader);
-      } else if (typeExpr instanceof TypeExpr.ListNode(TypeExpr element)) {
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for list type: " + typeExpr.toTreeString());
-        final var elementReader = buildReaderChainFromAST(element);
-        return createListReader(elementReader);
-      } else if (typeExpr instanceof TypeExpr.MapNode(TypeExpr key, TypeExpr value)) {
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for map type: " + typeExpr.toTreeString());
-        final var keyReader = buildReaderChainFromAST(key);
-        final var valueReader = buildReaderChainFromAST(value);
-        return createMapReader(keyReader, valueReader);
-      }
-    }
-    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
-      if (!type.isUserType()) {
-        // For boxed types, we can directly read the value using the method handle
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for built in value type: " + typeExpr.toTreeString());
-        return Companion.buildValueReader(type);
-      }
-      if (type == TypeExpr.RefValueType.ENUM) {
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for enum type: " + typeExpr.toTreeString());
-        //noinspection unchecked
-        final var enumClass = (Class<Enum<?>>) javaType;
-        final var values = enumClass.getEnumConstants();
-        return (ByteBuffer buffer) -> {
-          final int positionBeforeRead = buffer.position();
-          final long typeSignature = buffer.getLong();
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " enum-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead);
-          if (typeSignature == 0L) {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record " + typeExpr.toTreeString() + " at position: " + positionBeforeRead);
-            return null;
-          }
-          final int ordinal = buffer.getInt();
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " enum-reader read ordinal: " + ordinal + " for enum class: " + enumClass.getSimpleName());
-          return values[ordinal];
-        };
-      } else if (type == TypeExpr.RefValueType.RECORD) {
-        if (javaType instanceof Class<?> clz && this.userType.isAssignableFrom(clz)) {
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
-          return selfPickle(typeExpr);
-        } else if (javaType instanceof Class<?> clz && clz.isRecord()) {
-          // nested record reader
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for nested record type: " + typeExpr.toTreeString());
-          return (ByteBuffer buffer) -> {
-            final int positionBeforeRead = buffer.position();
-            final long typeSignature = buffer.getLong();
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + " for nested type " + clz.getSimpleName());
-
-            final var otherPickler = typeSignatureToPicklerMap.get(typeSignature);
-            if (otherPickler == null) {
-              throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " unknown nested record type signature: 0x" + Long.toHexString(typeSignature)
-                  + " at position " + positionBeforeRead + " for expected type " + clz.getSimpleName() + " where we have " + typeSignatureToPicklerMap.entrySet().stream()
-                  .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue()).collect(Collectors.joining(",")));
-            }
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader delegating to pickler for " + clz.getSimpleName() + " after reading signature");
-            switch (otherPickler) {
-              case RecordPickler<?> rp -> {
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader calling readFromWire for " + rp.userType.getSimpleName());
-                return rp.readFromWire(buffer);
-              }
-              case EmptyRecordPickler<?> erp -> {
-                LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " nested-reader returning singleton for empty record " + erp.userType.getSimpleName());
-                return erp.singleton;
-              }
-              default ->
-                  throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " unexpected nested pickler type: " + otherPickler.getClass());
-            }
-          };
-        }
-      } else if (type == TypeExpr.RefValueType.INTERFACE) {
-        // Interface type
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating reader chain for interface type " + typeExpr.toTreeString());
-        return (ByteBuffer buffer) -> {
-          final int positionBeforeRead = buffer.position();
-          final long typeSignature = buffer.getLong();
-          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead);
-          if (typeSignature == 0L) {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record " + typeExpr.toTreeString() + " at position: " + positionBeforeRead);
-            return null;
-          }
-          if (typeSignature == this.typeSignature) {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building reader chain for self type: " + typeExpr.toTreeString());
-            Object[] args = new Object[componentAccessors.length];
-            IntStream.range(0, componentAccessors.length).forEach(i -> {
-              final int componentPosition = buffer.position();
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader reading component " + i + " at position " + componentPosition);
-              args[i] = componentReaders[i].apply(buffer);
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read component " + i + " value: " + args[i] + " moved to position " + buffer.position());
-            });
-            // Read the record using the record constructor
-            try {
-              Object result = recordConstructor.invokeWithArguments(args);
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader constructed record: " + result);
-              return result;
-            } catch (Throwable e) {
-              throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to construct record of type: " + userType.getSimpleName(), e);
-            }
-          } else if (typeSignatureToPicklerMap.containsKey(typeSignature)) {
-            // If the type signature matches a record, we read it using the pickler
-            final var otherPickler = typeSignatureToPicklerMap.get(typeSignature);
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader found record pickler: " + otherPickler.getClass().getSimpleName() + " for type signature 0x" + Long.toHexString(typeSignature));
-            if (otherPickler instanceof RecordPickler<?> rp) {
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader calling readFromWire for " + rp.userType.getSimpleName());
-              return rp.readFromWire(buffer);
-            } else if (otherPickler instanceof EmptyRecordPickler<?> erp) {
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader returning singleton for empty record " + erp.userType.getSimpleName());
-              return erp.singleton;
-            }
-          } else if (typeSignatureToEnumMap.containsKey(typeSignature)) {
-            // If the type signature matches an enum, we read it as an enum
-            final var enumClass = typeSignatureToEnumMap.get(typeSignature);
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " interface-reader found enum class: " + enumClass.getSimpleName() + " for type signature 0x" + Long.toHexString(typeSignature));
-            final int ordinal = buffer.getInt();
-            try {
-              return enumClass.getEnumConstants()[ordinal];
-            } catch (ArrayIndexOutOfBoundsException e) {
-              throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " invalid ordinal: " + ordinal + " for enum class: " + enumClass.getSimpleName(), e);
-            }
-          }
-          throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented reader for: " + typeExpr.toTreeString());
-        };
-      }
-    }
-    throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record with method handle: ");
-  }
-
-  ToIntFunction<Object> buildSizerChain(TypeExpr typeExpr, MethodHandle methodHandle) {
-    if (typeExpr.isPrimitive()) {
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building sizer chain for primitive type: " + typeExpr.toTreeString());
-      final var primitiveType = ((TypeExpr.PrimitiveValueNode) typeExpr).type();
-      return Companion.buildPrimitiveValueSizer(primitiveType);
-    } else if (typeExpr.isContainer()) {
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building sizer chain for optional type: " + typeExpr.toTreeString());
-      return buildSizerChainFromAST(typeExpr, methodHandle);
-    }
-
-    if (typeExpr instanceof TypeExpr.RefValueNode(TypeExpr.RefValueType type, Type javaType)) {
-      if (!type.isUserType()) {
-        // For boxed types, we can directly read the value using the method handle
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building sizer chain for built in value type: " + typeExpr.toTreeString());
-        return buildValueSizer(type, methodHandle);
-      }
-      if (javaType instanceof Class<?> clz) {
-        switch (type) {
-          case UUID -> {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building sizer chain for UUID type: " + typeExpr.toTreeString());
-            return (Object record) -> {
-              final Object inner;
-              try {
-                inner = methodHandle.invokeWithArguments(record);
-              } catch (Throwable t) {
-                throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value for sizing: " + t.getMessage(), t);
-              }
-              if (inner != null) {
-                return 3 * Long.BYTES;// 8 bytes for type signature + 16 bytes for UUID
-              } else {
-                return Long.BYTES; // null is written as a zero type signature
-              }
-            };
-          }
-          case RECORD -> {
-            if (this.userType.isAssignableFrom(clz)) {
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building sizer chain for self type: " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
-              return (Object record) -> {
-                final Object inner;
-                try {
-                  inner = methodHandle.invokeWithArguments(record);
-                } catch (Throwable t) {
-                  throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value for sizing: " + t.getMessage(), t);
-                }
-                if (inner != null) {
-                  int size = CLASS_SIG_BYTES;
-                  for (var sizer : componentSizers) {
-                    size += sizer.applyAsInt(inner); // null is a placeholder, as we don't need the actual record for sizing
-                  }
-                  return size;
-                } else {
-                  return Long.BYTES; // null is written as a zero type signature
-                }
-              };
-            } else {
-              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating sizer chain for record type " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
-              return (Object record) -> {
-                final var otherPickler = resolvePicker(clz);
-                final Object inner;
-                try {
-                  inner = methodHandle.invokeWithArguments(record);
-                } catch (Throwable t) {
-                  throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value for sizing: " + t.getMessage(), t);
-                }
-                //noinspection
-                return otherPickler.maxSizeOf(inner);
-              };
-            }
-          }
-          case INTERFACE -> {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building delegating sizer chain for interface type " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
-            return (Object record) -> {
-              final var concreteType = record.getClass();
-              if (concreteType.isRecord()) {
-                LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " concrete type of interface is a different record so will delegate: " + concreteType.getName());
-                final var otherPickler = resolvePicker(concreteType);
-                final Object inner;
-                try {
-                  inner = methodHandle.invokeWithArguments(record);
-                } catch (Throwable t) {
-                  throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value for sizing: " + t.getMessage(), t);
-                }
-                //noinspection
-                return otherPickler.maxSizeOf(inner);
-              } else if (concreteType.isEnum()) {
-                LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " concrete type of interface is a enum: " + concreteType.getName());
-                return Long.BYTES + Integer.BYTES; // Enum size is fixed: 8 bytes for type signature + 4 bytes for ordinal
-              } else {
-                throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for interface with method handle: " + methodHandle);
-              }
-            };
-          }
-          case ENUM -> {
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " building sizer chain for enum type: " + typeExpr.toTreeString() + " with method handle: " + methodHandle);
-            return (Object record) -> {
-              final Object inner;
-              try {
-                inner = methodHandle.invokeWithArguments(record);
-              } catch (Throwable t) {
-                throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to get record component value for sizing: " + t.getMessage(), t);
-              }
-              if (inner == null) {
-                return Long.BYTES; // null is written as a zero type signature
-              } else {
-                return CLASS_SIG_BYTES + Integer.BYTES; // 8 bytes for type signature + 4 bytes for ordinal
-              }
-            };
-          }
-        }
-      }
-    }
-    throw new AssertionError("RecordPickler " + userType.getSimpleName() + " not implemented: " + typeExpr.toTreeString() + " for record with method handle: " + methodHandle);
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
@@ -1043,7 +368,7 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  // Main recursive AST walker for building sizer chains
+  /// FIXME why are we not just using this and usibng buildReaderChain ?
   static ToIntFunction<Object> buildSizerChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Building sizer chain from AST for type: " + typeExpr.toTreeString());
     return extractAndDelegate(buildSizerChainFromASTInner(typeExpr), accessor);
@@ -1167,5 +492,240 @@ final class RecordPickler<T> implements Pickler<T> {
   static ToIntFunction<Object> createListSizer(ToIntFunction<Object> elementSizer, MethodHandle accessor) {
     LOGGER.fine(() -> "Creating list sizer outer with delegate elementSizer: " + elementSizer);
     return extractAndDelegate(createListSizerInner(elementSizer), accessor);
+  }
+
+  static BiConsumer<ByteBuffer, Object> createArrayWriterInner(BiConsumer<ByteBuffer, Object> elementWriter) {
+    return (buffer, value) -> {
+      Object[] array = (Object[]) value;
+      // Write ARRAY_OBJ marker and length
+      ZigZagEncoding.putInt(buffer, Constants.ARRAY_OBJ.marker());
+      ZigZagEncoding.putInt(buffer, array.length);
+      // Write each element
+      for (Object item : array) {
+        elementWriter.accept(buffer, item);
+      }
+    };
+  }
+
+  static BiConsumer<ByteBuffer, Object> createArrayWriter(BiConsumer<java.nio.ByteBuffer, java.lang.Object> elementWriter,
+                                                          MethodHandle accessor) {
+    return extractAndDelegate(createArrayWriterInner(elementWriter), accessor);
+  }
+
+  static BiConsumer<ByteBuffer, Object> createMapWriterInner(
+      BiConsumer<ByteBuffer, Object> keyWriter,
+      BiConsumer<ByteBuffer, Object> valueWriter) {
+    return (buffer, obj) -> {
+      Map<?, ?> map = (Map<?, ?>) obj;
+      // Write MAP marker and size
+      ZigZagEncoding.putInt(buffer, Constants.MAP.marker());
+      ZigZagEncoding.putInt(buffer, map.size());
+      // Write each key-value pair
+      map.forEach((key, value) -> {
+        keyWriter.accept(buffer, key);
+        valueWriter.accept(buffer, value);
+      });
+    };
+  }
+
+  static BiConsumer<ByteBuffer, Object> createMapWriter(
+      BiConsumer<ByteBuffer, Object> keyWriter,
+      BiConsumer<ByteBuffer, Object> valueWriter,
+      MethodHandle accessor) {
+    return extractAndDelegate(createMapWriterInner(keyWriter, valueWriter), accessor);
+  }
+
+  static Function<ByteBuffer, Object> createListReader(Function<ByteBuffer, Object> elementReader) {
+    return buffer -> {
+      int marker = ZigZagEncoding.getInt(buffer);
+      assert marker == Constants.LIST.marker() : "Expected LIST marker";
+      int size = ZigZagEncoding.getInt(buffer);
+      List<Object> list = new ArrayList<>(size);
+      for (int i = 0; i < size; i++) {
+        list.add(elementReader.apply(buffer));
+      }
+      return list;
+    };
+  }
+
+  static Function<ByteBuffer, Object> createOptionalReader(Function<ByteBuffer, Object> valueReader) {
+    return buffer -> {
+      int marker = ZigZagEncoding.getInt(buffer);
+      if (marker == Constants.OPTIONAL_EMPTY.marker()) {
+        return Optional.empty();
+      } else if (marker == Constants.OPTIONAL_OF.marker()) {
+        return Optional.of(valueReader.apply(buffer));
+      } else {
+        throw new IllegalStateException("Invalid optional marker: " + marker);
+      }
+    };
+  }
+
+  static Function<ByteBuffer, Object> createArrayReader(
+      Function<ByteBuffer, Object> elementReader, Class<?> componentType) {
+    return buffer -> {
+      int marker = ZigZagEncoding.getInt(buffer);
+      assert marker == Constants.ARRAY_OBJ.marker() : "Expected ARRAY_OBJ marker";
+      int length = ZigZagEncoding.getInt(buffer);
+      Object[] array = (Object[]) Array.newInstance(componentType, length);
+      for (int i = 0; i < length; i++) {
+        array[i] = elementReader.apply(buffer);
+      }
+      return array;
+    };
+  }
+
+  static Function<ByteBuffer, Object> createMapReader(
+      Function<ByteBuffer, Object> keyReader,
+      Function<ByteBuffer, Object> valueReader) {
+    return buffer -> {
+      int marker = ZigZagEncoding.getInt(buffer);
+      assert marker == Constants.MAP.marker() : "Expected MAP marker";
+      int size = ZigZagEncoding.getInt(buffer);
+      Map<Object, Object> map = new HashMap<>(size);
+      for (int i = 0; i < size; i++) {
+        Object key = keyReader.apply(buffer);
+        Object value = valueReader.apply(buffer);
+        map.put(key, value);
+      }
+      return map;
+    };
+  }
+
+  // FIXME why is this not the only way we build a writer chain rather than buildWriterChain?
+  static BiConsumer<ByteBuffer, Object> buildWriterChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
+    return extractAndDelegate(buildWriterChainFromASTInner(typeExpr), accessor);
+  }
+
+  /// FIXME why are we not using using this and are using buildSizerChain ?
+  static @NotNull BiConsumer<ByteBuffer, Object> buildWriterChainFromASTInner(TypeExpr typeExpr) {
+    return switch (typeExpr) {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
+          Companion.buildPrimitiveValueWriterInner(primitiveType);
+
+      case TypeExpr.RefValueNode(var refType, var ignored) -> Companion.buildValueWriterInner(refType);
+
+      case TypeExpr.ArrayNode(var element) -> {
+        if (element.isPrimitive()) {
+          var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+          yield Companion.buildPrimitiveArrayWriterInner(primitiveType);
+        } else if (element instanceof TypeExpr.RefValueNode(var refType, var ignored)) {
+          yield Companion.buildReferenceArrayWriterInner(refType);
+        } else {
+          // Nested container arrays
+          var elementWriter = buildWriterChainFromASTInner(element);
+          yield createArrayWriterInner(elementWriter);
+        }
+      }
+
+      case TypeExpr.ListNode(var element) -> {
+        var elementWriter = buildWriterChainFromASTInner(element);
+        yield createListWriterInner(elementWriter);
+      }
+
+      case TypeExpr.OptionalNode(var wrapped) -> {
+        var valueWriter = buildWriterChainFromASTInner(wrapped);
+        yield createOptionalWriterInner(valueWriter);
+      }
+
+      case TypeExpr.MapNode(var key, var value) -> {
+        var keyWriter = buildWriterChainFromASTInner(key);
+        var valueWriter = buildWriterChainFromASTInner(value);
+        yield createMapWriterInner(keyWriter, valueWriter);
+      }
+    };
+  }
+
+  ///  FIXME why are we not using using this and are using buildSizerChain ?
+  static Function<ByteBuffer, Object> buildReaderChainFromAST(TypeExpr typeExpr) {
+    return switch (typeExpr) {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
+          Companion.buildPrimitiveValueReader(primitiveType);
+
+      case TypeExpr.RefValueNode(var refType, var ignored) -> Companion.buildValueReader(refType);
+
+      case TypeExpr.ArrayNode(var element) -> {
+        if (element.isPrimitive()) {
+          var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+          yield Companion.buildPrimitiveArrayReader(primitiveType);
+        } else if (element instanceof TypeExpr.RefValueNode(var refType, var ignored)) {
+          yield Companion.buildReferenceArrayReader(refType);
+        } else {
+          // Nested container arrays
+          var elementReader = buildReaderChainFromAST(element);
+          var componentType = Companion.extractComponentType(element);
+          yield createArrayReader(elementReader, componentType);
+        }
+      }
+
+      case TypeExpr.ListNode(var element) -> {
+        var elementReader = buildReaderChainFromAST(element);
+        yield createListReader(elementReader);
+      }
+
+      case TypeExpr.OptionalNode(var wrapped) -> {
+        var valueReader = buildReaderChainFromAST(wrapped);
+        yield createOptionalReader(valueReader);
+      }
+
+      case TypeExpr.MapNode(var key, var value) -> {
+        var keyReader = buildReaderChainFromAST(key);
+        var valueReader = buildReaderChainFromAST(value);
+        yield createMapReader(keyReader, valueReader);
+      }
+    };
+  }
+
+  static BiConsumer<ByteBuffer, Object> createListWriterInner(BiConsumer<ByteBuffer, Object> elementWriter) {
+    return (buffer, value) -> {
+      List<?> list = (List<?>) value;
+      // Write LIST marker and size
+      ZigZagEncoding.putInt(buffer, Constants.LIST.marker());
+      ZigZagEncoding.putInt(buffer, list.size());
+      // Write each element
+      for (Object item : list) {
+        elementWriter.accept(buffer, item);
+      }
+    };
+  }
+
+  static BiConsumer<ByteBuffer, Object> createListWriter(BiConsumer<ByteBuffer, Object> elementWriter,
+                                                         MethodHandle accessor) {
+    return extractAndDelegate(createListWriterInner(elementWriter), accessor);
+  }
+
+  static BiConsumer<ByteBuffer, Object> createOptionalWriterInner(BiConsumer<ByteBuffer, Object> valueWriter) {
+    LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
+    return (buffer, value) -> {
+      Optional<?> optional = (Optional<?>) value;
+      if (optional.isEmpty()) {
+        ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.marker());
+      } else {
+        ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.marker());
+        valueWriter.accept(buffer, optional.get());
+      }
+    };
+  }
+
+  static BiConsumer<ByteBuffer, Object> createOptionalWriter(BiConsumer<ByteBuffer, Object> valueWriter, MethodHandle accessor) {
+    LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
+    return extractAndDelegate(createOptionalWriterInner(valueWriter), accessor);
+  }
+
+  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle accessor) {
+    LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
+    return extractAndDelegate(Companion.buildPrimitiveArrayWriterInner(primitiveType), accessor);
+  }
+
+  static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle methodHandle) {
+    return extractAndDelegate(Companion.buildPrimitiveValueWriterInner(primitiveType), methodHandle);
+  }
+
+  @Override
+  public String toString() {
+    return "RecordPickler{" +
+        "userType=" + userType +
+        ", typeSignature=" + typeSignature +
+        '}';
   }
 }

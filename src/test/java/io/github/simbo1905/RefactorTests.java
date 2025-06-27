@@ -1432,31 +1432,4 @@ public class RefactorTests {
       }
     }
   }
-
-
-  public record StringArrayExample(
-      String[] stringArray
-  ) {
-  }
-
-  @Test
-  void testEmptyStringArray() { // TODO this is covered by the ArrayExample test, this is here to debug one branch of the code
-    // Create a record with an empty string array
-    final var original = new StringArrayExample(new String[0]);
-
-    Pickler<StringArrayExample> pickler = Pickler.forClass(StringArrayExample.class);
-
-    // Serialize the record
-    final var buffer = ByteBuffer.allocate(1024);
-    pickler.serialize(buffer, original);
-
-    var buf = buffer.flip(); // Prepare buffer for reading
-
-    // Deserialize from the byte buffer
-    final var deserialized = pickler.deserialize(buf);
-
-    // Verify the deserialized object matches the original
-    assertEquals(original, deserialized);
-    assertEquals(0, deserialized.stringArray().length);
-  }
 }
