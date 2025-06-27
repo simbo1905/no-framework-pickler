@@ -24,6 +24,8 @@ enum Constants {
   OPTIONAL_OF(0, Tag.OPTIONAL),
   ENUM(0, Tag.ENUM),
   ARRAY(0, Tag.ARRAY),
+  ARRAY_OBJ(0, Tag.ARRAY),
+  ARRAY_REF(0, Tag.ARRAY),
   MAP(0, Tag.MAP),
   LIST(0, Tag.LIST),
   RECORD(0, Tag.RECORD),

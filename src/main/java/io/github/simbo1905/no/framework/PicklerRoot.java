@@ -31,7 +31,7 @@ final class PicklerRoot<R> implements Pickler<R> {
         .collect(Collectors.joining(", ")) + " followed by type signatures for enums ");
     picklers = recordClasses.stream().collect(Collectors.toMap(
         clz -> clz,
-        PicklerRoot::resolvePicker
+        PicklerRoot::resolvePickerNoCache
     ));
 
     this.typeSignatureToPicklerMap = new ConcurrentHashMap<>();
@@ -150,6 +150,11 @@ final class PicklerRoot<R> implements Pickler<R> {
     final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType));
     //noinspection unchecked
     return (Pickler<R>) pickler;
+  }
+
+  static <R> @NotNull Pickler<R> resolvePickerNoCache(Class<?> userType) {
+    //noinspection unchecked
+    return (Pickler<R>) componentPicker(userType);
   }
 
   @Override

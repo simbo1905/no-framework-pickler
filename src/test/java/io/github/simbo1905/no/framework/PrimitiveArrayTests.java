@@ -140,7 +140,7 @@ public class PrimitiveArrayTests {
       LOGGER.fine(() -> "Successfully wrote boolean value to buffer");
       // Now we can read it back
 
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       LOGGER.fine(() -> "Read boolean value: " + readValue);
       // Check the value is as expected
@@ -148,7 +148,7 @@ public class PrimitiveArrayTests {
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       LOGGER.fine(() -> "Bytes written: " + bytesWritten + ", Sizer returned: " + size);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
@@ -172,14 +172,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.byteArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -202,14 +202,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.charArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -232,14 +232,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.shortArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -262,14 +262,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.floatArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -291,14 +291,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.doubleArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -322,14 +322,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.intArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
@@ -352,14 +352,14 @@ public class PrimitiveArrayTests {
         throw new RuntimeException(e2);
       }
       byteBuffer.flip();
-      final var readerChain = RecordPickler.buildPrimitiveArrayReader(primitiveType);
+      final var readerChain = Companion.buildPrimitiveArrayReader(primitiveType);
       final var readValue = readerChain.apply(byteBuffer);
       // Check the value is as expected
       assertThat(readValue).isEqualTo(primitiveValueRecord.longArray());
       // check how much was written
       final int bytesWritten = byteBuffer.position();
       // check that the sizer will return the something greater than or equal to the bytes written
-      final var sizer = RecordPickler.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
+      final var sizer = Companion.buildPrimitiveArraySizer(primitiveType, typeExpr0Accessor);
       final int size = sizer.applyAsInt(primitiveValueRecord);
       assertThat(size).isGreaterThanOrEqualTo(bytesWritten);
     } else {
