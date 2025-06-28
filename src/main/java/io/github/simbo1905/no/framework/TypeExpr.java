@@ -5,12 +5,28 @@ package io.github.simbo1905.no.framework;
 
 import java.lang.reflect.*;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 /// Public sealed interface for the Type Expression protocol
 /// All type expression nodes are nested within this interface to provide a clean API
 sealed interface TypeExpr permits
     TypeExpr.ArrayNode, TypeExpr.ListNode, TypeExpr.OptionalNode, TypeExpr.MapNode,
     TypeExpr.RefValueNode, TypeExpr.PrimitiveValueNode {
+
+
+  static Stream<Class<?>> classesInAST(TypeExpr typeExpr) {
+    return switch (typeExpr) {
+      case TypeExpr.ArrayNode(var element) -> classesInAST(element);
+      case TypeExpr.ListNode(var element) -> classesInAST(element);
+      case TypeExpr.OptionalNode(var wrapped) -> classesInAST(wrapped);
+      case TypeExpr.MapNode(var key, var value) -> Stream.concat(classesInAST(key), classesInAST(value));
+      case TypeExpr.RefValueNode(var ignored, var type) -> switch (type) {
+        case Class<?> clazz -> Stream.of(clazz);
+        default -> Stream.empty();
+      };
+      case TypeExpr.PrimitiveValueNode(var ignored, var ignored2) -> Stream.empty();
+    };
+  }
 
   /// Recursive descent parser for Java types - builds tree bottom-up
   static TypeExpr analyzeType(Type type) {

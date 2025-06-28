@@ -29,9 +29,9 @@ public class PaxosTests {
 
   @Test
   void testPaxosAccepts() {
-    final var pickler = Pickler.forClass(Accept.class);
     final ByteBuffer readyToReadBack;
     final var writeBuffer = ByteBuffer.allocate(2048); // Allocate a buffer for writing
+    final var pickler = Pickler.forClass(Accept.class);
     for (var accept : original) {
       pickler.serialize(writeBuffer, accept); // Serialize each Accept record into the buffer
     }

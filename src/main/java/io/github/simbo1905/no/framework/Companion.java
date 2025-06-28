@@ -25,8 +25,14 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
 
 class Companion {
+
   /// Discover all reachable types from a root class including sealed hierarchies and record components
-  static Stream<Class<?>> recordClassHierarchy(final Class<?> current, final Set<Class<?>> visited) {
+  static Stream<Class<?>> recordClassHierarchy(final Class<?> current) {
+    return recordClassHierarchyInner(current, new HashSet<>());
+  }
+
+  /// Discover all reachable types from a root class including sealed hierarchies and record components
+  static Stream<Class<?>> recordClassHierarchyInner(final Class<?> current, final Set<Class<?>> visited) {
     if (!visited.add(current)) {
       return Stream.empty();
     }
@@ -38,7 +44,7 @@ class Companion {
       // Include both the array type and its component type
       return Stream.concat(
           Stream.of(current),
-          recordClassHierarchy(componentType, visited)
+          recordClassHierarchyInner(componentType, visited)
       );
     }
 
@@ -65,16 +71,14 @@ class Companion {
                     }
                   }
 
-                  TypeStructure structure = TypeStructure.analyze(component.getGenericType());
+                  TypeExpr structure = TypeExpr.analyzeType(component.getGenericType());
                   LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
-                      structure.tagTypes().stream().map(TagWithType::type).map(Class::getSimpleName).toList());
-                  Stream<Class<?>> structureStream = structure.tagTypes().stream().map(TagWithType::type);
+                      structure.toTreeString());
+                  Stream<Class<?>> structureStream = TypeExpr.classesInAST(structure);
                   return Stream.concat(arrayStream, structureStream);
                 })
-                .filter(t -> t.isRecord() || t.isSealed() || t.isEnum() ||
-                    (t.isArray() && (t.getComponentType().isRecord() || t.getComponentType().isEnum() || !t.getComponentType().isPrimitive())))
                 : Stream.empty()
-        ).flatMap(child -> recordClassHierarchy(child, visited))
+        ).flatMap(child -> recordClassHierarchyInner(child, visited))
     );
   }
 
@@ -607,15 +611,11 @@ class Companion {
     return switch (refValueType) {
       case BOOLEAN -> {
         LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
-        yield (ByteBuffer buffer, Object result) -> {
-          buffer.put((byte) ((boolean) result ? 1 : 0));
-        };
+        yield (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
       }
       case BYTE -> {
         LOGGER.fine(() -> "Building writer chain for byte.class primitive type");
-        yield (ByteBuffer buffer, Object result) -> {
-          buffer.put((byte) result);
-        };
+        yield (ByteBuffer buffer, Object result) -> buffer.put((byte) result);
       }
       case UUID -> {
         LOGGER.fine(() -> "Building writer chain for UUID");
@@ -678,68 +678,6 @@ class Companion {
     rp.writeToWire(buffer, (X) record);
   }
 
-  static @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
-    LOGGER.fine(() -> "Building reader chain for RefValueType: " + valueType);
-    return switch (valueType) {
-      case BOOLEAN -> (buffer) -> buffer.get() != 0;
-      case BYTE -> ByteBuffer::get;
-      case SHORT -> ByteBuffer::getShort;
-      case CHARACTER -> ByteBuffer::getChar;
-      case INTEGER -> ByteBuffer::getInt;
-      case LONG -> ByteBuffer::getLong;
-      case FLOAT -> ByteBuffer::getFloat;
-      case DOUBLE -> ByteBuffer::getDouble;
-      case UUID -> (buffer) -> {
-        long most = buffer.getLong();
-        long least = buffer.getLong();
-        return new UUID(most, least);
-      };
-      case STRING -> (buffer) -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
-      };
-      default -> throw new AssertionError("not implemented yet ref value type: " + valueType);
-    };
-  }
-
-  static @NotNull ToIntFunction<Object> buildValueSizerInner(TypeExpr.RefValueType refValueType) {
-    return switch (refValueType) {
-      case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
-      case SHORT -> (Object record) -> Short.BYTES;
-      case CHARACTER -> (Object record) -> Character.BYTES;
-      case INTEGER -> (Object record) -> Integer.BYTES;
-      case LONG -> (Object record) -> Long.BYTES;
-      case FLOAT -> (Object record) -> Float.BYTES;
-      case DOUBLE -> (Object record) -> Double.BYTES;
-      case UUID -> (Object record) -> 2 * Long.BYTES; // UUID is two longs
-      case ENUM -> (Object record) -> Integer.BYTES + 2 * Long.BYTES; // typeOrdinal + typeSignature + enum ordinal
-      case STRING -> (Object inner) -> {
-        // Worst case estimate users the length then one int per UTF-8 encoded character
-        String str = (String) inner;
-        return (str.length() + 1) * Integer.BYTES;
-      };
-      case RECORD -> (Object obj) -> {
-        Record record = (Record) obj;
-        //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
-        // FIXME: why have i not hit this yet?
-        throw new AssertionError("not implemented: meed to lookup and delegate to Record sizer for record: " + record.getClass().getSimpleName());
-      };
-      case INTERFACE -> (Object userType) -> {
-        if (userType instanceof Enum<?> ignored) {
-          // For enums, we store the ordinal and type signature
-          return Integer.BYTES + Long.BYTES;
-        } else if (userType instanceof Record record) {
-          //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
-          throw new AssertionError("not implemented: meed to lookup and delegate to Record sizer for record: " + record.getClass().getSimpleName());
-        } else {
-          throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
-        }
-      };
-    };
-  }
-
   /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
   static long hashEnumSignature(Class<?> enumClass) {
     try {
@@ -758,35 +696,4 @@ class Companion {
     }
   }
 
-  /// Create writer for linear container types like Optional, List, or Array (but not map)
-  static BiConsumer<ByteBuffer, Object> createContainerWriter(TypeExpr typeExpr, BiConsumer<ByteBuffer, Object> elementWriter) {
-    if (typeExpr.isContainer()) {
-      if (typeExpr instanceof TypeExpr.ListNode(TypeExpr element)) {
-        LOGGER.fine(() -> "Creating writer for ListNode with element type: " + element.toTreeString());
-        return (buffer, value) -> {
-          List<?> list = (List<?>) value;
-          LOGGER.fine(() -> "Writing LIST size=" + list.size());
-          ZigZagEncoding.putInt(buffer, Constants.LIST.marker());
-          buffer.putInt(list.size());
-          for (Object item : list) {
-            elementWriter.accept(buffer, item);
-          }
-        };
-      }
-    }
-    throw new IllegalArgumentException("Unsupported container type: " + typeExpr.toTreeString());
-  }
-
-  static BiConsumer<ByteBuffer, Object> buildObjectArrayWriter(TypeExpr elementType, MethodHandle accessor) {
-    throw new AssertionError("not implemented yet: buildObjectArrayWriter for elementType: " + elementType);
-  }
-
-  // Container reader factory methods
-  static Function<ByteBuffer, Object> createContainerReader(TypeExpr typeExpr, Function<ByteBuffer, Object> elementReader) {
-    throw new AssertionError("not implemented yet: createContainerReader for typeExpr: " + typeExpr.toTreeString());
-  }
-
-  static Function<ByteBuffer, Object> buildObjectArrayReader(TypeExpr elementType, Class<?> componentType) {
-    throw new AssertionError("not implemented yet: buildObjectArrayReader for elementType: " + elementType.toTreeString() + " and componentType: " + componentType.getName());
-  }
 }

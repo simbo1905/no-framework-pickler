@@ -24,8 +24,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.Companion.buildValueSizerInner;
 import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
+import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
 import static io.github.simbo1905.no.framework.PicklerRoot.REGISTRY;
 import static io.github.simbo1905.no.framework.PicklerRoot.resolvePicker;
 
@@ -53,7 +53,7 @@ final class RecordPickler<T> implements Pickler<T> {
     this.userType = userType;
     // resolve any nested record type or nested enum types
     final Map<Boolean, List<Class<?>>> recordsAndEnums =
-        recordClassHierarchy(userType, new HashSet<>())
+        recordClassHierarchy(userType)
             .filter(cls -> cls.isRecord() || cls.isEnum())
             .filter(cls -> !userType.equals(cls))
             .collect(Collectors.partitioningBy(Class::isRecord));
@@ -186,6 +186,50 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
+  @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
+    LOGGER.fine(() -> "Building reader chain for RefValueType: " + valueType);
+    return switch (valueType) {
+      case BOOLEAN -> (buffer) -> buffer.get() != 0;
+      case BYTE -> ByteBuffer::get;
+      case SHORT -> ByteBuffer::getShort;
+      case CHARACTER -> ByteBuffer::getChar;
+      case INTEGER -> ByteBuffer::getInt;
+      case LONG -> ByteBuffer::getLong;
+      case FLOAT -> ByteBuffer::getFloat;
+      case DOUBLE -> ByteBuffer::getDouble;
+      case UUID -> (buffer) -> {
+        long most = buffer.getLong();
+        long least = buffer.getLong();
+        return new UUID(most, least);
+      };
+      case STRING -> (buffer) -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+      };
+      case ENUM -> (buffer) -> {
+        int ordinal = ZigZagEncoding.getInt(buffer);
+        long typeSignature = ZigZagEncoding.getLong(buffer);
+        Class<?> enumClass = typeSignatureToEnumMap.get(typeSignature);
+        if (enumClass == null) {
+          throw new IllegalStateException("No enum class found for type signature: " + typeSignature);
+        }
+        Enum<?>[] constants = (Enum<?>[]) enumClass.getEnumConstants();
+        if (ordinal < 0 || ordinal >= constants.length) {
+          throw new IndexOutOfBoundsException("Invalid enum ordinal: " + ordinal + " for class: " + enumClass.getSimpleName());
+        }
+        return constants[ordinal];
+      };
+      case RECORD -> (buffer) -> {
+        throw new AssertionError("not implemented yet");
+      };
+      case INTERFACE -> (buffer) -> {
+        throw new AssertionError("not implemented yet");
+      };
+    };
+  }
+
   int maxSizeOfRecordComponents(Record record) {
     int totalSize = 0;
     for (ToIntFunction<Object> sizer : this.componentSizers) {
@@ -234,7 +278,8 @@ final class RecordPickler<T> implements Pickler<T> {
       throw new IllegalStateException("Type signature mismatch: expected " + Long.toHexString(this.typeSignature) + " but got " + Long.toHexString(incomingSignature) + " at position: " + typeSigPosition);
     }
 
-    return deserializeWithoutSignature(buffer);
+    LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
+    return readFromWire(buffer);
   }
 
   void serializeRecordComponents(ByteBuffer buffer, T record) {
@@ -243,14 +288,6 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex + " at position " + buffer.position() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
       componentWriters[componentIndex].accept(buffer, record);
     });
-  }
-
-  /**
-   * Deserialize a record from the given buffer, assuming the type signature has already been validated.
-   */
-  T deserializeWithoutSignature(ByteBuffer buffer) {
-    LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
-    return readFromWire(buffer);
   }
 
   T readFromWire(ByteBuffer buffer) {
@@ -362,12 +399,12 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static ToIntFunction<Object> buildSizerChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
+  ToIntFunction<Object> buildSizerChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
     LOGGER.fine(() -> "Building sizer chain from AST for type: " + typeExpr.toTreeString());
     return extractAndDelegate(buildSizerChainFromASTInner(typeExpr), accessor);
   }
 
-  static ToIntFunction<Object> buildSizerChainFromASTInner(TypeExpr typeExpr) {
+  ToIntFunction<Object> buildSizerChainFromASTInner(TypeExpr typeExpr) {
     switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type ignored) -> {
         LOGGER.fine(() -> "Building sizer chain for primitive type: " + primitiveType);
@@ -381,7 +418,7 @@ final class RecordPickler<T> implements Pickler<T> {
           }
           case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored) -> {
             LOGGER.fine(() -> "Building sizer chain for reference array type: " + refValueType);
-            final var refValueSizer = Companion.buildValueSizerInner(refValueType);
+            final var refValueSizer = buildValueSizerInner(refValueType);
             return createArraySizerInner(refValueSizer);
           }
           default -> {
@@ -392,7 +429,7 @@ final class RecordPickler<T> implements Pickler<T> {
       }
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored) -> {
         LOGGER.fine(() -> "Building sizer chain for reference value type: " + refValueType);
-        return Companion.buildValueSizerInner(refValueType);
+        return buildValueSizerInner(refValueType);
       }
       case TypeExpr.ListNode(TypeExpr element) -> {
         LOGGER.fine(() -> "Building sizer chain for ListNode with element type: " + element.toTreeString());
@@ -413,8 +450,40 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
-  static @NotNull ToIntFunction<Object> buildValueSizer(TypeExpr.RefValueType refValueType, MethodHandle accessor) {
-    return extractAndDelegate(buildValueSizerInner(refValueType), accessor);
+  @NotNull ToIntFunction<Object> buildValueSizerInner(TypeExpr.RefValueType refValueType) {
+    return switch (refValueType) {
+      case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
+      case SHORT -> (Object record) -> Short.BYTES;
+      case CHARACTER -> (Object record) -> Character.BYTES;
+      case INTEGER -> (Object record) -> Integer.BYTES;
+      case LONG -> (Object record) -> Long.BYTES;
+      case FLOAT -> (Object record) -> Float.BYTES;
+      case DOUBLE -> (Object record) -> Double.BYTES;
+      case UUID -> (Object record) -> 2 * Long.BYTES; // UUID is two longs
+      case ENUM -> (Object record) -> Integer.BYTES + 2 * Long.BYTES; // typeOrdinal + typeSignature + enum ordinal
+      case STRING -> (Object inner) -> {
+        // Worst case estimate users the length then one int per UTF-8 encoded character
+        String str = (String) inner;
+        return (str.length() + 1) * Integer.BYTES;
+      };
+      case RECORD -> (Object obj) -> {
+        Record record = (Record) obj;
+        //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
+        // FIXME: why have i not hit this yet?
+        throw new AssertionError("not implemented: meed to lookup and delegate to Record sizer for record: " + record.getClass().getSimpleName());
+      };
+      case INTERFACE -> (Object userType) -> {
+        if (userType instanceof Enum<?> ignored) {
+          // For enums, we store the ordinal and type signature
+          return Integer.BYTES + Long.BYTES;
+        } else if (userType instanceof Record record) {
+          //return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(record);
+          throw new AssertionError("not implemented: meed to lookup and delegate to Record sizer for record: " + record.getClass().getSimpleName());
+        } else {
+          throw new IllegalArgumentException("Unsupported interface type: " + userType.getClass().getSimpleName());
+        }
+      };
+    };
   }
 
 
@@ -568,16 +637,16 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static BiConsumer<ByteBuffer, Object> buildWriterChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
+  BiConsumer<ByteBuffer, Object> buildWriterChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
     return extractAndDelegate(buildWriterChainFromASTInner(typeExpr), accessor);
   }
 
-  static @NotNull BiConsumer<ByteBuffer, Object> buildWriterChainFromASTInner(TypeExpr typeExpr) {
+  @NotNull BiConsumer<ByteBuffer, Object> buildWriterChainFromASTInner(TypeExpr typeExpr) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
           Companion.buildPrimitiveValueWriterInner(primitiveType);
 
-      case TypeExpr.RefValueNode(var refType, var ignored) -> Companion.buildValueWriterInner(refType);
+      case TypeExpr.RefValueNode(var refType, var ignored) -> buildValueWriterInner(refType);
 
       case TypeExpr.ArrayNode(var element) -> {
         if (element.isPrimitive()) {
@@ -610,12 +679,12 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static Function<ByteBuffer, Object> buildReaderChainFromAST(TypeExpr typeExpr) {
+  Function<ByteBuffer, Object> buildReaderChainFromAST(TypeExpr typeExpr) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
           Companion.buildPrimitiveValueReader(primitiveType);
 
-      case TypeExpr.RefValueNode(var refType, var ignored) -> Companion.buildValueReader(refType);
+      case TypeExpr.RefValueNode(var refType, var ignored) -> buildValueReader(refType);
 
       case TypeExpr.ArrayNode(var element) -> {
         if (element.isPrimitive()) {
@@ -682,6 +751,133 @@ final class RecordPickler<T> implements Pickler<T> {
 
   static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle methodHandle) {
     return extractAndDelegate(Companion.buildPrimitiveValueWriterInner(primitiveType), methodHandle);
+  }
+
+
+  @NotNull Function<ByteBuffer, Object> buildValueReaderInner(TypeExpr.RefValueType valueType) {
+    LOGGER.fine(() -> "Building reader chain for RefValueType: " + valueType);
+    return switch (valueType) {
+      case BOOLEAN -> (buffer) -> buffer.get() != 0;
+      case BYTE -> ByteBuffer::get;
+      case SHORT -> ByteBuffer::getShort;
+      case CHARACTER -> ByteBuffer::getChar;
+      case INTEGER -> ByteBuffer::getInt;
+      case LONG -> ByteBuffer::getLong;
+      case FLOAT -> ByteBuffer::getFloat;
+      case DOUBLE -> ByteBuffer::getDouble;
+      case UUID -> (buffer) -> {
+        long most = buffer.getLong();
+        long least = buffer.getLong();
+        return new UUID(most, least);
+      };
+      case STRING -> (buffer) -> {
+        int length = ZigZagEncoding.getInt(buffer);
+        byte[] bytes = new byte[length];
+        buffer.get(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+      };
+      default -> throw new AssertionError("not implemented yet ref value type: " + valueType);
+    };
+  }
+
+  @NotNull BiConsumer<ByteBuffer, Object> buildValueWriterInner(final TypeExpr.RefValueType refValueType) {
+
+    return switch (refValueType) {
+      case BOOLEAN -> {
+        LOGGER.fine(() -> "Building writer chain for boolean.class primitive type");
+        yield (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
+      }
+      case BYTE -> {
+        LOGGER.fine(() -> "Building writer chain for byte.class primitive type");
+        yield (ByteBuffer buffer, Object result) -> buffer.put((byte) result);
+      }
+      case UUID -> {
+        LOGGER.fine(() -> "Building writer chain for UUID");
+        yield (ByteBuffer buffer, Object inner) -> {
+          UUID uuid = (UUID) inner;
+          buffer.putLong(uuid.getMostSignificantBits());
+          buffer.putLong(uuid.getLeastSignificantBits());
+        };
+      }
+      case SHORT -> {
+        LOGGER.fine(() -> "Building writer chain for short.class primitive type");
+        yield (ByteBuffer buffer, Object inner) -> buffer.putShort((short) inner);
+      }
+      case CHARACTER -> {
+        LOGGER.fine(() -> "Building writer chain for char.class primitive type");
+        yield (ByteBuffer buffer, Object inner) -> buffer.putChar((char) inner);
+      }
+      case INTEGER -> {
+        LOGGER.fine(() -> "Building writer chain for int.class primitive type");
+        yield (ByteBuffer buffer, Object result) -> buffer.putInt((int) result);
+      }
+      case LONG -> {
+        LOGGER.fine(() -> "Building writer chain for long.class primitive type");
+        yield (ByteBuffer buffer, Object result) -> buffer.putLong((long) result);
+      }
+      case FLOAT -> {
+        LOGGER.fine(() -> "Building writer chain for float.class primitive type");
+        yield (ByteBuffer buffer, Object result) -> buffer.putFloat((float) result);
+      }
+      case DOUBLE -> {
+        LOGGER.fine(() -> "Building writer chain for double.class primitive type");
+        yield (ByteBuffer buffer, Object result) -> buffer.putDouble((double) result);
+      }
+      case STRING -> {
+        LOGGER.fine(() -> "Building writer chain for String");
+        yield (ByteBuffer buffer, Object result) -> {
+          String str = (String) result;
+          byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
+          ZigZagEncoding.putInt(buffer, bytes.length);
+          buffer.put(bytes);
+        };
+      }
+      case ENUM -> {
+        LOGGER.fine(() -> "Building writer chain for Enum");
+        yield (ByteBuffer buffer, Object record) -> {
+          if (record instanceof Enum<?> enumValue) {
+            // For enums, we store the ordinal and type signature
+            final var typeSignature = enumToTypeSignatureMap.get(enumValue.getClass());
+            ZigZagEncoding.putLong(buffer, typeSignature);
+            ZigZagEncoding.putInt(buffer, enumValue.ordinal());
+          } else {
+            throw new IllegalArgumentException("Expected an Enum but got: " + record.getClass().getName());
+          }
+        };
+      }
+      case RECORD -> {
+        LOGGER.fine(() -> "Building writer chain for Record");
+        yield (ByteBuffer buffer, Object record) -> {
+          final var p = PicklerRoot.REGISTRY.computeIfAbsent(record.getClass(), RecordPickler::new);
+          switch (p) {
+            case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
+            case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, record);
+            default -> throw new AssertionError("Unexpected pickler type: " + p.getClass());
+          }
+        };
+      }
+      case INTERFACE -> {
+        LOGGER.fine(() -> "Building writer chain for Interface");
+        yield (ByteBuffer buffer, Object record) -> {
+          if (record instanceof Enum<?> enumValue) {
+            assert enumToTypeSignatureMap.containsKey(enumValue.getClass()) : "No type signature found for enum class: " + enumValue.getClass().getName() + ", available signatures: " + enumToTypeSignatureMap.keySet();
+            // For enums, we store the ordinal and type signature
+            final var typeSignature = enumToTypeSignatureMap.get(enumValue.getClass());
+            ZigZagEncoding.putLong(buffer, typeSignature);
+            ZigZagEncoding.putInt(buffer, enumValue.ordinal());
+          } else if (record instanceof Record rec) {
+            final var p = PicklerRoot.REGISTRY.computeIfAbsent(rec.getClass(), RecordPickler::new);
+            switch (p) {
+              case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
+              case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, rec);
+              default -> throw new AssertionError("Unexpected pickler type: " + p.getClass());
+            }
+          } else {
+            throw new IllegalArgumentException("Unsupported interface type: " + record.getClass().getSimpleName());
+          }
+        };
+      }
+    };
   }
 
   @Override

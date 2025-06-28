@@ -49,9 +49,11 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerRoot, Reco
         Float.class, Double.class, Character.class, Boolean.class
     );
 
+    final var recordClassHierarchy = recordClassHierarchy(clazz);
+
     // Partition the class hierarchy into legal and illegal classes
     final Map<Boolean, List<Class<?>>> legalAndIllegalClasses =
-        recordClassHierarchy(clazz, new HashSet<>()).collect(Collectors.partitioningBy(
+        recordClassHierarchy.collect(Collectors.partitioningBy(
             cls -> cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive()
                 || String.class.equals(cls) || UUID.class.isAssignableFrom(cls)
                 || BOXED_PRIMITIVES.contains(cls)
@@ -72,6 +74,7 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerRoot, Reco
 
     // Partition the legal classes into records and enums
     final var recordsAndEnums = legalClasses.stream()
+        .filter(claz -> claz.isRecord() || claz.isEnum())
         .collect(Collectors.partitioningBy(Class::isRecord));
 
     // if there are no records then we have no work to do

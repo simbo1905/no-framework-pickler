@@ -6,14 +6,14 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.*;
+import java.util.stream.Collectors;
 
 import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Package-private tests for internal array handling mechanisms
@@ -51,8 +51,7 @@ class ArrayInternalTests {
     }
 
     // Test that recordClassHierarchy discovers array types
-    Set<Class<?>> discovered = recordClassHierarchy(TestRecord.class, new HashSet<>())
-        .collect(java.util.stream.Collectors.toSet());
+    Set<Class<?>> discovered = recordClassHierarchy(TestRecord.class).collect(Collectors.toSet());
 
     // Log what was discovered
     LOGGER.info(() -> "Discovered types: " + discovered.stream()
@@ -74,17 +73,6 @@ class ArrayInternalTests {
     assertFalse(discovered.contains(int[].class), "Primitive arrays use built-in support");
   }
 
-  @Test
-  void testTypeStructureAnalysisForArrays() {
-    // Test String[] analysis
-    java.lang.reflect.Type stringArrayType = String[].class;
-    TypeStructure stringArrayStructure = TypeStructure.analyze(stringArrayType);
-
-    // Just verify structure for now
-    assertEquals(2, stringArrayStructure.tagTypes().size());
-    assertEquals(Arrays.class, stringArrayStructure.tagTypes().get(0).type());
-    assertEquals(String.class, stringArrayStructure.tagTypes().get(1).type());
-  }
 
   enum Color {RED, GREEN, BLUE}
 }

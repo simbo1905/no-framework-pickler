@@ -133,10 +133,6 @@ class CompatibilityInternals {
     record Point(int x, int y) {
     }
     var components = Point.class.getRecordComponents();
-    TypeStructure[] types = new TypeStructure[]{
-        TypeStructure.analyze(int.class),
-        TypeStructure.analyze(int.class)
-    };
 
 //    long actual = RecordPickler.hashSignature(Point.class, components, types);
 //    assertEquals(expected, actual);
@@ -157,9 +153,6 @@ class CompatibilityInternals {
     record Complex(List<Optional<Double>>[] data) {
     }
     var components = Complex.class.getRecordComponents();
-    TypeStructure[] types = new TypeStructure[]{
-        TypeStructure.analyze(components[0].getGenericType())
-    };
 
 //    long actual = PicklerImpl.hashRecordSignature(Complex.class, components, types);
 //    assertEquals(expected, actual);
@@ -192,17 +185,10 @@ class CompatibilityInternals {
     // Compute expected signatures using the static method
     // RecordA
     var componentsA = RecordA.class.getRecordComponents();
-    TypeStructure[] typesA = new TypeStructure[]{
-        TypeStructure.analyze(String.class)
-    };
 //    long expectedA = PicklerImpl.hashRecordSignature(RecordA.class, componentsA, typesA);
 
     // RecordB
     var componentsB = RecordB.class.getRecordComponents();
-    TypeStructure[] typesB = new TypeStructure[]{
-        TypeStructure.analyze(int.class),
-        TypeStructure.analyze(double.class)
-    };
 //    long expectedB = PicklerImpl.hashRecordSignature(RecordB.class, componentsB, typesB);
 
     // They should be in lexicographic order: RecordA before RecordB
