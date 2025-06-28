@@ -43,4 +43,15 @@ public class PaxosTests {
       assert deserialized.equals(original[i]); // Verify that the deserialized record matches the original
     });
   }
+
+  @Test
+  void testAcceptNoop() {
+    // Test serialization of Accept with NoOperation
+    final var pickler = Pickler.forClass(Accept.class);
+    final var buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, original[0]); // Serialize the first Accept record
+    buffer.flip(); // Prepare the buffer for reading
+    final var deserialized = pickler.deserialize(buffer); // Deserialize the Accept record
+    assert deserialized.equals(original[0]); // Verify that the deserialized record matches the original
+  }
 }

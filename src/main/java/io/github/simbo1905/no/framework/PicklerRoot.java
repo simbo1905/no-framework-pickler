@@ -39,7 +39,9 @@ final class PicklerRoot<R> implements Pickler<R> {
       final long signature = switch (pickler) {
         case RecordPickler<?> rp -> rp.typeSignature;
         case EmptyRecordPickler<?> erp -> erp.typeSignature;
-        default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
+        default -> {
+          throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
+        }
       };
       LOGGER.finer(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
       typeSignatureToPicklerMap.put(signature, pickler);
@@ -123,6 +125,10 @@ final class PicklerRoot<R> implements Pickler<R> {
     switch (pickler) {
       case RecordPickler<?> rp -> {
         // The type signature was already validated at the root level
+        LOGGER.fine(() -> "RecordPickler deserializing record of type " + rp.userType.getSimpleName() +
+            " at position: " + buffer.position() +
+            " with type signature: 0x" + Long.toHexString(typeSignature));
+        //noinspection unchecked
         return (R) rp.readFromWire(buffer);
       }
       case EmptyRecordPickler<?> erp -> {
