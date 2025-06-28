@@ -923,6 +923,7 @@ public class RefactorTests {
   void testEmptyArrays() {
     // Create a record with empty arrays
     final var original = new ArrayExample(
+        new String[0],
         new boolean[0],
         new byte[0],
         new short[0],
@@ -931,7 +932,6 @@ public class RefactorTests {
         new long[0],
         new float[0],
         new double[0],
-        new String[0],
         new UUID[0],
         new Person[0]
     );

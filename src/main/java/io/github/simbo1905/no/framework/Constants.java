@@ -25,7 +25,6 @@ enum Constants {
   ENUM(0),
   ARRAY(0),
   ARRAY_OBJ(0),
-  ARRAY_REF(0),
   MAP(0),
   LIST(0),
   RECORD(0),

@@ -98,6 +98,7 @@ final class ManyPickler<R> implements Pickler<R> {
           " buffer remaining bytes: " + buffer.remaining() + " limit: " +
           buffer.limit() + " capacity: " + buffer.capacity()
       );
+      // FIXME we should also handle EmptyRecordPickler here
       @SuppressWarnings("unchecked") final var r = ((RecordPickler<R>) pickler).writeToWire(buffer, record);
       return r;
     } else {

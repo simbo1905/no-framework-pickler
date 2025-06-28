@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905.no.framework.model;
 
 import java.util.UUID;
 
 public record ArrayExample(
+    String[] stringArray,
     boolean[] booleanArray,
     byte[] byteArray,
     short[] shortArray,
@@ -13,7 +15,6 @@ public record ArrayExample(
     long[] longArray,
     float[] floatArray,
     double[] doubleArray,
-    String[] stringArray,
     UUID[] uuidArray,
     Person[] personArray
 ) {

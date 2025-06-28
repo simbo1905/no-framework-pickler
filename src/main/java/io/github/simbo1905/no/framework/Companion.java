@@ -95,66 +95,6 @@ class Companion {
     };
   }
 
-  static BiConsumer<ByteBuffer, Object> buildReferenceArrayWriterInner(TypeExpr.RefValueType refType) {
-    return (buffer, object) -> {
-      Object[] array = (Object[]) object;
-      ZigZagEncoding.putInt(buffer, Constants.ARRAY_REF.marker());
-      ZigZagEncoding.putInt(buffer, array.length);
-
-      // Write each element based on reference type
-      for (Object item : array) {
-        switch (refType) {
-          case STRING -> {
-            String str = (String) item;
-            byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
-            ZigZagEncoding.putInt(buffer, bytes.length);
-            buffer.put(bytes);
-          }
-          case INTEGER -> buffer.putInt((Integer) item);
-          case BOOLEAN -> buffer.put((byte) ((Boolean) item ? 1 : 0));
-          // Add other reference types as needed
-          default -> throw new UnsupportedOperationException("Unsupported ref type: " + refType);
-        }
-      }
-    };
-  }
-
-  static Function<ByteBuffer, Object> buildReferenceArrayReader(TypeExpr.RefValueType refType) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.ARRAY_REF.marker() : "Expected ARRAY_REF marker";
-      int length = ZigZagEncoding.getInt(buffer);
-
-      return switch (refType) {
-        case STRING -> {
-          String[] array = new String[length];
-          for (int i = 0; i < length; i++) {
-            int strLength = ZigZagEncoding.getInt(buffer);
-            byte[] bytes = new byte[strLength];
-            buffer.get(bytes);
-            array[i] = new String(bytes, StandardCharsets.UTF_8);
-          }
-          yield array;
-        }
-        case INTEGER -> {
-          Integer[] array = new Integer[length];
-          for (int i = 0; i < length; i++) {
-            array[i] = buffer.getInt();
-          }
-          yield array;
-        }
-        case BOOLEAN -> {
-          Boolean[] array = new Boolean[length];
-          for (int i = 0; i < length; i++) {
-            array[i] = buffer.get() != 0;
-          }
-          yield array;
-        }
-        default -> throw new UnsupportedOperationException("Unsupported ref type: " + refType);
-      };
-    };
-  }
-
   public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
     LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
     return switch (primitiveType) {
@@ -515,4 +455,8 @@ class Companion {
     }
   }
 
+  static final Set<Class<?>> BOXED_PRIMITIVES = Set.of(
+      Byte.class, Short.class, Integer.class, Long.class,
+      Float.class, Double.class, Character.class, Boolean.class
+  );
 }

@@ -5,10 +5,14 @@
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+import static io.github.simbo1905.no.framework.Companion.BOXED_PRIMITIVES;
 import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 
@@ -43,11 +47,6 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
     if (!clazz.isRecord() && !clazz.isEnum() && !clazz.isSealed()) {
       throw new IllegalArgumentException("Class must be a record, enum, or sealed interface: " + clazz);
     }
-
-    final Set<Class<?>> BOXED_PRIMITIVES = Set.of(
-        Byte.class, Short.class, Integer.class, Long.class,
-        Float.class, Double.class, Character.class, Boolean.class
-    );
 
     final var recordClassHierarchy = recordClassHierarchy(clazz);
 
@@ -84,9 +83,17 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
     if (recordClasses.size() == 1) {
-      // If there is only one record class, we can return a RecordPickler
-      LOGGER.info("Creating RecordPickler for single record class: " + recordClasses.getFirst().getSimpleName());
-      return new RecordPickler<>(recordClasses.getFirst(), enumToTypeSignatureMap);
+      final var first = recordClasses.getFirst();
+      final var components = first.getRecordComponents();
+      if (components.length == 0) {
+        // If the record has no components, we can return an EmptyRecordPickler
+        LOGGER.info("Creating EmptyRecordPickler for record class: " + first.getSimpleName());
+        return new EmptyRecordPickler<>(first);
+      } else {
+        // If the record has components, we can return a RecordPickler
+        LOGGER.info("Creating RecordPickler for record class: " + first.getSimpleName());
+        return new RecordPickler<>(first, enumToTypeSignatureMap);
+      }
     } else {
       // If there are multiple record classes return a RecordPickler that will delegate to a RecordPickler
       LOGGER.info("Creating PicklerRoot for multiple record classes: " +
