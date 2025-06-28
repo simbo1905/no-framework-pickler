@@ -26,8 +26,7 @@ import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
-import static io.github.simbo1905.no.framework.PicklerRoot.REGISTRY;
-import static io.github.simbo1905.no.framework.PicklerRoot.resolvePicker;
+import static io.github.simbo1905.no.framework.PicklerRoot.*;
 
 final class RecordPickler<T> implements Pickler<T> {
   static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
@@ -45,62 +44,67 @@ final class RecordPickler<T> implements Pickler<T> {
   final ToIntFunction<Object>[] componentSizers; // Sizer lambda
   final Map<Long, Pickler<?>> typeSignatureToPicklerMap;
   final Map<Class<?>, Long> recordClassToTypeSignatureMap;
-  final Map<Long, Class<Enum<?>>> typeSignatureToEnumMap;
   final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap;
+  final Map<Long, Class<Enum<?>>> typeSignatureToEnumMap;
 
-  public RecordPickler(@NotNull Class<?> userType) {
-    LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " construction starting for " + userType.getSimpleName());
+  public RecordPickler(@NotNull Class<?> userType, final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+    assert userType.isRecord() && enumToTypeSignatureMap != null;
     this.userType = userType;
-
-    // resolve any nested record type or nested enum types
-    final Map<Boolean, List<Class<?>>> recordsAndEnums =
-        recordClassHierarchy(userType)
-            .filter(cls -> cls.isRecord() || cls.isEnum())
-            .filter(cls -> !userType.equals(cls))
-            .collect(Collectors.partitioningBy(Class::isRecord));
-
-    LOGGER.fine(() -> "RecordPickler " + userType + " resolve componentPicker for " + recordsAndEnums.get(Boolean.TRUE).stream().map(Class::getSimpleName)
-        .collect(Collectors.joining(", ")) + " followed by type signatures for enums " +
-        recordsAndEnums.get(Boolean.FALSE).stream().map(Class::getSimpleName)
-            .collect(Collectors.joining(",")));
-    // create or resolve any picklers for records and enums
-    final var picklers = recordsAndEnums.get(Boolean.TRUE).stream()
-        .collect(Collectors.toMap(clz -> clz,
-            clz ->
-                REGISTRY.computeIfAbsent(clz, PicklerRoot::componentPicker)));
-
-    // Create a map of type signatures to picklers
-    this.typeSignatureToPicklerMap = picklers.values().stream().map(pickler -> Map.entry(switch (pickler) {
-      case RecordPickler<?> rp -> rp.typeSignature;
-      case EmptyRecordPickler<?> erp -> erp.typeSignature;
-      default ->
-          throw new IllegalArgumentException("Record Pickler " + userType.getSimpleName() + " unexpected pickler type: " + pickler.getClass());
-    }, pickler)).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-    LOGGER.fine(() -> "RecordPickler " + userType + " typeSignatureToPicklerMap contents: " +
-        typeSignatureToPicklerMap.entrySet().stream()
-            .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue())
-            .collect(Collectors.joining(", ")));
-
-    // Create the inverse map of picklers to type signatures
-    this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(classAndPickler -> Map.entry(classAndPickler.getKey(), switch (classAndPickler.getValue()) {
-      case RecordPickler<?> rp -> rp.typeSignature;
-      case EmptyRecordPickler<?> erp -> erp.typeSignature;
-      default ->
-          throw new IllegalArgumentException("Record Pickler " + userType.getSimpleName() + " unexpected pickler type: " + classAndPickler.getValue());
-    })).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
-    // Create a map of enum classes to their type signatures
-    this.enumToTypeSignatureMap = recordsAndEnums.get(Boolean.FALSE).stream()
-        .map(cls -> {
-          //noinspection unchecked
-          return (Class<Enum<?>>) cls;
-        })
-        .map(enumClass -> Map.entry(enumClass, Companion.hashEnumSignature(enumClass)))
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-
+    this.enumToTypeSignatureMap = enumToTypeSignatureMap;
     // Create the inverse map of type signatures to enum classes
-    this.typeSignatureToEnumMap = enumToTypeSignatureMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+    typeSignatureToEnumMap = enumToTypeSignatureMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+    final Set<Class<?>> recordClassHierarchy = recordClassHierarchy(userType);
+
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " record class hierarchy: " + recordClassHierarchy.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
+
+    if (recordClassHierarchy.size() > 1) {
+      // resolve any nested record type or nested enum types
+      final Map<Boolean, List<Class<?>>> userTypesAndOthers =
+          recordClassHierarchy.stream()
+              .filter(cls -> !userType.equals(cls))
+              .collect(Collectors.partitioningBy(
+                  cls -> cls.isRecord() || cls.isEnum()
+              ));
+
+      LOGGER.fine(() -> "RecordPickler " + userType + " resolve componentPicker for " + userTypesAndOthers.get(Boolean.TRUE).stream().map(Class::getSimpleName)
+          .collect(Collectors.joining(", ")) + " followed by type signatures for enums " +
+          userTypesAndOthers.get(Boolean.FALSE).stream().map(Class::getSimpleName)
+              .collect(Collectors.joining(",")));
+
+      // create or resolve any picklers for records and enums
+      final var picklers = userTypesAndOthers.get(Boolean.TRUE).stream()
+          .filter(Class::isRecord)
+          .collect(Collectors.toMap(clz -> clz,
+              clz ->
+                  REGISTRY.computeIfAbsent(clz, c -> resolvePickerNoCache(c, enumToTypeSignatureMap))));
+
+      // Create a map of type signatures to picklers
+      this.typeSignatureToPicklerMap = picklers.values().stream().map(pickler -> Map.entry(switch (pickler) {
+        case RecordPickler<?> rp -> rp.typeSignature;
+        case EmptyRecordPickler<?> erp -> erp.typeSignature;
+        default ->
+            throw new IllegalArgumentException("Record Pickler " + userType.getSimpleName() + " unexpected pickler type: " + pickler.getClass());
+      }, pickler)).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+      LOGGER.fine(() -> "RecordPickler " + userType + " typeSignatureToPicklerMap contents: " +
+          typeSignatureToPicklerMap.entrySet().stream()
+              .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue())
+              .collect(Collectors.joining(", ")));
+
+      // Create the inverse map of picklers to type signatures
+      this.recordClassToTypeSignatureMap = picklers.entrySet().stream().map(classAndPickler -> Map.entry(classAndPickler.getKey(), switch (classAndPickler.getValue()) {
+        case RecordPickler<?> rp -> rp.typeSignature;
+        case EmptyRecordPickler<?> erp -> erp.typeSignature;
+        default ->
+            throw new IllegalArgumentException("Record Pickler " + userType.getSimpleName() + " unexpected pickler type: " + classAndPickler.getValue());
+      })).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+      // Create a map of enum classes to their type signatures
+    } else {
+      this.typeSignatureToPicklerMap = Map.of();
+      this.recordClassToTypeSignatureMap = Map.of();
+    }
 
     // Get component accessors and analyze types
     RecordComponent[] components = userType.getRecordComponents();
@@ -390,7 +394,7 @@ final class RecordPickler<T> implements Pickler<T> {
       // For enums, we store the ordinal and type signature
       return Long.BYTES + Integer.BYTES; // typeSignature + ordinal
     } else if (object instanceof Record) {
-      final var otherPickler = resolvePicker(object.getClass());
+      final var otherPickler = resolvePicker(object.getClass(), this.enumToTypeSignatureMap);
       LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " maxSizeOf() delegating to other pickler for record type: " + object.getClass().getSimpleName());
       return otherPickler.maxSizeOf(object);
     } else {
@@ -461,7 +465,7 @@ final class RecordPickler<T> implements Pickler<T> {
         LOGGER.fine(() -> "Extracted value is null, writing 0L marker");
         ZigZagEncoding.putLong(buffer, 0L); // write a marker for null
       } else {
-        LOGGER.fine(() -> "Extracted value is not null, delegating to writer");
+        LOGGER.fine(() -> "Extracted value is not null, delegating to writer: " + value);
         delegate.accept(buffer, value);
       }
     };
@@ -920,7 +924,7 @@ final class RecordPickler<T> implements Pickler<T> {
       case RECORD -> {
         LOGGER.fine(() -> "Building writer chain for Record");
         yield (ByteBuffer buffer, Object record) -> {
-          final var p = REGISTRY.computeIfAbsent(record.getClass(), RecordPickler::new);
+          final var p = REGISTRY.computeIfAbsent(record.getClass(), userType1 -> new RecordPickler<Object>(userType1, enumToTypeSignatureMap));
           switch (p) {
             case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
             case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, record);
@@ -932,13 +936,14 @@ final class RecordPickler<T> implements Pickler<T> {
         LOGGER.fine(() -> "Building writer chain for Interface");
         yield (ByteBuffer buffer, Object record) -> {
           if (record instanceof Enum<?> enumValue) {
-            assert enumToTypeSignatureMap.containsKey(enumValue.getClass()) : "No type signature found for enum class: " + enumValue.getClass().getName() + ", available signatures: " + enumToTypeSignatureMap.keySet();
+            assert enumToTypeSignatureMap.containsKey(enumValue.getClass()) : this + "No type signature found for enum class: " + enumValue.getClass().getName() + ", available signatures: " + enumToTypeSignatureMap.keySet();
             // For enums, we store the ordinal and type signature
             final var typeSignature = enumToTypeSignatureMap.get(enumValue.getClass());
+            LOGGER.fine(() -> this + " writing enum value: " + enumValue + " with type signature: 0x" + Long.toHexString(typeSignature) + " and ordinal: " + enumValue.ordinal() + " at position: " + buffer.position());
             ZigZagEncoding.putLong(buffer, typeSignature);
             ZigZagEncoding.putInt(buffer, enumValue.ordinal());
           } else if (record instanceof Record rec) {
-            final var p = REGISTRY.computeIfAbsent(rec.getClass(), RecordPickler::new);
+            final var p = REGISTRY.computeIfAbsent(rec.getClass(), userType1 -> new RecordPickler<Object>(userType1, enumToTypeSignatureMap));
             switch (p) {
               case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
               case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, rec);

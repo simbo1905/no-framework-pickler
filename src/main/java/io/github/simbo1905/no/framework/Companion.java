@@ -27,8 +27,8 @@ import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
 class Companion {
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
-  static Stream<Class<?>> recordClassHierarchy(final Class<?> current) {
-    return recordClassHierarchyInner(current, new HashSet<>());
+  static Set<Class<?>> recordClassHierarchy(final Class<?> current) {
+    return recordClassHierarchyInner(current, new HashSet<>()).collect(Collectors.toSet());
   }
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components

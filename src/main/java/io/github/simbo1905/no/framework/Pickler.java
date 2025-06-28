@@ -53,7 +53,7 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerRoot, Reco
 
     // Partition the class hierarchy into legal and illegal classes
     final Map<Boolean, List<Class<?>>> legalAndIllegalClasses =
-        recordClassHierarchy.collect(Collectors.partitioningBy(
+        recordClassHierarchy.stream().collect(Collectors.partitioningBy(
             cls -> cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive()
                 || String.class.equals(cls) || UUID.class.isAssignableFrom(cls)
                 || BOXED_PRIMITIVES.contains(cls)
@@ -67,31 +67,31 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, PicklerRoot, Reco
               .map(Class::getName).collect(Collectors.joining(", ")));
     }
 
-    final var legalClasses = legalAndIllegalClasses.get(Boolean.TRUE);
-    if (legalClasses.isEmpty()) {
-      throw new IllegalArgumentException("No  classes of type record or enum found in hierarchy of: " + clazz);
-    }
-
-    // Partition the legal classes into records and enums
-    final var recordsAndEnums = legalClasses.stream()
-        .filter(claz -> claz.isRecord() || claz.isEnum())
-        .collect(Collectors.partitioningBy(Class::isRecord));
-
-    // if there are no records then we have no work to do
-    final var recordClasses = recordsAndEnums.get(Boolean.TRUE);
+    final var recordClasses = legalAndIllegalClasses.get(Boolean.TRUE).stream().filter(Class::isRecord).toList();
     if (recordClasses.isEmpty()) {
       throw new IllegalArgumentException("No record classes found in hierarchy of: " + clazz);
     }
 
+    final var enumClasses = legalAndIllegalClasses.get(Boolean.TRUE).stream().filter(Class::isEnum).toList();
+
+    final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap = enumClasses.stream()
+        .map(cls -> {
+          //noinspection unchecked
+          return (Class<Enum<?>>) cls;
+        })
+        .filter(Enum.class::isAssignableFrom)
+        .map(enumClass -> Map.entry(enumClass, Companion.hashEnumSignature(enumClass)))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
     if (recordClasses.size() == 1) {
       // If there is only one record class, we can return a RecordPickler
       LOGGER.info("Creating RecordPickler for single record class: " + recordClasses.getFirst().getSimpleName());
-      return new RecordPickler<>(recordClasses.getFirst());
+      return new RecordPickler<>(recordClasses.getFirst(), enumToTypeSignatureMap);
     } else {
       // If there are multiple record classes return a RecordPickler that will delegate to a RecordPickler
       LOGGER.info("Creating PicklerRoot for multiple record classes: " +
           recordClasses.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
-      return new PicklerRoot<>(recordClasses);
+      return new PicklerRoot<>(recordClasses, enumToTypeSignatureMap);
     }
   }
 }

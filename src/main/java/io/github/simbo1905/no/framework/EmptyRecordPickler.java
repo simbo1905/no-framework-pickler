@@ -20,9 +20,10 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
 
   public EmptyRecordPickler(Class<?> userType) {
     Objects.requireNonNull(userType);
+    assert userType.isRecord();
     this.userType = userType;
     var components = userType.getRecordComponents();
-    if (components.length != 0) {
+    if (components != null && components.length != 0) {
       throw new IllegalArgumentException("EmptyRecordPickler requires zero components " +
           "but  " + userType.getName() + " has components: " + components.length);
     }

@@ -22,16 +22,18 @@ final class PicklerRoot<R> implements Pickler<R> {
   final Map<Long, Pickler<?>> typeSignatureToPicklerMap;
   final Map<Class<?>, Long> recordClassToTypeSignatureMap;
   final Map<Class<?>, Pickler<?>> picklers;
+  final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap;
 
-  public PicklerRoot(final List<Class<?>> recordClasses) {
+  public PicklerRoot(final List<Class<?>> recordClasses, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     this.userTypes = recordClasses;
+    this.enumToTypeSignatureMap = enumToTypeSignatureMap;
 
     // TODO had to not cache here due to circular cache updates that can be fixed later
     LOGGER.fine(() -> "PicklerRoot resolve componentPicker for " + recordClasses.stream().map(Class::getSimpleName)
         .collect(Collectors.joining(", ")) + " followed by type signatures for enums ");
     picklers = recordClasses.stream().collect(Collectors.toMap(
         clz -> clz,
-        PicklerRoot::resolvePickerNoCache
+        c -> resolvePickerNoCache(c, enumToTypeSignatureMap)
     ));
 
     this.typeSignatureToPicklerMap = new ConcurrentHashMap<>();
@@ -64,14 +66,17 @@ final class PicklerRoot<R> implements Pickler<R> {
         userTypes.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
   }
 
-  static @NotNull Pickler<?> componentPicker(Class<?> userType) {
+  static @NotNull Pickler<?> componentPicker(Class<?> userType,
+                                             Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+    Objects.requireNonNull(userType, "User type must not be null");
+    assert userType.isRecord() : "User type must be a record type: " + userType;
     RecordComponent[] components = userType.getRecordComponents();
     if (components.length == 0) {
       //noinspection rawtypes,unchecked
       return new EmptyRecordPickler(userType);
     } else {
       //noinspection rawtypes,unchecked
-      return new RecordPickler(userType);
+      return new RecordPickler(userType, enumToTypeSignatureMap);
     }
   }
 
@@ -81,7 +86,7 @@ final class PicklerRoot<R> implements Pickler<R> {
     Objects.requireNonNull(record, "Record must not be null");
     if (record.getClass().isRecord()) {
       Class<?> userType = record.getClass();
-      final var pickler = resolvePicker(userType);
+      final var pickler = resolvePicker(userType, this.enumToTypeSignatureMap);
       // Write out the ordinal of the record type to the buffer
       final Long typeSignature = recordClassToTypeSignatureMap.get(record.getClass());
       if (typeSignature == null) {
@@ -147,20 +152,22 @@ final class PicklerRoot<R> implements Pickler<R> {
     if (!userType.isRecord()) {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
-    final var pickler = resolvePicker(userType);
+    final var pickler = resolvePicker(userType, enumToTypeSignatureMap);
     return pickler.maxSizeOf(record);
   }
 
-  static <R> @NotNull Pickler<R> resolvePicker(Class<?> userType) {
+  static <R> @NotNull Pickler<R> resolvePicker(Class<?> userType,
+                                               Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     LOGGER.fine(() -> "PicklerRoot " + userType + " resolve componentPicker for userType: " + userType.getSimpleName());
-    final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType));
+    final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType, enumToTypeSignatureMap));
     //noinspection unchecked
     return (Pickler<R>) pickler;
   }
 
-  static <R> @NotNull Pickler<R> resolvePickerNoCache(Class<?> userType) {
+  static <R> @NotNull Pickler<R> resolvePickerNoCache(Class<?> userType,
+                                                      Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     //noinspection unchecked
-    return (Pickler<R>) componentPicker(userType);
+    return (Pickler<R>) componentPicker(userType, enumToTypeSignatureMap);
   }
 
   @Override

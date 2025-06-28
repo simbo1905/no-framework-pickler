@@ -3,6 +3,7 @@
 //
 package io.github.simbo1905;
 
+import com.github.trex_paxos.AbstractCommand;
 import com.github.trex_paxos.BallotNumber;
 import com.github.trex_paxos.Command;
 import com.github.trex_paxos.NoOperation;
@@ -53,5 +54,20 @@ public class PaxosTests {
     buffer.flip(); // Prepare the buffer for reading
     final var deserialized = pickler.deserialize(buffer); // Deserialize the Accept record
     assert deserialized.equals(original[0]); // Verify that the deserialized record matches the original
+  }
+
+  public record EnumTestRecord(AbstractCommand command) {
+  }
+
+  @Test
+  void testNoOp() {
+    // Test serialization of NoOperation using EnumTestRecord
+    final var pickler = Pickler.forClass(EnumTestRecord.class);
+    final var buffer = ByteBuffer.allocate(1024);
+    final var testWithNoOp = new EnumTestRecord(NoOperation.NOOP);
+    pickler.serialize(buffer, testWithNoOp); // Serialize the record containing NoOperation
+    buffer.flip(); // Prepare the buffer for reading
+    final var deserialized = pickler.deserialize(buffer); // Deserialize the record
+    assert deserialized.equals(testWithNoOp); // Verify that the deserialized record matches the original
   }
 }

@@ -6,9 +6,9 @@ package io.github.simbo1905.no.framework;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.*;
-import java.util.stream.Collectors;
 
 import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -51,7 +51,7 @@ class ArrayInternalTests {
     }
 
     // Test that recordClassHierarchy discovers array types
-    Set<Class<?>> discovered = recordClassHierarchy(TestRecord.class).collect(Collectors.toSet());
+    Set<Class<?>> discovered = new HashSet<>(recordClassHierarchy(TestRecord.class));
 
     // Log what was discovered
     LOGGER.info(() -> "Discovered types: " + discovered.stream()
