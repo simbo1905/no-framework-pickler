@@ -14,7 +14,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-final class PicklerRoot<R> implements Pickler<R> {
+final class ManyPickler<R> implements Pickler<R> {
 
   static final Map<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
@@ -24,12 +24,12 @@ final class PicklerRoot<R> implements Pickler<R> {
   final Map<Class<?>, Pickler<?>> picklers;
   final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap;
 
-  public PicklerRoot(final List<Class<?>> recordClasses, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+  public ManyPickler(final List<Class<?>> recordClasses, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     this.userTypes = recordClasses;
     this.enumToTypeSignatureMap = enumToTypeSignatureMap;
 
     // TODO had to not cache here due to circular cache updates that can be fixed later
-    LOGGER.fine(() -> "PicklerRoot resolve componentPicker for " + recordClasses.stream().map(Class::getSimpleName)
+    LOGGER.fine(() -> "ManyPickler resolve componentPicker for " + recordClasses.stream().map(Class::getSimpleName)
         .collect(Collectors.joining(", ")) + " followed by type signatures for enums ");
     picklers = recordClasses.stream().collect(Collectors.toMap(
         clz -> clz,
@@ -48,7 +48,7 @@ final class PicklerRoot<R> implements Pickler<R> {
       LOGGER.finer(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
       typeSignatureToPicklerMap.put(signature, pickler);
     });
-    LOGGER.fine(() -> "PicklerRoot typeSignatureToPicklerMap contents: " +
+    LOGGER.fine(() -> "ManyPickler typeSignatureToPicklerMap contents: " +
         typeSignatureToPicklerMap.entrySet().stream()
             .map(entry -> "0x" + Long.toHexString(entry.getKey()) + " -> " + entry.getValue())
             .collect(Collectors.joining(", ")));
@@ -62,7 +62,7 @@ final class PicklerRoot<R> implements Pickler<R> {
                 })
         )
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-    LOGGER.fine(() -> "PicklerRoot construction complete for user types: " +
+    LOGGER.fine(() -> "ManyPickler construction complete for user types: " +
         userTypes.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
   }
 
@@ -86,22 +86,20 @@ final class PicklerRoot<R> implements Pickler<R> {
     Objects.requireNonNull(record, "Record must not be null");
     if (record.getClass().isRecord()) {
       Class<?> userType = record.getClass();
-      final var pickler = resolvePicker(userType, this.enumToTypeSignatureMap);
-      // Write out the ordinal of the record type to the buffer
-      final Long typeSignature = recordClassToTypeSignatureMap.get(record.getClass());
-      if (typeSignature == null) {
-        throw new IllegalArgumentException("No type signature found for record type: " + record.getClass());
+      if (!userTypes.contains(userType)) {
+        throw new IllegalArgumentException("Record type " + userType.getSimpleName() +
+            " is not one of the registered user types: " + userTypes.stream()
+            .map(Class::getSimpleName).collect(Collectors.joining(", ")));
       }
-
-      LOGGER.fine(() -> "PicklerRoot Serializing record  " + userType.getSimpleName() +
+      final var pickler = this.picklers.get(userType);
+      LOGGER.fine(() -> "ManyPickler Serializing record  " + userType.getSimpleName() +
           " hashCode " + record.hashCode() +
           " position " + buffer.position() +
-          " typeSignature 0x" + Long.toHexString(typeSignature) +
           " buffer remaining bytes: " + buffer.remaining() + " limit: " +
           buffer.limit() + " capacity: " + buffer.capacity()
       );
-      //noinspection,unchecked
-      return ((RecordPickler<R>) pickler).writeToWire(buffer, record);
+      @SuppressWarnings("unchecked") final var r = ((RecordPickler<R>) pickler).writeToWire(buffer, record);
+      return r;
     } else {
       throw new IllegalArgumentException("Record must be a record type: " + record.getClass());
     }
@@ -113,20 +111,17 @@ final class PicklerRoot<R> implements Pickler<R> {
     buffer.order(ByteOrder.BIG_ENDIAN);
     final long startPosition = buffer.position();
     final var typeSignature = buffer.getLong();
-    final var pickler = typeSignatureToPicklerMap.get(typeSignature);
-
-    if (pickler == null) {
-      throw new IllegalArgumentException("PicklerRoot no pickler found for typeSignature: " + typeSignature + " at position " + startPosition +
+    if (!typeSignatureToPicklerMap.containsKey(typeSignature)) {
+      throw new IllegalArgumentException("ManyPickler no pickler found for typeSignature: " + typeSignature + " at position " + startPosition +
           " buffer remaining bytes: " + buffer.remaining() + " limit: " +
           buffer.limit() + " capacity: " + buffer.capacity());
     }
-
-    LOGGER.fine(() -> "PicklerRoot deserializing position " + startPosition +
+    final var pickler = typeSignatureToPicklerMap.get(typeSignature);
+    LOGGER.fine(() -> "ManyPickler deserializing position " + startPosition +
         " typeSignature 0x" + Long.toHexString(typeSignature) +
         " buffer remaining bytes: " + buffer.remaining() + " limit: " +
         buffer.limit() + " capacity: " + buffer.capacity()
     );
-
     switch (pickler) {
       case RecordPickler<?> rp -> {
         // The type signature was already validated at the root level
@@ -158,7 +153,7 @@ final class PicklerRoot<R> implements Pickler<R> {
 
   static <R> @NotNull Pickler<R> resolvePicker(Class<?> userType,
                                                Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    LOGGER.fine(() -> "PicklerRoot " + userType + " resolve componentPicker for userType: " + userType.getSimpleName());
+    LOGGER.fine(() -> "ManyPickler " + userType + " resolve componentPicker for userType: " + userType.getSimpleName());
     final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType, enumToTypeSignatureMap));
     //noinspection unchecked
     return (Pickler<R>) pickler;
@@ -172,7 +167,7 @@ final class PicklerRoot<R> implements Pickler<R> {
 
   @Override
   public String toString() {
-    return "PicklerRoot{" +
+    return "ManyPickler{" +
         "typeSignatureToPicklerMap=" + typeSignatureToPicklerMap.entrySet().stream()
         .map(e -> e.getKey() + "->" + e.getValue()) +
         '}';

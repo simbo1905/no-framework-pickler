@@ -26,7 +26,7 @@ import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
-import static io.github.simbo1905.no.framework.PicklerRoot.*;
+import static io.github.simbo1905.no.framework.ManyPickler.*;
 
 final class RecordPickler<T> implements Pickler<T> {
   static final CompatibilityMode COMPATIBILITY_MODE = CompatibilityMode.valueOf(System.getProperty("no.framework.Pickler.Compatibility", "DISABLED"));
@@ -226,16 +226,37 @@ final class RecordPickler<T> implements Pickler<T> {
       case ENUM -> enumValueReader();
       case RECORD -> recordValueReader();
       case INTERFACE -> (buffer) -> {
+        final int positionBeforeRead = buffer.position();
         long typeSignature = buffer.getLong();
         if (typeSignature == 0L) {
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record at position: " + buffer.position());
           return null; // null marker
         }
         if (typeSignatureToEnumMap.containsKey(typeSignature)) {
-          return enumValueReader();
+          final int ordinal = ZigZagEncoding.getInt(buffer);
+          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " enumValueReader read ordinal: " + ordinal + ", typeSignature: 0x" + Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
+          Class<?> enumClass = typeSignatureToEnumMap.get(typeSignature);
+          if (enumClass == null) {
+            throw new IllegalStateException("No enum class found for type signature: " + typeSignature);
+          }
+          Enum<?>[] constants = (Enum<?>[]) enumClass.getEnumConstants();
+          if (ordinal < 0 || ordinal >= constants.length) {
+            throw new IndexOutOfBoundsException("Invalid enum ordinal: " + ordinal + " for class: " + enumClass.getSimpleName());
+          }
+          return constants[ordinal];
         } else if (typeSignatureToPicklerMap.containsKey(typeSignature)) {
-          // FIXME we we should have a fast path to read self without delegation
-          return recordValueReader();
+          Pickler<?> pickler = typeSignatureToPicklerMap.get(typeSignature);
+          return switch (pickler) {
+            case EmptyRecordPickler<?> erp -> {
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read EmptyRecordPickler singleton for class " + erp.userType.getSimpleName() + " record for type signature 0x" + Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
+              yield erp.singleton;
+            }
+            case RecordPickler<?> rp -> {
+              LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " delegating to RecordReader for " + rp.userType.getSimpleName() + " for type signature 0x" + Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
+              yield rp.readFromWire(buffer);
+            }
+            default -> throw new AssertionError("Unexpected pickler class: " + pickler.getClass());
+          };
         } else {
           LOGGER.fine("Available picker type signatures in map: " + typeSignatureToPicklerMap.keySet().stream()
               .map(sig -> "0x" + Long.toHexString(sig))
@@ -325,9 +346,7 @@ final class RecordPickler<T> implements Pickler<T> {
 
   int writeToWire(ByteBuffer buffer, T record) {
     final var startPosition = buffer.position();
-    LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " writeToWire record " + record.getClass().getSimpleName() + " hashCode " + record.hashCode() + " position " + startPosition + " typeSignature 0x" + Long.toHexString(typeSignature) + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
-    // write the signature first as it is a cryptographic hash of the class name and component metadata and fixed size
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writeToWire writing type signature 0x" + Long.toHexString(typeSignature) + " at position: " + buffer.position());
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writeToWire writing type signature 0x" + Long.toHexString(typeSignature) + " for class  " + record.getClass().getSimpleName() + " at position: " + buffer.position());
     buffer.putLong(typeSignature);
     serializeRecordComponents(buffer, record);
     final var totalBytes = buffer.position() - startPosition;
@@ -940,7 +959,7 @@ final class RecordPickler<T> implements Pickler<T> {
             // For enums, we store the ordinal and type signature
             final var typeSignature = enumToTypeSignatureMap.get(enumValue.getClass());
             LOGGER.fine(() -> this + " writing enum value: " + enumValue + " with type signature: 0x" + Long.toHexString(typeSignature) + " and ordinal: " + enumValue.ordinal() + " at position: " + buffer.position());
-            ZigZagEncoding.putLong(buffer, typeSignature);
+            buffer.putLong(typeSignature);
             ZigZagEncoding.putInt(buffer, enumValue.ordinal());
           } else if (record instanceof Record rec) {
             final var p = REGISTRY.computeIfAbsent(rec.getClass(), userType1 -> new RecordPickler<Object>(userType1, enumToTypeSignatureMap));
