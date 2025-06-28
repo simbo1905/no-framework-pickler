@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-FileCopyrightText: 2025 Simon Massey  
 // SPDX-License-Identifier: Apache-2.0
 //
 package io.github.simbo1905.no.framework;
@@ -152,8 +152,8 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " begin building writer/reader/sizer chains for component " + i + " with type " + typeExpr.toTreeString());
       // Build writer, reader, and sizer chains
       componentWriters[i] = buildWriterChainFromAST(typeExpr, accessor);
-      componentSizers[i] = buildSizerChainFromAST(typeExpr, accessor);
       componentReaders[i] = buildReaderChainFromAST(typeExpr);
+      componentSizers[i] = buildSizerChainFromAST(typeExpr, accessor);
       LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " end writer/reader/sizer chains for component " + i + " with type " + typeExpr.toTreeString());
     });
 
@@ -208,25 +208,63 @@ final class RecordPickler<T> implements Pickler<T> {
         buffer.get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
       };
-      case ENUM -> (buffer) -> {
-        int ordinal = ZigZagEncoding.getInt(buffer);
-        long typeSignature = ZigZagEncoding.getLong(buffer);
-        Class<?> enumClass = typeSignatureToEnumMap.get(typeSignature);
-        if (enumClass == null) {
-          throw new IllegalStateException("No enum class found for type signature: " + typeSignature);
-        }
-        Enum<?>[] constants = (Enum<?>[]) enumClass.getEnumConstants();
-        if (ordinal < 0 || ordinal >= constants.length) {
-          throw new IndexOutOfBoundsException("Invalid enum ordinal: " + ordinal + " for class: " + enumClass.getSimpleName());
-        }
-        return constants[ordinal];
-      };
-      case RECORD -> (buffer) -> {
-        throw new AssertionError("not implemented yet");
-      };
+      case ENUM -> enumValueReader();
+      case RECORD -> recordValueReader();
       case INTERFACE -> (buffer) -> {
-        throw new AssertionError("not implemented yet");
+        long typeSignature = buffer.getLong();
+        if (typeSignature == 0L) {
+          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record at position: " + buffer.position());
+          return null; // null marker
+        }
+        if (typeSignatureToEnumMap.containsKey(typeSignature)) {
+          return enumValueReader();
+        } else if (typeSignatureToPicklerMap.containsKey(typeSignature)) {
+          // FIXME we we should have a fast path to read self without delegation
+          return recordValueReader();
+        } else {
+          throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " type signature not found in either map: " + Long.toHexString(typeSignature) + " at position: " + buffer.position());
+        }
       };
+    };
+  }
+
+  @NotNull Function<ByteBuffer, Object> recordValueReader() {
+    return (buffer) -> {
+      long typeSignature = buffer.getLong();
+      if (typeSignature == 0L) {
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record at position: " + buffer.position());
+        return null; // null marker
+      }
+      // FIXME we we should have a fast path to read self without delegation
+      assert typeSignatureToPicklerMap.containsKey(typeSignature) : "Type signature not found in map: " + Long.toHexString(typeSignature);
+      Pickler<?> pickler = typeSignatureToPicklerMap.get(typeSignature);
+      return switch (pickler) {
+        case EmptyRecordPickler<?> erp -> {
+          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read empty record for type signature 0x" + Long.toHexString(typeSignature) + " at position: " + buffer.position());
+          yield erp.singleton;
+        }
+        case RecordPickler<?> rp -> {
+          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " delegating to record pickler for type signature 0x" + Long.toHexString(typeSignature) + " at position: " + buffer.position());
+          yield rp.readFromWire(buffer);
+        }
+        default -> throw new AssertionError("Unexpected pickler class: " + pickler.getClass());
+      };
+    };
+  }
+
+  @NotNull Function<ByteBuffer, Object> enumValueReader() {
+    return (buffer) -> {
+      int ordinal = ZigZagEncoding.getInt(buffer);
+      long typeSignature = ZigZagEncoding.getLong(buffer);
+      Class<?> enumClass = typeSignatureToEnumMap.get(typeSignature);
+      if (enumClass == null) {
+        throw new IllegalStateException("No enum class found for type signature: " + typeSignature);
+      }
+      Enum<?>[] constants = (Enum<?>[]) enumClass.getEnumConstants();
+      if (ordinal < 0 || ordinal >= constants.length) {
+        throw new IndexOutOfBoundsException("Invalid enum ordinal: " + ordinal + " for class: " + enumClass.getSimpleName());
+      }
+      return constants[ordinal];
     };
   }
 
@@ -332,7 +370,7 @@ final class RecordPickler<T> implements Pickler<T> {
   }
 
   ///  FIXME this is a fast path for self-pickling records so we need to add it back in
-  @NotNull Function<ByteBuffer, Object> selfPickle(final TypeExpr typeExpr) {
+  @NotNull Function<ByteBuffer, Object> readSelf(final TypeExpr typeExpr) {
     return (ByteBuffer buffer) -> {
       final int positionBeforeRead = buffer.position();
       final long typeSignature = buffer.getLong();
@@ -381,7 +419,8 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static BiConsumer<ByteBuffer, Object> extractAndDelegate(BiConsumer<ByteBuffer, Object> delegate, MethodHandle accessor) {
+  static BiConsumer<ByteBuffer, Object> extractAndDelegate(BiConsumer<ByteBuffer, Object> delegate, MethodHandle
+      accessor) {
     return (buffer, record) -> {
       final Object value;
       try {
@@ -487,7 +526,8 @@ final class RecordPickler<T> implements Pickler<T> {
   }
 
 
-  static ToIntFunction<Object> createMapSizerInner(ToIntFunction<Object> keySizer, ToIntFunction<Object> valueSizer) {
+  static ToIntFunction<Object> createMapSizerInner
+      (ToIntFunction<Object> keySizer, ToIntFunction<Object> valueSizer) {
     return (Object inner) -> {
       if (inner == null) {
         LOGGER.fine(() -> "Map is null, returning size 0");
@@ -744,12 +784,14 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle accessor) {
+  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType
+                                                                                      primitiveType, MethodHandle accessor) {
     LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
     return extractAndDelegate(Companion.buildPrimitiveArrayWriterInner(primitiveType), accessor);
   }
 
-  static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType, MethodHandle methodHandle) {
+  static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType
+                                                                               primitiveType, MethodHandle methodHandle) {
     return extractAndDelegate(Companion.buildPrimitiveValueWriterInner(primitiveType), methodHandle);
   }
 
@@ -848,7 +890,7 @@ final class RecordPickler<T> implements Pickler<T> {
       case RECORD -> {
         LOGGER.fine(() -> "Building writer chain for Record");
         yield (ByteBuffer buffer, Object record) -> {
-          final var p = PicklerRoot.REGISTRY.computeIfAbsent(record.getClass(), RecordPickler::new);
+          final var p = REGISTRY.computeIfAbsent(record.getClass(), RecordPickler::new);
           switch (p) {
             case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
             case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, record);
@@ -866,7 +908,7 @@ final class RecordPickler<T> implements Pickler<T> {
             ZigZagEncoding.putLong(buffer, typeSignature);
             ZigZagEncoding.putInt(buffer, enumValue.ordinal());
           } else if (record instanceof Record rec) {
-            final var p = PicklerRoot.REGISTRY.computeIfAbsent(rec.getClass(), RecordPickler::new);
+            final var p = REGISTRY.computeIfAbsent(rec.getClass(), RecordPickler::new);
             switch (p) {
               case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
               case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, rec);
