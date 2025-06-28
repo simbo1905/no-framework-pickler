@@ -340,9 +340,6 @@ sealed interface TypeExpr permits
     STRING, UUID, ENUM, RECORD,
     INTERFACE;
 
-    boolean isUserType() {
-      return this == ENUM || this == RECORD || this == INTERFACE;
-    }
   }
 
   record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr {

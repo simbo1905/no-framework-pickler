@@ -159,9 +159,9 @@ final class RecordPickler<T> implements Pickler<T> {
       final var typeExpr = componentTypeExpressions[i];
       LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " begin building writer/reader/sizer chains for component " + i + " with type " + typeExpr.toTreeString());
       // Build writer, reader, and sizer chains
-      componentWriters[i] = buildWriterChainFromAST(typeExpr, accessor);
       componentReaders[i] = buildReaderChainFromAST(typeExpr);
       componentSizers[i] = buildSizerChainFromAST(typeExpr, accessor);
+      componentWriters[i] = buildWriterChainFromAST(typeExpr, accessor);
       LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " end writer/reader/sizer chains for component " + i + " with type " + typeExpr.toTreeString());
     });
 
@@ -202,7 +202,7 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
-  @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType, Type javaType) {
+  @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
     LOGGER.fine(() -> "Building reader chain for RefValueType: " + valueType);
     return switch (valueType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
@@ -225,12 +225,8 @@ final class RecordPickler<T> implements Pickler<T> {
         return new String(bytes, StandardCharsets.UTF_8);
       };
       case ENUM -> enumValueReader();
-      case RECORD -> {
-
-        // Delegate to the recordValueReader for the specific type
-        yield recordValueReader();
-
-      }
+      case RECORD -> // Delegate to the recordValueReader for the specific type
+          recordValueReader();
       case INTERFACE -> (buffer) -> {
         final int positionBeforeRead = buffer.position();
         long typeSignature = buffer.getLong();
@@ -238,7 +234,11 @@ final class RecordPickler<T> implements Pickler<T> {
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record at position: " + buffer.position());
           return null; // null marker
         }
-        if (typeSignatureToEnumMap.containsKey(typeSignature)) {
+        if (typeSignature == this.typeSignature) {
+          LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read self type signature 0x" + Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
+          // Fast path for self type signature
+          return readFromWire(buffer);
+        } else if (typeSignatureToEnumMap.containsKey(typeSignature)) {
           final int ordinal = ZigZagEncoding.getInt(buffer);
           LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " enumValueReader read ordinal: " + ordinal + ", typeSignature: 0x" + Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
           Class<?> enumClass = typeSignatureToEnumMap.get(typeSignature);
@@ -355,7 +355,7 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
-  int writeToWire(ByteBuffer buffer, T record) {
+  int writeToWire(ByteBuffer buffer, T record) { // FIXME we ignore the returned type a lot so split it into an inner
     final var startPosition = buffer.position();
     LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writeToWire writing type signature 0x" + Long.toHexString(typeSignature) + " for class  " + record.getClass().getSimpleName() + " at position: " + buffer.position());
     buffer.putLong(typeSignature);
@@ -409,7 +409,7 @@ final class RecordPickler<T> implements Pickler<T> {
       //noinspection unchecked we know by static inspection that this is safe
       return (T) this.recordConstructor.invokeWithArguments(components);
     } catch (Throwable e) {
-      throw new RuntimeException("Failed to construct record", e);
+      throw new RuntimeException(e.getMessage(), e);
     }
   }
 
@@ -431,38 +431,6 @@ final class RecordPickler<T> implements Pickler<T> {
       throw new IllegalArgumentException("RecordPickler " + userType.getSimpleName() + " expected a record type " + this.userType.getName() + " but got: " + object.getClass().getName());
     }
   }
-
-  ///  FIXME this is a fast path for self-pickling records so we need to add it back in
-  @NotNull Function<ByteBuffer, Object> readSelf(final TypeExpr typeExpr) {
-    return (ByteBuffer buffer) -> {
-      final int positionBeforeRead = buffer.position();
-      final long typeSignature = buffer.getLong();
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read typeSignature 0x" + Long.toHexString(typeSignature) + " at position " + positionBeforeRead + ", expected 0x" + Long.toHexString(this.typeSignature));
-      if (typeSignature == 0L) {
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read 0L typeSignature to returning null for record " + typeExpr.toTreeString() + " at position: " + positionBeforeRead);
-        return null;
-      }
-      if (typeSignature != this.typeSignature) {
-        throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " type signature mismatch: expected " + Long.toHexString(this.typeSignature) + " but got " + Long.toHexString(typeSignature) + " at position: " + positionBeforeRead);
-      }
-      Object[] args = new Object[componentAccessors.length];
-      IntStream.range(0, componentAccessors.length).forEach(i -> {
-        final int componentPosition = buffer.position();
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader reading component " + i + " at position " + componentPosition);
-        args[i] = componentReaders[i].apply(buffer);
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader read component " + i + " value: " + args[i] + " moved to position " + buffer.position());
-      });
-      // Read the record using the record constructor
-      try {
-        Object result = recordConstructor.invokeWithArguments(args);
-        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " self-reader constructed record: " + result);
-        return result;
-      } catch (Throwable e) {
-        throw new RuntimeException("RecordPickler " + userType.getSimpleName() + " failed to construct record of type: " + userType.getSimpleName(), e);
-      }
-    };
-  }
-
 
   static ToIntFunction<Object> extractAndDelegate(ToIntFunction<Object> delegate, MethodHandle accessor) {
     return (Object record) -> {
@@ -524,8 +492,9 @@ final class RecordPickler<T> implements Pickler<T> {
             return createArraySizerInner(refValueSizer);
           }
           default -> {
-            LOGGER.fine(() -> "Building sizer chain for nested array type: " + element.toTreeString());
-            return buildSizerChainFromASTInner(element);
+            LOGGER.fine(() -> "Building sizer chain for array of container type: " + element.toTreeString());
+            final var delegate = buildSizerChainFromASTInner(element);
+            return createArraySizerInner(delegate);
           }
         }
       }
@@ -588,6 +557,11 @@ final class RecordPickler<T> implements Pickler<T> {
           } else if (userType.isAssignableFrom(obj.getClass())) {
             //noinspection unchecked
             return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+          } else if (picklers.containsKey(obj.getClass())) {
+            // Delegate to the recordValueSizer for the specific type
+            final var otherPickler = resolvePicker(obj.getClass(), this.enumToTypeSignatureMap);
+            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " buildValueSizerInner() delegating to other pickler for interface type: " + obj.getClass().getSimpleName());
+            return otherPickler.maxSizeOf(obj);
           } else {
             throw new IllegalArgumentException("Unsupported interface type: " + obj.getClass().getSimpleName());
           }
@@ -664,11 +638,31 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static BiConsumer<ByteBuffer, Object> createArrayWriterInner(BiConsumer<ByteBuffer, Object> elementWriter) {
+  static BiConsumer<ByteBuffer, Object> createArrayRefWriter(BiConsumer<ByteBuffer, Object> elementWriter, TypeExpr element) {
+    LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
+    final int marker = switch (element) {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
+        case BOOLEAN -> Constants.ARRAY_BOOLEAN.marker();
+        case BYTE -> Constants.ARRAY_BYTE.marker();
+        case SHORT -> Constants.ARRAY_SHORT.marker();
+        case CHARACTER -> Constants.ARRAY_CHAR.marker();
+        case INTEGER -> Constants.ARRAY_INT.marker();
+        case LONG -> Constants.ARRAY_LONG.marker();
+        case FLOAT -> Constants.ARRAY_FLOAT.marker();
+        case DOUBLE -> Constants.ARRAY_DOUBLE.marker();
+        case UUID -> Constants.ARRAY_UUID.marker();
+        case ENUM -> Constants.ARRAY_ENUM.marker();
+        case STRING -> Constants.ARRAY_STRING.marker();
+        case RECORD -> Constants.ARRAY_RECORD.marker();
+        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
+      };
+      case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
+      default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
+    };
     return (buffer, value) -> {
       Object[] array = (Object[]) value;
       // Write ARRAY_OBJ marker and length
-      ZigZagEncoding.putInt(buffer, Constants.ARRAY_OBJ.marker());
+      ZigZagEncoding.putInt(buffer, marker);
       ZigZagEncoding.putInt(buffer, array.length);
       // Write each element
       for (Object item : array) {
@@ -720,16 +714,50 @@ final class RecordPickler<T> implements Pickler<T> {
   }
 
   static Function<ByteBuffer, Object> createArrayReader(
-      Function<ByteBuffer, Object> elementReader, Class<?> componentType) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.ARRAY_OBJ.marker() : "Expected ARRAY_OBJ marker";
-      int length = ZigZagEncoding.getInt(buffer);
-      Object[] array = (Object[]) Array.newInstance(componentType, length);
-      for (int i = 0; i < length; i++) {
-        array[i] = elementReader.apply(buffer);
-      }
-      return array;
+      Function<ByteBuffer, Object> elementReader, Class<?> componentType, TypeExpr element) {
+    LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName());
+    final int expectedMarker = switch (element) {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
+        case BOOLEAN -> Constants.ARRAY_BOOLEAN.marker();
+        case BYTE -> Constants.ARRAY_BYTE.marker();
+        case SHORT -> Constants.ARRAY_SHORT.marker();
+        case CHARACTER -> Constants.ARRAY_CHAR.marker();
+        case INTEGER -> Constants.ARRAY_INT.marker();
+        case LONG -> Constants.ARRAY_LONG.marker();
+        case FLOAT -> Constants.ARRAY_FLOAT.marker();
+        case DOUBLE -> Constants.ARRAY_DOUBLE.marker();
+        case UUID -> Constants.ARRAY_UUID.marker();
+        case ENUM -> Constants.ARRAY_ENUM.marker();
+        case STRING -> Constants.ARRAY_STRING.marker();
+        case RECORD -> Constants.ARRAY_RECORD.marker();
+        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
+      };
+      case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
+      default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
+    };
+
+    return switch (element) {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType ignored, Type ignored1) -> buffer -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        if (marker != expectedMarker) {
+          throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
+        }
+        int length = ZigZagEncoding.getInt(buffer);
+        Object[] array = (Object[]) Array.newInstance(componentType, length);
+        Arrays.setAll(array, i -> elementReader.apply(buffer));
+        return array;
+      };
+      case TypeExpr.ArrayNode(var ignored) -> buffer -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        if (marker != expectedMarker) {
+          throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
+        }
+        int length = ZigZagEncoding.getInt(buffer);
+        Object[][] array = (Object[][]) Array.newInstance(componentType, length);
+        Arrays.setAll(array, i -> elementReader.apply(buffer));
+        return array;
+      };
+      default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
     };
   }
 
@@ -768,7 +796,7 @@ final class RecordPickler<T> implements Pickler<T> {
         } else {
           // Nested container arrays
           var elementWriter = buildWriterChainFromASTInner(element);
-          yield createArrayWriterInner(elementWriter);
+          yield createArrayRefWriter(elementWriter, element);
         }
       }
 
@@ -795,17 +823,26 @@ final class RecordPickler<T> implements Pickler<T> {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
           Companion.buildPrimitiveValueReader(primitiveType);
 
-      case TypeExpr.RefValueNode(var refType, var javaType) -> buildValueReader(refType, javaType);
+      case TypeExpr.RefValueNode(var refType, var ignored1) -> buildValueReader(refType);
 
       case TypeExpr.ArrayNode(var element) -> {
-        if (element.isPrimitive()) {
-          var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
-          yield Companion.buildPrimitiveArrayReader(primitiveType);
-        } else {
-          // Nested container arrays
-          var elementReader = buildReaderChainFromAST(element);
-          var componentType = Companion.extractComponentType(element);
-          yield createArrayReader(elementReader, componentType);
+        switch (element) {
+          case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type ignored) -> {
+            LOGGER.fine(() -> "Building sizer chain for primitive array type: " + primitiveType);
+            yield Companion.buildPrimitiveArrayReader(primitiveType);
+          }
+          case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored) -> {
+            LOGGER.fine(() -> "Building sizer chain for reference array type: " + refValueType);
+            final var reader = buildValueReader(refValueType);
+            var componentType = Companion.extractComponentType(element);
+            yield createArrayReader(reader, componentType, element);
+          }
+          default -> {
+            LOGGER.fine(() -> "Building sizer chain for array of container type: " + element.toTreeString());
+            final var elementReader = buildReaderChainFromAST(element);
+            var componentType = Companion.extractComponentType(element);
+            yield createArrayReader(elementReader, componentType, element);
+          }
         }
       }
 
@@ -864,32 +901,6 @@ final class RecordPickler<T> implements Pickler<T> {
     return extractAndDelegate(Companion.buildPrimitiveValueWriterInner(primitiveType), methodHandle);
   }
 
-
-  @NotNull Function<ByteBuffer, Object> buildValueReaderInner(TypeExpr.RefValueType valueType) {
-    LOGGER.fine(() -> "Building reader chain for RefValueType: " + valueType);
-    return switch (valueType) {
-      case BOOLEAN -> (buffer) -> buffer.get() != 0;
-      case BYTE -> ByteBuffer::get;
-      case SHORT -> ByteBuffer::getShort;
-      case CHARACTER -> ByteBuffer::getChar;
-      case INTEGER -> ByteBuffer::getInt;
-      case LONG -> ByteBuffer::getLong;
-      case FLOAT -> ByteBuffer::getFloat;
-      case DOUBLE -> ByteBuffer::getDouble;
-      case UUID -> (buffer) -> {
-        long most = buffer.getLong();
-        long least = buffer.getLong();
-        return new UUID(most, least);
-      };
-      case STRING -> (buffer) -> {
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
-      };
-      default -> throw new AssertionError("not implemented yet ref value type: " + valueType);
-    };
-  }
 
   @NotNull BiConsumer<ByteBuffer, Object> buildValueWriterInner(final TypeExpr.RefValueType refValueType, Type javaType) {
 

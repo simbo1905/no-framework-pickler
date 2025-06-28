@@ -30,7 +30,7 @@ final class ManyPickler<R> implements Pickler<R> {
 
     // TODO had to not cache here due to circular cache updates that can be fixed later
     LOGGER.fine(() -> "ManyPickler resolve componentPicker for " + recordClasses.stream().map(Class::getSimpleName)
-        .collect(Collectors.joining(", ")) + " followed by type signatures for enums ");
+        .collect(Collectors.joining(", ")));
     picklers = recordClasses.stream().collect(Collectors.toMap(
         clz -> clz,
         c -> resolvePickerNoCache(c, enumToTypeSignatureMap)
@@ -41,9 +41,7 @@ final class ManyPickler<R> implements Pickler<R> {
       final long signature = switch (pickler) {
         case RecordPickler<?> rp -> rp.typeSignature;
         case EmptyRecordPickler<?> erp -> erp.typeSignature;
-        default -> {
-          throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
-        }
+        default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
       };
       LOGGER.finer(() -> "Registering type signature: 0x" + Long.toHexString(signature) + " for pickler: " + pickler.getClass().getSimpleName());
       typeSignatureToPicklerMap.put(signature, pickler);
