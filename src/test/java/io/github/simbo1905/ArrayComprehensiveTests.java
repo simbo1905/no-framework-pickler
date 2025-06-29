@@ -54,12 +54,6 @@ public class ArrayComprehensiveTests {
   public record SimpleRecord(String name, int value) implements Serializable {
   }
 
-  public record ComplexRecord(
-      String id,
-      List<Integer> numbers,
-      Map<String, Double> scores
-  ) implements Serializable {
-  }
 
   // Container records for various array scenarios
   public record BoxedArraysRecord(
@@ -71,9 +65,8 @@ public class ArrayComprehensiveTests {
   ) implements Serializable {
   }
 
-  public record RecordArrayRecord(
-      SimpleRecord[] simpleRecords,
-      ComplexRecord[] complexRecords
+  public record RecordArrayRecordSimple(
+      SimpleRecord[] simpleRecords
   ) implements Serializable {
   }
 
@@ -216,7 +209,7 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
-  void testRecordArrays() {
+  void testRecordArraysSimple() {
     LOGGER.info(() -> "Testing arrays of records testRecordArrays");
 
     SimpleRecord[] simpleRecords = {
@@ -225,6 +218,27 @@ public class ArrayComprehensiveTests {
         null,
         new SimpleRecord("", Integer.MIN_VALUE)
     };
+
+    RecordArrayRecordSimple original = new RecordArrayRecordSimple(simpleRecords);
+    testRoundTrip(original, RecordArrayRecordSimple.class);
+  }
+
+
+  public record ComplexRecord(
+      String id,
+      List<Integer> numbers,
+      Map<String, Double> scores
+  ) implements Serializable {
+  }
+
+  public record RecordArrayRecordComplex(
+      ComplexRecord[] complexRecords
+  ) implements Serializable {
+  }
+
+  @Test
+  void testRecordArraysComplex() {
+    LOGGER.info(() -> "Testing arrays of records testRecordArrays");
 
     ComplexRecord[] complexRecords = {
         new ComplexRecord("c1",
@@ -241,8 +255,8 @@ public class ArrayComprehensiveTests {
             }})
     };
 
-    RecordArrayRecord original = new RecordArrayRecord(simpleRecords, complexRecords);
-    testRoundTrip(original, RecordArrayRecord.class);
+    RecordArrayRecordComplex original = new RecordArrayRecordComplex(complexRecords);
+    testRoundTrip(original, RecordArrayRecordComplex.class);
   }
 
   @Test

@@ -25,7 +25,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.*;
-import static io.github.simbo1905.no.framework.ManyPickler.*;
+import static io.github.simbo1905.no.framework.ManyPickler.resolvePicker;
+import static io.github.simbo1905.no.framework.ManyPickler.resolvePickerNoCache;
 
 final class RecordPickler<T> implements Pickler<T> {
   public static final String SHA_256 = "SHA-256";
@@ -285,12 +286,11 @@ final class RecordPickler<T> implements Pickler<T> {
     return (buffer) -> {
       // Read the null marker byte
       byte nullMarker = buffer.get();
-
       if (nullMarker == NULL_MARKER) {
-        LOGGER.finer(() -> "Extracted value is null, writing -1 byte marker at position: " + buffer.position());
+        LOGGER.finer(() -> "Read back NULL_MARKER=-1 byte marker at position: " + buffer.position());
         return null;
       } else if (nullMarker == NOT_NULL_MARKER) {
-        LOGGER.finest(() -> "Read non-null marker (+1), delegating to primitive reader for " + valueType);
+        LOGGER.finest(() -> "Read back NOT_NULL_MARKER=1 delegating to primitive reader for " + valueType);
         return primitiveReader.apply(buffer);
       } else {
         throw new IllegalStateException(
@@ -499,10 +499,10 @@ final class RecordPickler<T> implements Pickler<T> {
           throw new RuntimeException(e.getMessage(), e);
         }
         if (value == null) {
-          LOGGER.finer(() -> "Extracted value is null, writing -1 byte marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Read NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // write a marker for null
         } else {
-          LOGGER.finer(() -> "Extracted value is not null, writing +1 byte marker then delegating to writer: " + value);
+          LOGGER.finer(() -> "Read NOT_NULL_MARKER=1 marker then delegating to writer for value '" + value + "' at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER); // write a marker for null
           delegate.accept(buffer, value);
         }
@@ -653,7 +653,7 @@ final class RecordPickler<T> implements Pickler<T> {
       }
       assert inner instanceof Map<?, ?> : "Expected a Map but got: " + inner.getClass().getName();
       Map<?, ?> map = (Map<?, ?>) inner;
-      int size = Integer.BYTES; // size of the marker
+      int size = Integer.BYTES + Integer.BYTES; // size of the marker and length of the map
       for (Map.Entry<?, ?> entry : map.entrySet()) {
         size += keySizer.applyAsInt(entry.getKey());
         size += valueSizer.applyAsInt(entry.getValue());
@@ -701,7 +701,7 @@ final class RecordPickler<T> implements Pickler<T> {
       }
       assert inner instanceof List<?> : "Expected a List but got: " + inner.getClass().getName();
       List<?> list = (List<?>) inner;
-      int size = Integer.BYTES; // size of the marker
+      int size = Integer.BYTES + Integer.BYTES; // size of the marker and length of the array
       for (Object element : list) {
         size += elementSizer.applyAsInt(element);
       }
@@ -741,10 +741,10 @@ final class RecordPickler<T> implements Pickler<T> {
       // Write each element
       for (Object item : array) {
         if (item == null) {
-          LOGGER.finer(() -> "Array element is null, writing -1 marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Array element is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // write a marker for null
         } else {
-          LOGGER.finer(() -> "Array element is null, writing -1 marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Array element is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER); // write a marker for non-null
           elementWriter.accept(buffer, item);
         }
@@ -763,14 +763,14 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.fine(() -> "Written map marker " + Constants.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
       map.forEach((key, value) -> {
-        LOGGER.finer(() -> "Map value cannot be null, writing +1 marker at position: " + buffer.position());
+        LOGGER.finer(() -> "Map key cannot be so writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
         buffer.put(NOT_NULL_MARKER); // key in a map cannot be null
         keyWriter.accept(buffer, key);
         if (value == null) {
-          LOGGER.finer(() -> "Map value is null, writing -1 marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Map value is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // write a marker for null
         } else {
-          LOGGER.finer(() -> "Map value is not null, writing +1 marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Map value is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER); // write a marker for non-null
           valueWriter.accept(buffer, value);
         }
@@ -970,10 +970,10 @@ final class RecordPickler<T> implements Pickler<T> {
           final var positionBefore = buffer.position();
           byte nullMarker = buffer.get();
           if (nullMarker == NULL_MARKER) {
-            LOGGER.finer(() -> "Read null marker (-1), returning null for an Array positioned at " + positionBefore);
+            LOGGER.finer(() -> "Read NULL_MARKER=-1 marker returning null for an Array positioned at " + positionBefore);
             return null;
           } else if (nullMarker == NOT_NULL_MARKER) {
-            LOGGER.finer(() -> "Read non-null marker (+1), delegating to the specialized array reader positioned at " + positionBefore);
+            LOGGER.finer(() -> "Read non-null NOT_NULL_MARKER=1 marker  delegating to the specialized array reader positioned at " + positionBefore);
             return nonNullArrayReader.apply(buffer);
           } else {
             throw new IllegalStateException(
@@ -992,12 +992,13 @@ final class RecordPickler<T> implements Pickler<T> {
         // Get the inner list reader which assumes data is non-null.
         final Function<ByteBuffer, Object> nonNullListReader = createListReader(elementReader);
 
-        // CORRECT: Wrap the inner reader with the standard null-handler.
         yield (buffer) -> {
           byte nullMarker = buffer.get();
           if (nullMarker == NULL_MARKER) {
+            LOGGER.finer(() -> "Read NULL_MARKER=-1 marker returning null for a List at position: " + (buffer.position() - 1));
             return null;
           } else if (nullMarker == NOT_NULL_MARKER) {
+            LOGGER.finer(() -> "Read non-null NOT_NULL_MARKER=1 marker delegating to the specialized list reader at position: " + (buffer.position() - 1));
             return nonNullListReader.apply(buffer);
           } else {
             throw new IllegalStateException(
@@ -1019,8 +1020,10 @@ final class RecordPickler<T> implements Pickler<T> {
         yield (buffer) -> {
           byte nullMarker = buffer.get();
           if (nullMarker == NULL_MARKER) {
+            LOGGER.finer(() -> "Read NULL_MARKER=-1 marker returning null for an Optional at position: " + (buffer.position() - 1));
             return null; // Handles the case where the Optional field itself is null.
           } else if (nullMarker == NOT_NULL_MARKER) {
+            LOGGER.finer(() -> "Read non-null NOT_NULL_MARKER=1 marker delegating to the specialized optional reader at position: " + (buffer.position() - 1));
             return nonNullOptionalReader.apply(buffer);
           } else {
             throw new IllegalStateException(
@@ -1040,8 +1043,10 @@ final class RecordPickler<T> implements Pickler<T> {
         yield (buffer) -> {
           byte nullMarker = buffer.get();
           if (nullMarker == NULL_MARKER) {
+            LOGGER.finer(() -> "Read NULL_MARKER=-1 marker returning null for a Map at position: " + (buffer.position() - 1));
             return null;
           } else if (nullMarker == NOT_NULL_MARKER) {
+            LOGGER.finer(() -> "Read non-null NOT_NULL_MARKER=1 marker delegating to the specialized map reader at position: " + (buffer.position() - 1));
             return nonNullMapReader.apply(buffer);
           } else {
             throw new IllegalStateException(
@@ -1063,10 +1068,10 @@ final class RecordPickler<T> implements Pickler<T> {
       // Write each element
       for (Object item : list) {
         if (item == null) {
-          LOGGER.finer(() -> "Extracted value is null, writing -1 byte marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Extracted value is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // Write -1 for null
         } else {
-          LOGGER.finer(() -> "Extracted value is not null, writing +1 byte marker at position: " + buffer.position());
+          LOGGER.finer(() -> "Extracted value is present NOT_NULL_MARKER=1 marker at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER); // Write +1 for non-null
           elementWriter.accept(buffer, item); // Delegate to the actual writer
         }
@@ -1079,10 +1084,13 @@ final class RecordPickler<T> implements Pickler<T> {
     return (buffer, value) -> {
       Optional<?> optional = (Optional<?>) value;
       if (optional.isEmpty()) {
+        LOGGER.fine(() -> "Optional is empty, writing EMPTY marker at position: " + buffer.position());
         ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.marker());
       } else {
+        final int positionBeforeWrite = buffer.position();
         ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.marker());
         buffer.put(NOT_NULL_MARKER);
+        LOGGER.fine(() -> "Optional is present wrote OPTIONAL_OF=" + Constants.OPTIONAL_OF.marker() + " followed by NOT_NULL_MARKER=1 at position: " + positionBeforeWrite);
         valueWriter.accept(buffer, optional.get());
       }
     };
@@ -1195,7 +1203,7 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
-  private @NotNull BiConsumer<ByteBuffer, Object> writeRecordToWire(Class<?> clz) {
+  @NotNull BiConsumer<ByteBuffer, Object> writeRecordToWire(Class<?> clz) {
     if (userType.isAssignableFrom(clz)) {
       LOGGER.fine(() -> "Building self writer chain for userType " + userType.getSimpleName());
       return (ByteBuffer buffer, Object record) -> {
@@ -1205,9 +1213,16 @@ final class RecordPickler<T> implements Pickler<T> {
     } else {
       LOGGER.fine(() -> "Building delegating writer chain for Record " + clz.getSimpleName());
       return (ByteBuffer buffer, Object record) -> {
-        final var p = REGISTRY.computeIfAbsent(record.getClass(), userType1 -> new RecordPickler<>(userType1, enumToTypeSignatureMap));
+        if (!picklers.containsKey(record.getClass())) {
+          throw new IllegalArgumentException("No pickler found for record class: " + record.getClass().getName());
+        }
+        final var p = picklers.get(record.getClass());
+        LOGGER.fine(() -> "Delegating to pickler for record type: " + record.getClass().getSimpleName() + " at position: " + buffer.position());
         switch (p) {
-          case EmptyRecordPickler<?> erp -> buffer.putLong(erp.typeSignature);
+          case EmptyRecordPickler<?> erp -> {
+            LOGGER.fine(() -> "Writing empty record pickler with type signature: 0x" + Long.toHexString(erp.typeSignature) + " at position: " + buffer.position());
+            buffer.putLong(erp.typeSignature);
+          }
           case RecordPickler<?> rp -> writeToWireWitness(rp, buffer, record);
           default -> throw new AssertionError("Unexpected pickler type: " + p.getClass());
         }
