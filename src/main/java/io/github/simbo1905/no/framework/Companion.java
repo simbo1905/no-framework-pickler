@@ -5,7 +5,6 @@ package io.github.simbo1905.no.framework;
 
 import org.jetbrains.annotations.NotNull;
 
-import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -408,28 +407,6 @@ class Companion {
       case DOUBLE -> Double.BYTES;
     };
     return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * bytesPerElement;
-  }
-
-  static @NotNull ToIntFunction<Object> buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType, MethodHandle accessor) {
-    final int bytesPerElement = switch (primitiveType) {
-      case BOOLEAN, BYTE -> Byte.BYTES;
-      case SHORT -> Short.BYTES;
-      case CHARACTER -> Character.BYTES;
-      case INTEGER -> Integer.BYTES;
-      case LONG -> Long.BYTES;
-      case FLOAT -> Float.BYTES;
-      case DOUBLE -> Double.BYTES;
-    };
-    return (Object record) -> {
-      final Object value;
-      try {
-        value = accessor.invokeWithArguments(record);
-      } catch (Throwable e) {
-        throw new RuntimeException(e.getMessage(), e);
-      }
-      // type maker, length, element * size
-      return 2 * Integer.BYTES + Array.getLength(value) * bytesPerElement;
-    };
   }
 
   static <X> void writeToWireWitness(RecordPickler<X> rp, ByteBuffer buffer, Object record) {

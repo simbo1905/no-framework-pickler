@@ -344,7 +344,7 @@ sealed interface TypeExpr permits
     BOOLEAN, BYTE, SHORT, CHARACTER,
     INTEGER, LONG, FLOAT, DOUBLE,
     STRING, UUID, ENUM, RECORD,
-    INTERFACE;
+    INTERFACE
 
   }
 
