@@ -78,8 +78,7 @@ final class RecordPickler<T> implements Pickler<T> {
       picklers = userTypesAndOthers.get(Boolean.TRUE).stream()
           .filter(Class::isRecord)
           .collect(Collectors.toMap(clz -> clz,
-              clz ->
-                  REGISTRY.computeIfAbsent(clz, c -> resolvePickerNoCache(c, enumToTypeSignatureMap))));
+              clz -> resolvePickerNoCache(clz, enumToTypeSignatureMap)));
 
       // Create a map of type signatures to picklers
       this.typeSignatureToPicklerMap = picklers.values().stream().map(pickler -> Map.entry(switch (pickler) {
@@ -789,20 +788,38 @@ final class RecordPickler<T> implements Pickler<T> {
 
       case TypeExpr.RefValueNode(var refType, var javaType) -> buildValueWriterInner(refType, javaType);
 
+      // In RecordPickler.buildWriterChainFromASTInner method, replace the existing ArrayNode case:
+
       case TypeExpr.ArrayNode(TypeExpr element) -> {
         LOGGER.fine(() -> "Building writer chain for array of type: " + element.toTreeString());
-        if (element instanceof TypeExpr.PrimitiveValueNode) {
-          // Primitive arrays
-          var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
+        if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored)) {
+          // Primitive arrays (int[], boolean[], etc.) - highly optimized
+          LOGGER.fine(() -> "Using optimized primitive array writer for: " + primitiveType);
           yield Companion.buildPrimitiveArrayWriterInner(primitiveType);
         } else if (element instanceof TypeExpr.RefValueNode) {
-          // Nested container arrays
+          // 1D reference value arrays (String[], UUID[], etc.)
+          LOGGER.fine(() -> "Building 1D reference array writer for: " + element.toTreeString());
           var elementWriter = buildWriterChainFromASTInner(element);
           yield createArrayRefWriter(elementWriter, element);
         } else if (element instanceof TypeExpr.ArrayNode) {
-          // nested arrays
+          // Multi-dimensional arrays (String[][], String[][][], etc.)
+          // Uses recursive delegation - the elementWriter handles the inner array type
+          LOGGER.fine(() -> "Building multi-dimensional array writer for: " + element.toTreeString());
+          var elementWriter = buildWriterChainFromASTInner(element);
+          yield createArrayRefWriter(elementWriter, element);
+          // Note: This reuses createArrayRefWriter which should work for nested arrays
+          // because it casts to Object[] and each element is handled by the recursive elementWriter
+        } else if (element instanceof TypeExpr.ListNode ||
+            element instanceof TypeExpr.OptionalNode ||
+            element instanceof TypeExpr.MapNode) {
+          // Arrays of containers (List[], Optional[], Map[])
+          // this might not work as conflicts with container serialization that may be needed to handle complex nested structures
+          LOGGER.fine(() -> "Attempting to build container array writer for: " + element.toTreeString());
+          var elementWriter = buildWriterChainFromASTInner(element);
+          yield createArrayRefWriter(elementWriter, element);
+        } else {
+          throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
         }
-        throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
       }
 
       case TypeExpr.ListNode(var element) -> {
