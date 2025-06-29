@@ -655,8 +655,20 @@ final class RecordPickler<T> implements Pickler<T> {
       Map<?, ?> map = (Map<?, ?>) inner;
       int size = Integer.BYTES + Integer.BYTES; // size of the marker and length of the map
       for (Map.Entry<?, ?> entry : map.entrySet()) {
-        size += keySizer.applyAsInt(entry.getKey());
-        size += valueSizer.applyAsInt(entry.getValue());
+        Object key = entry.getKey();
+        Object value = entry.getValue();
+
+        // Add size for the key (marker + data)
+        size += Byte.BYTES; // For the key's null/not-null marker
+        if (key != null) {
+          size += keySizer.applyAsInt(key);
+        }
+
+        // Add size for the value (marker + data)
+        size += Byte.BYTES; // For the value's null/not-null marker
+        if (value != null) {
+          size += valueSizer.applyAsInt(value);
+        }
       }
       return size;
     };
@@ -707,11 +719,17 @@ final class RecordPickler<T> implements Pickler<T> {
       }
       assert inner instanceof List<?> : "Expected a List but got: " + inner.getClass().getName();
       List<?> list = (List<?>) inner;
-      int size = Integer.BYTES + Integer.BYTES; // size of the marker and length of the array
-      for (Object element : list) {
-        size += elementSizer.applyAsInt(element);
-      }
-      return size;
+      int baseSize = Integer.BYTES + Integer.BYTES; // size of the marker and length of the array
+      int elementsSize = list.stream().mapToInt(element -> {
+        if (element == null) {
+          // If the element is null, its size is just the 1-byte null marker
+          return Byte.BYTES;
+        } else {
+          // If not null, its size is the 1-byte not-null marker plus the element's own size
+          return Byte.BYTES + elementSizer.applyAsInt(element);
+        }
+      }).sum();
+      return baseSize + elementsSize;
     };
   }
 
@@ -769,9 +787,14 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.fine(() -> "Written map marker " + Constants.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
       map.forEach((key, value) -> {
-        LOGGER.finer(() -> "Map key cannot be so writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
-        buffer.put(NOT_NULL_MARKER); // key in a map cannot be null
-        keyWriter.accept(buffer, key);
+        if (key == null) {
+          LOGGER.finer(() -> "Map key is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
+          buffer.put(NULL_MARKER);
+        } else {
+          LOGGER.finer(() -> "Map key is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
+          buffer.put(NOT_NULL_MARKER);
+          keyWriter.accept(buffer, key);
+        }
         if (value == null) {
           LOGGER.finer(() -> "Map value is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // write a marker for null

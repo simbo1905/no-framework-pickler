@@ -89,19 +89,6 @@ public class ArrayComprehensiveTests {
   ) implements Serializable {
   }
 
-  public record CollectionArrayRecord(
-      List<String>[] stringLists,
-      List<Optional<Integer>>[] optionalIntLists
-  ) implements Serializable {
-  }
-
-  public record MapArrayRecord(
-      Map<Integer, String>[] intStringMaps,
-      Map<String, int[]>[] stringIntArrayMaps,
-      Map<Long, List<String>>[] complexMaps
-  ) implements Serializable {
-  }
-
   public record DeepNestedArrayRecord(
       int[][][] threeDimInts,
       List<Map<String, int[]>>[] crazyNested,
@@ -306,6 +293,12 @@ public class ArrayComprehensiveTests {
     testRoundTrip(original, OptionalArrayRecord.class);
   }
 
+  public record CollectionArrayRecord(
+      List<String>[] stringLists,
+      List<Optional<Integer>>[] optionalIntLists
+  ) implements Serializable {
+  }
+
   @Test
   void testCollectionArrays() {
     LOGGER.info(() -> "Testing arrays of collections testCollectionArrays");
@@ -328,6 +321,13 @@ public class ArrayComprehensiveTests {
         stringLists, optionalIntLists
     );
     testRoundTrip(original, CollectionArrayRecord.class);
+  }
+
+  public record MapArrayRecord(
+      Map<Integer, String>[] intStringMaps,
+      Map<String, int[]>[] stringIntArrayMaps,
+      Map<Long, List<String>>[] complexMaps
+  ) implements Serializable {
   }
 
   @Test
