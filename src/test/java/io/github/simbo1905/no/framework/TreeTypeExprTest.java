@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
@@ -538,6 +539,7 @@ class TreeTypeExprTest {
       );
       TypeExpr actual = TypeExpr.analyze(arrayType);
       assertEquals(expected, actual);
+      assertThat(actual).isEqualTo(expected);
       assertEquals("ARRAY(String)", actual.toTreeString());
     }
 
