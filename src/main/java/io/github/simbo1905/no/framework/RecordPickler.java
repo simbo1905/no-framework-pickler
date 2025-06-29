@@ -450,21 +450,35 @@ final class RecordPickler<T> implements Pickler<T> {
 
   static BiConsumer<ByteBuffer, Object> extractAndDelegate(BiConsumer<ByteBuffer, Object> delegate, MethodHandle
       accessor) {
-    return (buffer, record) -> {
-      final Object value;
-      try {
-        value = accessor.invokeWithArguments(record);
-      } catch (Throwable e) {
-        throw new RuntimeException(e.getMessage(), e);
-      }
-      if (value == null) {
-        LOGGER.fine(() -> "Extracted value is null, writing 0L marker");
-        buffer.putLong(0L); // write a marker for null
-      } else {
-        LOGGER.fine(() -> "Extracted value is not null, delegating to writer: " + value);
+    final Class<?> type = accessor.type().returnType();
+    if (type.isPrimitive()) {
+      return (buffer, record) -> {
+        final Object value;
+        try {
+          value = accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        LOGGER.fine(() -> "Extracted value cannot be null delegating to writer: " + value);
         delegate.accept(buffer, value);
-      }
-    };
+      };
+    } else {
+      return (buffer, record) -> {
+        final Object value;
+        try {
+          value = accessor.invokeWithArguments(record);
+        } catch (Throwable e) {
+          throw new RuntimeException(e.getMessage(), e);
+        }
+        if (value == null) {
+          LOGGER.fine(() -> "Extracted value is null, writing 0L marker");
+          buffer.putLong(0L); // write a marker for null
+        } else {
+          LOGGER.fine(() -> "Extracted value is not null, delegating to writer: " + value);
+          delegate.accept(buffer, value);
+        }
+      };
+    }
   }
 
   ToIntFunction<Object> buildSizerChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
