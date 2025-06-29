@@ -32,7 +32,7 @@ final class RecordPickler<T> implements Pickler<T> {
   static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
   public static final byte NULL_MARKER = (byte) -1;
-  public static final byte NOT_NULL_MARKER = (byte) +1;
+  public static final byte NOT_NULL_MARKER = (byte) 1;
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?> userType;
   final long typeSignature;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
@@ -519,13 +519,13 @@ final class RecordPickler<T> implements Pickler<T> {
     switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type ignored) -> {
         LOGGER.fine(() -> "Building sizer chain for primitive type: " + primitiveType);
-        return Companion.buildPrimitiveValueSizer(primitiveType);
+        return buildPrimitiveValueSizer(primitiveType);
       }
       case TypeExpr.ArrayNode(TypeExpr element) -> {
         switch (element) {
           case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type ignored) -> {
             LOGGER.fine(() -> "Building sizer chain for primitive array type: " + primitiveType);
-            return Companion.buildPrimitiveArraySizerInner(primitiveType);
+            return buildPrimitiveArraySizerInner(primitiveType);
           }
           case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type javaType) -> {
             LOGGER.fine(() -> "Building sizer chain for reference array type: " + refValueType);
@@ -612,6 +612,7 @@ final class RecordPickler<T> implements Pickler<T> {
           if (userType.isAssignableFrom(cls)) {
             yield (Object obj) -> {
               if (obj == null) return Byte.BYTES; // Just the null marker
+              //noinspection unchecked
               return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
             };
           } else {
@@ -628,6 +629,7 @@ final class RecordPickler<T> implements Pickler<T> {
           if (obj instanceof Enum<?> ignored) {
             return Byte.BYTES + Long.BYTES + Integer.BYTES;
           } else if (userType.isAssignableFrom(obj.getClass())) {
+            //noinspection unchecked
             return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
           } else if (picklers.containsKey(obj.getClass())) {
             final var otherPickler = resolvePicker(obj.getClass(), this.enumToTypeSignatureMap);
@@ -726,7 +728,10 @@ final class RecordPickler<T> implements Pickler<T> {
         case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
       };
       case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
-      default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
+      case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Constants.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Constants.ARRAY_OPTIONAL.marker();
+      case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return (buffer, value) -> {
       Object[] array = (Object[]) value;
@@ -809,9 +814,11 @@ final class RecordPickler<T> implements Pickler<T> {
         case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
       };
       case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
-      default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
+      case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Constants.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Constants.ARRAY_OPTIONAL.marker();
+      case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
-
     return switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType ignored, Type ignored1) -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
@@ -823,8 +830,7 @@ final class RecordPickler<T> implements Pickler<T> {
         Arrays.setAll(array, i -> elementReader.apply(buffer));
         return array;
       };
-      // Nested arrays (int[][], String[][][], etc.) - this was the missing case
-      case TypeExpr.ArrayNode(var ignored) -> buffer -> {
+      default -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
         if (marker != expectedMarker) {
           throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
@@ -838,7 +844,6 @@ final class RecordPickler<T> implements Pickler<T> {
         }
         return array;
       };
-      default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
     };
   }
 
@@ -865,8 +870,7 @@ final class RecordPickler<T> implements Pickler<T> {
 
   @NotNull BiConsumer<ByteBuffer, Object> buildWriterChainFromASTInner(TypeExpr typeExpr) {
     return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) ->
-          Companion.buildPrimitiveValueWriterInner(primitiveType);
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriterInner(primitiveType);
 
       case TypeExpr.RefValueNode(var refType, var javaType) -> buildValueWriterInner(refType, javaType);
 
@@ -877,7 +881,7 @@ final class RecordPickler<T> implements Pickler<T> {
         if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored)) {
           // Primitive arrays (int[], boolean[], etc.) - highly optimized
           LOGGER.fine(() -> "Using optimized primitive array writer for: " + primitiveType);
-          yield Companion.buildPrimitiveArrayWriterInner(primitiveType);
+          yield buildPrimitiveArrayWriterInner(primitiveType);
         } else if (element instanceof TypeExpr.RefValueNode) {
           // 1D reference value arrays (String[], UUID[], etc.)
           LOGGER.fine(() -> "Building 1D reference array writer for: " + element.toTreeString());
@@ -937,7 +941,7 @@ final class RecordPickler<T> implements Pickler<T> {
           // This is a 1D PRIMITIVE array (e.g., the component is `int[]`).
           // The Companion reader handles the entire array block and does NOT expect null markers for its elements.
           LOGGER.fine(() -> "Building reader for a primitive array of type: " + primitiveType);
-          nonNullArrayReader = Companion.buildPrimitiveArrayReader(primitiveType);
+          nonNullArrayReader = buildPrimitiveArrayReader(primitiveType);
         } else {
           // This is an array of REFERENCES (e.g., String[], or a nested array like int[][]).
           // The elements of this array CAN be null. Therefore, their reader must be null-aware.
@@ -948,7 +952,7 @@ final class RecordPickler<T> implements Pickler<T> {
           final var elementReader = buildReaderChainFromAST(element);
 
           // The createArrayReader handles the array marker, length, and iteration.
-          var componentType = Companion.extractComponentType(element);
+          var componentType = extractComponentType(element);
           nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         }
 
@@ -1024,18 +1028,11 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  public static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriter(TypeExpr.PrimitiveValueType
-                                                                                      primitiveType, MethodHandle accessor) {
-    LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
-    return extractAndDelegate(Companion.buildPrimitiveArrayWriterInner(primitiveType), accessor);
-  }
-
   static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType
                                                                                primitiveType, MethodHandle methodHandle) {
-    return extractAndDelegate(Companion.buildPrimitiveValueWriterInner(primitiveType), methodHandle);
+    return extractAndDelegate(buildPrimitiveValueWriterInner(primitiveType), methodHandle);
   }
-
-
+  
   @NotNull BiConsumer<ByteBuffer, Object> buildValueWriterInner(final TypeExpr.RefValueType refValueType, Type javaType) {
 
     LOGGER.fine(() -> "Building writer chain for RefValueType: " + refValueType + " with Java type: " + javaType);

@@ -37,7 +37,8 @@ enum Constants {
   ARRAY_ENUM,
   ARRAY_STRING,
   ARRAY_RECORD,
-  ARRAY_INTERFACE, ARRAY_ARRAY;
+  ARRAY_INTERFACE,
+  ARRAY_ARRAY, ARRAY_LIST, ARRAY_MAP, ARRAY_OPTIONAL;
 
   int marker() {
     // Use the Constants enum ordinal, not the tag ordinal!

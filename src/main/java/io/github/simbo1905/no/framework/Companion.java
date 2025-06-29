@@ -494,9 +494,11 @@ class Companion {
         Class<?> componentClass = typeExprToClass(element);
         yield Array.newInstance(componentClass, 0).getClass();
       }
-      case TypeExpr.RefValueNode(var type, var javaType) -> (Class<?>) javaType;
-      case TypeExpr.PrimitiveValueNode(var type, var javaType) -> (Class<?>) javaType;
-      default -> throw new IllegalArgumentException("Unsupported TypeExpr: " + typeExpr);
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.ListNode ignored -> List.class;
+      case TypeExpr.MapNode ignored -> Map.class;
+      case TypeExpr.OptionalNode ignored -> Optional.class;
     };
   }
 
