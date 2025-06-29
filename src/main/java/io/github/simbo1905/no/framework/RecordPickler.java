@@ -802,9 +802,7 @@ final class RecordPickler<T> implements Pickler<T> {
       assert marker == Constants.LIST.marker() : "Expected LIST marker";
       int size = ZigZagEncoding.getInt(buffer);
       List<Object> list = new ArrayList<>(size);
-      for (int i = 0; i < size; i++) {
-        list.add(elementReader.apply(buffer));
-      }
+      IntStream.range(0, size).forEach(i -> list.add(elementReader.apply(buffer)));
       return list;
     };
   }
@@ -989,14 +987,51 @@ final class RecordPickler<T> implements Pickler<T> {
       }
 
       case TypeExpr.ListNode(var element) -> {
+        // Recursively build the full, null-aware reader for the list's elements.
         var elementReader = buildReaderChainFromAST(element);
-        yield createListReader(elementReader);
+
+        // Get the inner list reader which assumes data is non-null.
+        final Function<ByteBuffer, Object> nonNullListReader = createListReader(elementReader);
+
+        // CORRECT: Wrap the inner reader with the standard null-handler.
+        yield (buffer) -> {
+          byte nullMarker = buffer.get();
+          if (nullMarker == NULL_MARKER) {
+            return null;
+          } else if (nullMarker == NOT_NULL_MARKER) {
+            return nonNullListReader.apply(buffer);
+          } else {
+            throw new IllegalStateException(
+                "Invalid null marker byte for a List: " + nullMarker +
+                    " at position " + (buffer.position() - 1)
+            );
+          }
+        };
       }
 
       case TypeExpr.OptionalNode(var wrapped) -> {
+        // Recursively build the full, null-aware reader for the type inside the Optional.
         var valueReader = buildReaderChainFromAST(wrapped);
-        yield createOptionalReader(valueReader);
+
+        // This is the inner reader that assumes the Optional itself is not null.
+        final Function<ByteBuffer, Object> nonNullOptionalReader = createOptionalReader(valueReader);
+
+        // Wrap the inner reader with the standard null-handler.
+        yield (buffer) -> {
+          byte nullMarker = buffer.get();
+          if (nullMarker == NULL_MARKER) {
+            return null; // Handles the case where the Optional field itself is null.
+          } else if (nullMarker == NOT_NULL_MARKER) {
+            return nonNullOptionalReader.apply(buffer);
+          } else {
+            throw new IllegalStateException(
+                "Invalid null marker byte for an Optional: " + nullMarker +
+                    " at position " + (buffer.position() - 1)
+            );
+          }
+        };
       }
+
 
       case TypeExpr.MapNode(var key, var value) -> {
         var keyReader = buildReaderChainFromAST(key);
@@ -1048,6 +1083,7 @@ final class RecordPickler<T> implements Pickler<T> {
         ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.marker());
       } else {
         ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.marker());
+        buffer.put(NOT_NULL_MARKER);
         valueWriter.accept(buffer, optional.get());
       }
     };
