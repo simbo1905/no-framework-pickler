@@ -24,8 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
-import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
+import static io.github.simbo1905.no.framework.Companion.*;
 import static io.github.simbo1905.no.framework.ManyPickler.*;
 
 final class RecordPickler<T> implements Pickler<T> {
@@ -746,14 +745,19 @@ final class RecordPickler<T> implements Pickler<T> {
         Arrays.setAll(array, i -> elementReader.apply(buffer));
         return array;
       };
+      // Nested arrays (int[][], String[][][], etc.) - this was the missing case
       case TypeExpr.ArrayNode(var ignored) -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
         if (marker != expectedMarker) {
           throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
         }
         int length = ZigZagEncoding.getInt(buffer);
-        Object[][] array = (Object[][]) Array.newInstance(componentType, length);
-        Arrays.setAll(array, i -> elementReader.apply(buffer));
+        // Use typeExprToClass to get the correct component type for nested arrays
+        Class<?> componentTypeInner = typeExprToClass(element);
+        Object array = Array.newInstance(componentTypeInner, length);
+        for (int i = 0; i < length; i++) {
+          Array.set(array, i, elementReader.apply(buffer));
+        }
         return array;
       };
       default -> throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
