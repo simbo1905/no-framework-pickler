@@ -51,6 +51,8 @@ class NestedArraysTypeExprTest {
     @DisplayName("3D String array dimensions")
     void test3DStringArrayDimensions() throws NoSuchFieldException {
       Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayThree").getGenericType();
+      LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+
       TypeExpr expected = new TypeExpr.ArrayNode(
           new TypeExpr.ArrayNode(
               new TypeExpr.ArrayNode(
@@ -58,26 +60,38 @@ class NestedArraysTypeExprTest {
               )
           )
       );
+      LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+
       TypeExpr actual = TypeExpr.analyze(arrayType);
+      LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+
       assertEquals(expected, actual);
       assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(ARRAY(String)))");
 
       final int dimensionsActual = getArrayDimensions(actual);
+      LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
       assertThat(dimensionsActual).isEqualTo(3);
 
       final TypeExpr innerReferenceType = getArrayInnerType(actual);
+      LOGGER.finer(() -> "Inner reference type: " + innerReferenceType.toTreeString());
       assertThat(innerReferenceType).isEqualTo(
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
       );
 
       final Object reflectivelyCreated = createArray(String.class, 3);
+      LOGGER.finer(() -> "Reflectively created array type: " + reflectivelyCreated.getClass().getTypeName());
       assertThat(reflectivelyCreated.getClass()).isEqualTo(String[][][].class);
 
       final var sourceArray = NestedArraysTypeExprTest.this.aStringArrayThree;
+      LOGGER.finer(() -> "Source array structure: " + Arrays.deepToString((Object[]) sourceArray));
+
       final Object fullyPopulated = createAndPopulateArray(sourceArray, actual, String.class);
+      LOGGER.finer(() -> "Fully populated array type: " + fullyPopulated.getClass().getTypeName());
 
       // Implement array comparison logic
-      assertTrue(Arrays.deepEquals(sourceArray, (String[][][]) fullyPopulated));
+      boolean arraysEqual = Arrays.deepEquals(sourceArray, (String[][][]) fullyPopulated);
+      LOGGER.finer(() -> "Array comparison result: " + arraysEqual);
+      assertTrue(arraysEqual);
     }
 
     @Test
@@ -132,19 +146,32 @@ class NestedArraysTypeExprTest {
   }
 
   private Object createAndPopulateArray(Object sourceArray, TypeExpr typeExpr, Class<?> javaType) {
+    LOGGER.finer(() -> "Creating and populating array of type: " + typeExpr.toTreeString());
+
     int length = Array.getLength(sourceArray);
+    LOGGER.finer(() -> "Source array length: " + length);
+
     Object newArray = Array.newInstance(
         typeExpr instanceof TypeExpr.ArrayNode ?
             javaType :
             Object.class,
         length
     );
+    LOGGER.finer(() -> "Created new array of type: " + newArray.getClass().getTypeName());
 
     for (int i = 0; i < length; i++) {
       Object element = Array.get(sourceArray, i);
+      int finalI = i;
+      LOGGER.finer(() -> "Processing element " + finalI + ": " + element);
+
       assert typeExpr instanceof TypeExpr.ArrayNode;
-      Array.set(newArray, i, createAndPopulateArray(element, ((TypeExpr.ArrayNode) typeExpr).element(), javaType));
+      Object populatedElement = createAndPopulateArray(element, ((TypeExpr.ArrayNode) typeExpr).element(), javaType);
+      int finalI1 = i;
+      LOGGER.finer(() -> "Populated element " + finalI1 + ": " + populatedElement);
+
+      Array.set(newArray, i, populatedElement);
     }
+    LOGGER.finer(() -> "Array population complete");
     return newArray;
   }
 }
