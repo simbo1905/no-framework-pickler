@@ -757,14 +757,46 @@ final class RecordPickler<T> implements Pickler<T> {
       BiConsumer<ByteBuffer, Object> valueWriter) {
     return (buffer, obj) -> {
       Map<?, ?> map = (Map<?, ?>) obj;
-      // Write MAP marker and size
+      final int positionBeforeWrite = buffer.position();
       ZigZagEncoding.putInt(buffer, Constants.MAP.marker());
       ZigZagEncoding.putInt(buffer, map.size());
+      LOGGER.fine(() -> "Written map marker " + Constants.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
       map.forEach((key, value) -> {
         keyWriter.accept(buffer, key);
-        valueWriter.accept(buffer, value);
+        if (value == null) {
+          LOGGER.finer(() -> "Map value is null, writing -1 marker at position: " + buffer.position());
+          buffer.put(NULL_MARKER); // write a marker for null
+        } else {
+          LOGGER.finer(() -> "Map value is not null, writing +1 marker at position: " + buffer.position());
+          buffer.put(NOT_NULL_MARKER); // write a marker for non-null
+          valueWriter.accept(buffer, value);
+        }
       });
+    };
+  }
+
+  static Function<ByteBuffer, Object> createMapReader(
+      Function<ByteBuffer, Object> keyReader,
+      Function<ByteBuffer, Object> valueReader) {
+    return buffer -> {
+      int positionBeforeRead = buffer.position();
+      int marker = ZigZagEncoding.getInt(buffer);
+      int size = ZigZagEncoding.getInt(buffer);
+      LOGGER.fine(() -> "Read map marker " + marker + " and size " + size + " at position " + positionBeforeRead);
+      Map<Object, Object> map = new HashMap<>(size);
+      IntStream.range(0, size).forEach(i -> {
+        final Object key = keyReader.apply(buffer);
+        final Object value;
+        final byte nullMarker = buffer.get();
+        if (nullMarker == NULL_MARKER) {
+          value = null;
+        } else {
+          value = valueReader.apply(buffer);
+        }
+        map.put(key, value);
+      });
+      return map;
     };
   }
 
@@ -847,22 +879,6 @@ final class RecordPickler<T> implements Pickler<T> {
     };
   }
 
-  static Function<ByteBuffer, Object> createMapReader(
-      Function<ByteBuffer, Object> keyReader,
-      Function<ByteBuffer, Object> valueReader) {
-    return buffer -> {
-      int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.MAP.marker() : "Expected MAP marker";
-      int size = ZigZagEncoding.getInt(buffer);
-      Map<Object, Object> map = new HashMap<>(size);
-      for (int i = 0; i < size; i++) {
-        Object key = keyReader.apply(buffer);
-        Object value = valueReader.apply(buffer);
-        map.put(key, value);
-      }
-      return map;
-    };
-  }
 
   BiConsumer<ByteBuffer, Object> buildWriterChainFromAST(TypeExpr typeExpr, MethodHandle accessor) {
     return extractAndDelegate(buildWriterChainFromASTInner(typeExpr), accessor);
@@ -935,7 +951,6 @@ final class RecordPickler<T> implements Pickler<T> {
 
       case TypeExpr.ArrayNode(var element) -> {
         final Function<ByteBuffer, Object> nonNullArrayReader;
-
         // We must distinguish between an array of primitives and an array of references.
         if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored)) {
           // This is a 1D PRIMITIVE array (e.g., the component is `int[]`).
@@ -990,7 +1005,21 @@ final class RecordPickler<T> implements Pickler<T> {
       case TypeExpr.MapNode(var key, var value) -> {
         var keyReader = buildReaderChainFromAST(key);
         var valueReader = buildReaderChainFromAST(value);
-        yield createMapReader(keyReader, valueReader);
+        // This is the inner reader that assumes data is non-null.
+        final Function<ByteBuffer, Object> nonNullMapReader = createMapReader(keyReader, valueReader);
+        yield (buffer) -> {
+          byte nullMarker = buffer.get();
+          if (nullMarker == NULL_MARKER) {
+            return null;
+          } else if (nullMarker == NOT_NULL_MARKER) {
+            return nonNullMapReader.apply(buffer);
+          } else {
+            throw new IllegalStateException(
+                "Invalid null marker byte for a Map: " + nullMarker +
+                    " at position " + (buffer.position() - 1)
+            );
+          }
+        };
       }
     };
   }
@@ -1032,7 +1061,7 @@ final class RecordPickler<T> implements Pickler<T> {
                                                                                primitiveType, MethodHandle methodHandle) {
     return extractAndDelegate(buildPrimitiveValueWriterInner(primitiveType), methodHandle);
   }
-  
+
   @NotNull BiConsumer<ByteBuffer, Object> buildValueWriterInner(final TypeExpr.RefValueType refValueType, Type javaType) {
 
     LOGGER.fine(() -> "Building writer chain for RefValueType: " + refValueType + " with Java type: " + javaType);

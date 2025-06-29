@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -44,6 +45,7 @@ public class NestedMapTest {
 
   @Test
   void testSimpleNestedMap() {
+    LOGGER.info(() -> "Testing SimpleNestedMap serialization and deserialization testSimpleNestedMap");
     // Map<String, Map<Integer, Double>>
     Map<String, Map<Integer, Double>> data = new HashMap<>();
     Map<Integer, Double> inner1 = new HashMap<>();
@@ -71,6 +73,7 @@ public class NestedMapTest {
 
   @Test
   void testDeepNestedMap() {
+    LOGGER.info(() -> "Testing DeepNestedMap serialization and deserialization testDeepNestedMap");
     // Map<String, Map<Integer, Map<Long, String>>>
     Map<String, Map<Integer, Map<Long, String>>> data = new HashMap<>();
     Map<Integer, Map<Long, String>> level2 = new HashMap<>();
@@ -94,6 +97,7 @@ public class NestedMapTest {
 
   @Test
   void testMapInList() {
+    LOGGER.info(() -> "Testing MapInList serialization and deserialization testMapInList");
     // List<Map<String, Integer>>
     List<Map<String, Integer>> data = List.of(
         Map.of("a", 1, "b", 2),
@@ -117,6 +121,7 @@ public class NestedMapTest {
 
   @Test
   void testMapOfLists() {
+    LOGGER.info(() -> "Testing MapOfLists serialization and deserialization testMapOfLists");
     // Map<String, List<Integer>>
     Map<String, List<Integer>> data = new HashMap<>();
     data.put("evens", List.of(2, 4, 6));
@@ -135,5 +140,29 @@ public class NestedMapTest {
     assertEquals(2, deserialized.mapOfLists().size());
     assertEquals(List.of(2, 4, 6), deserialized.mapOfLists().get("evens"));
     assertEquals(List.of(1, 3, 5), deserialized.mapOfLists().get("odds"));
+  }
+
+  public record SimpleMap(Map<String, Integer> map) {
+  }
+
+  @Test
+  void testSimpleMap() {
+    LOGGER.info(() -> "Testing SimpleMap serialization and deserialization testSimpleMap");
+    // Map<String, Integer>
+    Map<String, Integer> data = Map.of("key1", 1, "key2", 2);
+
+    SimpleMap original = new SimpleMap(data);
+    Pickler<SimpleMap> pickler = Pickler.forClass(SimpleMap.class);
+
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    pickler.serialize(buffer, original);
+    buffer.flip();
+
+    SimpleMap deserialized = pickler.deserialize(buffer);
+
+    assertNotNull(deserialized);
+    assertEquals(2, deserialized.map().size());
+    assertEquals(1, deserialized.map().get("key1"));
+    assertEquals(2, deserialized.map().get("key2"));
   }
 }
