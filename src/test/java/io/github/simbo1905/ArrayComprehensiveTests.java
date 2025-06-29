@@ -790,4 +790,24 @@ public class ArrayComprehensiveTests {
       assertArrayEquals(expected[i], actual[i]);
     }
   }
+
+  // Simple record for testing null handling in arrays
+  public record SimpleNullArrayRecord(
+      String[] stringsWithNull,
+      Integer[] integersWithNull
+  ) implements Serializable {
+  }
+
+  @Test
+  void testSimpleNullArrayHandling() {
+    LOGGER.fine("Testing simple null handling in arrays");
+
+    SimpleNullArrayRecord original = new SimpleNullArrayRecord(
+        new String[]{"hello", null, "world"},
+        new Integer[]{1, null, 3}
+    );
+
+    testRoundTrip(original, SimpleNullArrayRecord.class);
+  }
+
 }
