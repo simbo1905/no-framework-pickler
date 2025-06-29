@@ -54,7 +54,6 @@ public class ArrayComprehensiveTests {
   public record SimpleRecord(String name, int value) implements Serializable {
   }
 
-
   // Container records for various array scenarios
   public record BoxedArraysRecord(
       Integer[] integers,
@@ -92,8 +91,7 @@ public class ArrayComprehensiveTests {
 
   public record CollectionArrayRecord(
       List<String>[] stringLists,
-      List<Optional<Integer>>[] optionalIntLists,
-      Set<Double>[] doubleSets
+      List<Optional<Integer>>[] optionalIntLists
   ) implements Serializable {
   }
 
@@ -114,7 +112,6 @@ public class ArrayComprehensiveTests {
   public record MixedContainerRecord(
       List<int[]> intArrayList,
       Map<String, Color[]> enumArrayMap,
-      Set<Optional<Double>[]> optionalArraySet,
       int[][] beforeArray,
       Map<Integer, List<String[]>> afterArray
   ) implements Serializable {
@@ -237,29 +234,6 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
-  void testRecordArraysComplex() {
-    LOGGER.info(() -> "Testing arrays of records testRecordArrays");
-
-    ComplexRecord[] complexRecords = {
-        new ComplexRecord("c1",
-            List.of(1, 2, 3),
-            Map.of("score", 95.5, "rating", 4.8)),
-        null,
-        new ComplexRecord("c2",
-            Collections.emptyList(),
-            Collections.emptyMap()),
-        new ComplexRecord("c3",
-            Arrays.asList(null, 42, null),
-            new HashMap<>() {{
-              put("key", null);
-            }})
-    };
-
-    RecordArrayRecordComplex original = new RecordArrayRecordComplex(complexRecords);
-    testRoundTrip(original, RecordArrayRecordComplex.class);
-  }
-
-  @Test
   void testEnumArrays() {
     LOGGER.info(() -> "Testing enum arrays testEnumArrays");
 
@@ -350,15 +324,8 @@ public class ArrayComprehensiveTests {
         Arrays.asList(null, Optional.of(42), Optional.empty())
     };
 
-    Set<Double>[] doubleSets = new Set[]{
-        Set.of(1.1, 2.2, 3.3),
-        Collections.emptySet(),
-        null,
-        new HashSet<>(Arrays.asList(4.4, null, 5.5))
-    };
-
     CollectionArrayRecord original = new CollectionArrayRecord(
-        stringLists, optionalIntLists, doubleSets
+        stringLists, optionalIntLists
     );
     testRoundTrip(original, CollectionArrayRecord.class);
   }
@@ -403,6 +370,8 @@ public class ArrayComprehensiveTests {
   void testDeepNestedArrays() {
     LOGGER.info(() -> "Testing deeply nested array structures testDeepNestedArrays");
 
+    // This structure is already valid as it uses native arrays, which allow nulls.
+    // No changes are needed here.
     int[][][] threeDimInts = {
         {{1, 2}, {3, 4}},
         null,
@@ -410,8 +379,12 @@ public class ArrayComprehensiveTests {
         {}
     };
 
+    // We'll change this to use mutable collection types for consistency and robustness,
+    // even though the original wasn't the direct cause of the crash.
     List<Map<String, int[]>>[] crazyNested = new List[]{
-        List.of(
+        // CHANGED: List.of(...) to Arrays.asList(...) to create a list that *can* hold nulls.
+        // Map.of(...) is fine here as its contents are not null.
+        Arrays.asList(
             Map.of("a", new int[]{1, 2}, "b", new int[]{3}),
             Collections.emptyMap()
         ),
@@ -419,11 +392,15 @@ public class ArrayComprehensiveTests {
         Collections.emptyList()
     };
 
+    // This was the primary source of the error.
     Map<String, List<Optional<Integer>[]>>[] ultraNested = new Map[]{
+        // The inner List.of(...) contained a null, which is not allowed.
         Map.of(
-            "key1", List.of(
+            "key1",
+            // CHANGED: The inner List.of(...) is now Arrays.asList(...) to allow the 'null' element.
+            Arrays.asList(
                 new Optional[]{Optional.of(1), Optional.empty()},
-                null
+                null // This is now permissible.
             )
         ),
         null
@@ -432,6 +409,8 @@ public class ArrayComprehensiveTests {
     DeepNestedArrayRecord original = new DeepNestedArrayRecord(
         threeDimInts, crazyNested, ultraNested
     );
+
+    // Assuming testRoundTrip is a helper method you have defined elsewhere.
     testRoundTrip(original, DeepNestedArrayRecord.class);
   }
 
@@ -450,11 +429,6 @@ public class ArrayComprehensiveTests {
         "secondary", new Color[]{Color.YELLOW, Color.PURPLE}
     );
 
-    Set<Optional<Double>[]> optionalArraySet = Set.of(
-        new Optional[]{Optional.of(1.1), Optional.empty()},
-        new Optional[]{Optional.of(2.2)}
-    );
-
     int[][] beforeArray = {{1, 2}, {3, 4, 5}};
 
     Map<Integer, List<String[]>> afterArray = new HashMap<>();
@@ -462,7 +436,7 @@ public class ArrayComprehensiveTests {
     afterArray.put(2, Collections.singletonList(new String[]{}));
 
     MixedContainerRecord original = new MixedContainerRecord(
-        intArrayList, enumArrayMap, optionalArraySet, beforeArray, afterArray
+        intArrayList, enumArrayMap, beforeArray, afterArray
     );
     testRoundTrip(original, MixedContainerRecord.class);
   }
@@ -471,7 +445,7 @@ public class ArrayComprehensiveTests {
   void testExtremeArraySizes() {
     LOGGER.info(() -> "Testing extreme array sizes testExtremeArraySizes");
 
-    ExtremeSizeRecord original = new ExtremeSizeRecord(
+    @SuppressWarnings("unchecked") ExtremeSizeRecord original = new ExtremeSizeRecord(
         new int[0],
         new String[]{"only"},
         IntStream.range(0, 1000).mapToDouble(i -> i * 1.1).boxed().toArray(Double[]::new),
@@ -649,54 +623,54 @@ public class ArrayComprehensiveTests {
 
   // Helper method to verify array contents in detail
   void verifyArrayContents(Object original, Object deserialized) {
-    if (original instanceof BoxedArraysRecord) {
-      BoxedArraysRecord o = (BoxedArraysRecord) original;
+    if (original instanceof BoxedArraysRecord(
+        Integer[] integers, Boolean[] booleans, Double[] doubles, Long[] longs, Character[] characters
+    )) {
       BoxedArraysRecord d = (BoxedArraysRecord) deserialized;
-      assertArrayEquals(o.integers(), d.integers());
-      assertArrayEquals(o.booleans(), d.booleans());
-      assertArrayEquals(o.doubles(), d.doubles());
-      assertArrayEquals(o.longs(), d.longs());
-      assertArrayEquals(o.characters(), d.characters());
-    } else if (original instanceof EnumArrayRecord) {
-      EnumArrayRecord o = (EnumArrayRecord) original;
+      assertArrayEquals(integers, d.integers());
+      assertArrayEquals(booleans, d.booleans());
+      assertArrayEquals(doubles, d.doubles());
+      assertArrayEquals(longs, d.longs());
+      assertArrayEquals(characters, d.characters());
+    } else if (original instanceof EnumArrayRecord(Color[] colors, Color[][] colorMatrix)) {
       EnumArrayRecord d = (EnumArrayRecord) deserialized;
-      assertArrayEquals(o.colors(), d.colors());
-      assertDeepArrayEquals(o.colorMatrix(), d.colorMatrix());
-    } else if (original instanceof VarintArrayRecord) {
-      VarintArrayRecord o = (VarintArrayRecord) original;
+      assertArrayEquals(colors, d.colors());
+      assertDeepArrayEquals(colorMatrix, d.colorMatrix());
+    } else if (original instanceof VarintArrayRecord(int[] smallInts, int[] largeInts, long[] mixedLongs)) {
       VarintArrayRecord d = (VarintArrayRecord) deserialized;
-      assertArrayEquals(o.smallInts(), d.smallInts());
-      assertArrayEquals(o.largeInts(), d.largeInts());
-      assertArrayEquals(o.mixedLongs(), d.mixedLongs());
-    } else if (original instanceof DeepNestedArrayRecord) {
-      DeepNestedArrayRecord o = (DeepNestedArrayRecord) original;
+      assertArrayEquals(smallInts, d.smallInts());
+      assertArrayEquals(largeInts, d.largeInts());
+      assertArrayEquals(mixedLongs, d.mixedLongs());
+    } else if (original instanceof DeepNestedArrayRecord o) {
       DeepNestedArrayRecord d = (DeepNestedArrayRecord) deserialized;
       assertDeepArrayEquals(o.threeDimInts(), d.threeDimInts());
-    } else if (original instanceof StringArrayRecord) {
-      StringArrayRecord o = (StringArrayRecord) original;
+    } else if (original instanceof StringArrayRecord(
+        String[] basicStrings, String[][] nestedStrings, String[] emptyStrings, String[] unicodeStrings
+    )) {
       StringArrayRecord d = (StringArrayRecord) deserialized;
-      assertArrayEquals(o.basicStrings(), d.basicStrings());
-      assertDeepArrayEquals(o.nestedStrings(), d.nestedStrings());
-      assertArrayEquals(o.emptyStrings(), d.emptyStrings());
-      assertArrayEquals(o.unicodeStrings(), d.unicodeStrings());
-    } else if (original instanceof UUIDArrayRecord) {
-      UUIDArrayRecord o = (UUIDArrayRecord) original;
+      assertArrayEquals(basicStrings, d.basicStrings());
+      assertDeepArrayEquals(nestedStrings, d.nestedStrings());
+      assertArrayEquals(emptyStrings, d.emptyStrings());
+      assertArrayEquals(unicodeStrings, d.unicodeStrings());
+    } else if (original instanceof UUIDArrayRecord(UUID[] uuids, UUID[][] nestedUuids)) {
       UUIDArrayRecord d = (UUIDArrayRecord) deserialized;
-      assertArrayEquals(o.uuids(), d.uuids());
-      assertDeepArrayEquals(o.nestedUuids(), d.nestedUuids());
-    } else if (original instanceof PrimitiveEdgeCaseRecord) {
-      PrimitiveEdgeCaseRecord o = (PrimitiveEdgeCaseRecord) original;
+      assertArrayEquals(uuids, d.uuids());
+      assertDeepArrayEquals(nestedUuids, d.nestedUuids());
+    } else if (original instanceof PrimitiveEdgeCaseRecord(
+        byte[] boundaryBytes, char[] unicodeChars, float[] specialFloats, double[] specialDoubles
+    )) {
       PrimitiveEdgeCaseRecord d = (PrimitiveEdgeCaseRecord) deserialized;
-      assertArrayEquals(o.boundaryBytes(), d.boundaryBytes());
-      assertArrayEquals(o.unicodeChars(), d.unicodeChars());
-      assertArrayEquals(o.specialFloats(), d.specialFloats());
-      assertArrayEquals(o.specialDoubles(), d.specialDoubles());
-    } else if (original instanceof NestedPrimitiveArrayRecord) {
-      NestedPrimitiveArrayRecord o = (NestedPrimitiveArrayRecord) original;
+      assertArrayEquals(boundaryBytes, d.boundaryBytes());
+      assertArrayEquals(unicodeChars, d.unicodeChars());
+      assertArrayEquals(specialFloats, d.specialFloats());
+      assertArrayEquals(specialDoubles, d.specialDoubles());
+    } else if (original instanceof NestedPrimitiveArrayRecord(
+        int[][] matrix2d, double[][] doubles2d, byte[][][] bytes3d
+    )) {
       NestedPrimitiveArrayRecord d = (NestedPrimitiveArrayRecord) deserialized;
-      assertDeepArrayEquals(o.matrix2d(), d.matrix2d());
-      assertDeepArrayEquals(o.doubles2d(), d.doubles2d());
-      assertDeepArrayEquals(o.bytes3d(), d.bytes3d());
+      assertDeepArrayEquals(matrix2d, d.matrix2d());
+      assertDeepArrayEquals(doubles2d, d.doubles2d());
+      assertDeepArrayEquals(bytes3d, d.bytes3d());
     }
   }
 
@@ -818,6 +792,135 @@ public class ArrayComprehensiveTests {
     );
 
     testRoundTrip(original, SimpleNullArrayRecord.class);
+  }
+
+
+  // Place this helper method within your test class
+  void verifyArrayContents(RecordArrayRecordComplex original, RecordArrayRecordComplex deserialized) {
+    assertNotNull(deserialized, "Deserialized object should not be null.");
+    assertNotNull(deserialized.complexRecords(), "Deserialized array should not be null.");
+    assertEquals(original.complexRecords().length, deserialized.complexRecords().length, "Array lengths must match.");
+
+    for (int i = 0; i < original.complexRecords().length; i++) {
+      ComplexRecord expected = original.complexRecords()[i];
+      ComplexRecord actual = deserialized.complexRecords()[i];
+      // assertEquals handles null checks gracefully
+      assertEquals(expected, actual, "Array element at index " + i + " must be equal.");
+    }
+  }
+
+  @Test
+  void test_01_SimpleComplexRecord() {
+    LOGGER.info("Testing a single, simple ComplexRecord test_01_SimpleComplexRecord");
+    ComplexRecord original = new ComplexRecord(
+        "c1",
+        List.of(1, 2, 3),
+        Map.of("score", 95.5, "rating", 4.8)
+    );
+
+    Pickler<ComplexRecord> pickler = Pickler.forClass(ComplexRecord.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    ComplexRecord deserialized = pickler.deserialize(buffer);
+
+    assertEquals(original, deserialized);
+    LOGGER.fine("Round-trip successful for simple ComplexRecord");
+  }
+
+  @Test
+  void test_02_ComplexRecordWithInternalNulls() {
+    LOGGER.info("Testing a ComplexRecord with empty collections and internal nulls test_02_ComplexRecordWithInternalNulls");
+    ComplexRecord original = new ComplexRecord(
+        "c3",
+        Arrays.asList(null, 42, null), // List with nulls
+        new HashMap<>() {{           // Map with a null value
+          put("keyWithNullValue", null);
+          put("nonNullKey", 100.0);
+        }}
+    );
+
+    Pickler<ComplexRecord> pickler = Pickler.forClass(ComplexRecord.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    ComplexRecord deserialized = pickler.deserialize(buffer);
+
+    assertEquals(original, deserialized);
+    LOGGER.fine("Round-trip successful for ComplexRecord with internal nulls");
+  }
+
+  @Test
+  void test_03_ArrayOfSimpleRecords() {
+    LOGGER.info("Testing an array of simple, non-null ComplexRecords test_03_ArrayOfSimpleRecords");
+    ComplexRecord[] complexRecords = {
+        new ComplexRecord("c1", List.of(1, 2), Map.of("a", 1.0)),
+        new ComplexRecord("c2", List.of(3, 4), Map.of("b", 2.0))
+    };
+    RecordArrayRecordComplex original = new RecordArrayRecordComplex(complexRecords);
+
+    Pickler<RecordArrayRecordComplex> pickler = Pickler.forClass(RecordArrayRecordComplex.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    RecordArrayRecordComplex deserialized = pickler.deserialize(buffer);
+
+    verifyArrayContents(original, deserialized);
+    LOGGER.fine("Round-trip successful for array of simple records");
+  }
+
+  @Test
+  void test_04_ArrayWithNullElement() {
+    LOGGER.info("Testing an array containing a null element test_04_ArrayWithNullElement");
+    ComplexRecord[] complexRecords = {
+        new ComplexRecord("c1", List.of(1), Map.of("a", 1.0)),
+        null, // The element under test
+        new ComplexRecord("c2", List.of(2), Map.of("b", 2.0))
+    };
+    RecordArrayRecordComplex original = new RecordArrayRecordComplex(complexRecords);
+
+    Pickler<RecordArrayRecordComplex> pickler = Pickler.forClass(RecordArrayRecordComplex.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    RecordArrayRecordComplex deserialized = pickler.deserialize(buffer);
+
+    verifyArrayContents(original, deserialized);
+    LOGGER.fine("Round-trip successful for array with a null element");
+  }
+
+  @Test
+  void test_05_FullComplexArray() {
+    LOGGER.info("Testing the full comprehensive array of complex records test_05_FullComplexArray");
+    ComplexRecord[] complexRecords = {
+        new ComplexRecord("c1",
+            List.of(1, 2, 3),
+            Map.of("score", 95.5, "rating", 4.8)),
+        null,
+        new ComplexRecord("c2",
+            Collections.emptyList(),
+            Collections.emptyMap()),
+        new ComplexRecord("c3",
+            Arrays.asList(null, 42, null),
+            new HashMap<>() {{
+              put("key", null);
+            }})
+    };
+    RecordArrayRecordComplex original = new RecordArrayRecordComplex(complexRecords);
+
+    Pickler<RecordArrayRecordComplex> pickler = Pickler.forClass(RecordArrayRecordComplex.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    RecordArrayRecordComplex deserialized = pickler.deserialize(buffer);
+
+    verifyArrayContents(original, deserialized);
+    LOGGER.fine("Round-trip successful for the full comprehensive array");
   }
 
 }

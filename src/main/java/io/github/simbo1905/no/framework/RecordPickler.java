@@ -685,10 +685,16 @@ final class RecordPickler<T> implements Pickler<T> {
         return Integer.BYTES; // size of the null marker only
       }
       assert inner.getClass().isArray() : "Expected an array but got: " + inner.getClass().getName();
-      int length = Array.getLength(inner);
-      return Integer.BYTES + IntStream.range(0, length)
-          .mapToObj(i -> elementSizer.applyAsInt(Array.get(inner, i)))
-          .reduce(0, Integer::sum);
+      final int length = Array.getLength(inner);
+      int size = Integer.BYTES + Integer.BYTES; // size of the marker and length of the array
+      return size + IntStream.range(0, length).map(i -> {
+        Object element = Array.get(inner, i);
+        if (element == null) {
+          return 1;
+        } else {
+          return 1 + elementSizer.applyAsInt(element);
+        }
+      }).sum();
     };
   }
 
@@ -787,11 +793,12 @@ final class RecordPickler<T> implements Pickler<T> {
       int size = ZigZagEncoding.getInt(buffer);
       LOGGER.fine(() -> "Read map marker " + marker + " and size " + size + " at position " + positionBeforeRead);
       Map<Object, Object> map = new HashMap<>(size);
-      return IntStream.range(0, size).mapToObj(i -> {
+      IntStream.range(0, size).forEach(i -> {
         final Object key = keyReader.apply(buffer);
         final Object value = valueReader.apply(buffer);
-        return Map.entry(key, value);
-      }).collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+        map.put(key, value);
+      });
+      return Collections.unmodifiableMap(map);
     };
   }
 
