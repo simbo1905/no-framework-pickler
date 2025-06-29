@@ -147,9 +147,12 @@ class NestedArraysTypeExprTest {
         javaType,
         length
     );
-    LOGGER.finer(() -> "Created new array of type: " + newArray.getClass().getTypeName() + " with component type: " +
-        newArray.getClass().componentType());
-
+    LOGGER.finer(() -> "Creating array for: "
+        + typeExpr.toTreeString()
+        + " | Java type: " + javaType.getName()
+        + " | Source component: " + sourceArray.getClass().getComponentType().getName()
+        + " | New array class: " + newArray.getClass().getName()
+    );
     for (int i = 0; i < length; i++) {
       Object element = Array.get(sourceArray, i);
       int finalI = i;
