@@ -13,8 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /// Test nested Map support 
 public class NestedMapTest {
@@ -24,7 +23,7 @@ public class NestedMapTest {
     io.github.simbo1905.LoggingControl.setupCleanLogging();
   }
 
-  // Test records for various Map nestings
+  // Test records for various Map nesting
   public record SimpleNestedMap(Map<String, Map<Integer, Double>> nestedMap) {
   }
 
@@ -35,12 +34,6 @@ public class NestedMapTest {
   }
 
   public record MapOfLists(Map<String, List<Integer>> mapOfLists) {
-  }
-
-  public record OptionalMap(Optional<Map<String, Integer>> optionalMap) {
-  }
-
-  public record MapOfOptionals(Map<String, Optional<Integer>> mapOfOptionals) {
   }
 
   @Test
@@ -93,6 +86,8 @@ public class NestedMapTest {
 
     assertNotNull(deserialized);
     assertEquals("deep value", deserialized.deepMap().get("root").get(1).get(100L));
+    // ensure that we test inner immutability
+    assertThrows(UnsupportedOperationException.class, () -> deserialized.deepMap().get("root").get(1).remove(100L));
   }
 
   @Test
@@ -164,5 +159,60 @@ public class NestedMapTest {
     assertEquals(2, deserialized.map().size());
     assertEquals(1, deserialized.map().get("key1"));
     assertEquals(2, deserialized.map().get("key2"));
+    // test outer immutability
+    assertThrows(UnsupportedOperationException.class, () -> deserialized.map().remove("key1"));
   }
+
+  public record OptionalMap(Optional<Map<String, Integer>> optionalMap) {
+  }
+
+  @Test
+  void testOptionalMap() {
+    LOGGER.info(() -> "Testing OptionalMap serialization and deserialization testOptionalMap");
+    // Optional<Map<String, Integer>>
+    Map<String, Integer> data = Map.of("key1", 1, "key2", 2);
+    Optional<Map<String, Integer>> optionalData = Optional.of(data);
+    OptionalMap original = new OptionalMap(optionalData);
+    Pickler<OptionalMap> pickler = Pickler.forClass(OptionalMap.class);
+
+    ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    final var deserialized = pickler.deserialize(buffer);
+    assertNotNull(deserialized);
+    assertTrue(deserialized.optionalMap().isPresent());
+    assertEquals(2, deserialized.optionalMap().get().size());
+    assertEquals(1, deserialized.optionalMap().get().get("key1"));
+    assertEquals(2, deserialized.optionalMap().get().get("key2"));
+    // test outer immutability
+    assertThrows(UnsupportedOperationException.class, () -> deserialized.optionalMap().get().remove("key1"));
+  }
+
+  public record MapOfOptionals(Map<String, Optional<Integer>> mapOfOptionals) {
+  }
+
+  @Test
+  void testMapOfOptionals() {
+    LOGGER.info(() -> "Testing MapOfOptionals serialization and deserialization testMapOfOptionals");
+    // Map<String, Optional<Integer>>
+    Map<String, Optional<Integer>> data = Map.of(
+        "key1", Optional.of(1),
+        "key2", Optional.empty()
+    );
+
+    MapOfOptionals original = new MapOfOptionals(data);
+    Pickler<MapOfOptionals> pickler = Pickler.forClass(MapOfOptionals.class);
+    ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    MapOfOptionals deserialized = pickler.deserialize(buffer);
+    assertNotNull(deserialized);
+    assertEquals(2, deserialized.mapOfOptionals().size());
+    assertTrue(deserialized.mapOfOptionals().get("key1").isPresent());
+    assertEquals(1, deserialized.mapOfOptionals().get("key1").get());
+    assertFalse(deserialized.mapOfOptionals().get("key2").isPresent());
+    // test outer immutability
+    assertThrows(UnsupportedOperationException.class, () -> deserialized.mapOfOptionals().remove("key1"));
+  }
+
 }

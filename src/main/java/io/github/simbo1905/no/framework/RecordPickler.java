@@ -787,12 +787,11 @@ final class RecordPickler<T> implements Pickler<T> {
       int size = ZigZagEncoding.getInt(buffer);
       LOGGER.fine(() -> "Read map marker " + marker + " and size " + size + " at position " + positionBeforeRead);
       Map<Object, Object> map = new HashMap<>(size);
-      IntStream.range(0, size).forEach(i -> {
+      return IntStream.range(0, size).mapToObj(i -> {
         final Object key = keyReader.apply(buffer);
         final Object value = valueReader.apply(buffer);
-        map.put(key, value);
-      });
-      return map;
+        return Map.entry(key, value);
+      }).collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
     };
   }
 
@@ -801,9 +800,9 @@ final class RecordPickler<T> implements Pickler<T> {
       int marker = ZigZagEncoding.getInt(buffer);
       assert marker == Constants.LIST.marker() : "Expected LIST marker";
       int size = ZigZagEncoding.getInt(buffer);
-      List<Object> list = new ArrayList<>(size);
-      IntStream.range(0, size).forEach(i -> list.add(elementReader.apply(buffer)));
-      return list;
+      return IntStream.range(0, size)
+          .mapToObj(i -> elementReader.apply(buffer))
+          .toList();
     };
   }
 

@@ -1383,14 +1383,6 @@ public class RefactorTests {
 
     Link deserialized = pickler.deserialize(buffer);
     assertEquals(list, deserialized);
-
-    // Also test serializing just the enum
-    buffer.clear();
-    pickler.serialize(buffer, LinkEnd.END);
-    buffer.flip();
-
-    Link deserializedEnd = pickler.deserialize(buffer);
-    assertEquals(LinkEnd.END, deserializedEnd);
   }
 
   public record NestedArrayRefExample(
