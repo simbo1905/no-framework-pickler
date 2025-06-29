@@ -763,6 +763,8 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.fine(() -> "Written map marker " + Constants.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
       map.forEach((key, value) -> {
+        LOGGER.finer(() -> "Map value cannot be null, writing +1 marker at position: " + buffer.position());
+        buffer.put(NOT_NULL_MARKER); // key in a map cannot be null
         keyWriter.accept(buffer, key);
         if (value == null) {
           LOGGER.finer(() -> "Map value is null, writing -1 marker at position: " + buffer.position());
@@ -787,13 +789,7 @@ final class RecordPickler<T> implements Pickler<T> {
       Map<Object, Object> map = new HashMap<>(size);
       IntStream.range(0, size).forEach(i -> {
         final Object key = keyReader.apply(buffer);
-        final Object value;
-        final byte nullMarker = buffer.get();
-        if (nullMarker == NULL_MARKER) {
-          value = null;
-        } else {
-          value = valueReader.apply(buffer);
-        }
+        final Object value = valueReader.apply(buffer);
         map.put(key, value);
       });
       return map;
