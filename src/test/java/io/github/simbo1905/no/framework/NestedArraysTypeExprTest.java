@@ -3,8 +3,7 @@
 //
 package io.github.simbo1905.no.framework;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -16,17 +15,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SuppressWarnings("unused")
-class NestedArraysTypeExprTest {
+public class NestedArraysTypeExprTest {
 
-  @BeforeEach
-  void setUp() {
-    // Setup logic if needed
-  }
-
-  @AfterEach
-  void tearDown() {
-    // Tear down logic if needed
+  @BeforeAll
+  static void setupLogging() {
+    io.github.simbo1905.LoggingControl.setupCleanLogging();
   }
 
   // Fields for array testing
@@ -96,4 +89,108 @@ class NestedArraysTypeExprTest {
     LOGGER.finer(() -> "Array comparison result: " + arraysEqual);
     assertTrue(arraysEqual);
   }
+
+  @Test
+  @DisplayName("1D String array dimensions level check")
+  void test1DStringArrayDimensionInner() throws NoSuchFieldException {
+    LOGGER.info(() -> "Starting test for 1D String array dimensions");
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayOne").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr expected = new TypeExpr.ArrayNode(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
+    );
+    LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    assertEquals(expected, actual);
+    assertThat(actual.toTreeString()).isEqualTo("ARRAY(String)");
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("2D String array dimensions level check")
+  void test2DStringArrayDimensionInner() throws NoSuchFieldException {
+    LOGGER.info(() -> "Starting test for 2D String array dimensions");
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayTwo").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr expected = new TypeExpr.ArrayNode(
+        new TypeExpr.ArrayNode(
+            new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
+        )
+    );
+    LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    assertEquals(expected, actual);
+    assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(String))");
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("1D Primitive Int array dimensions level check")
+  void test1DPrimitiveIntArrayDimensionInner() throws NoSuchFieldException {
+    LOGGER.info(() -> "Starting test for 1D Primitive Int array dimensions");
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("anIntArrayOne").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr expected = new TypeExpr.ArrayNode(
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class)
+    );
+    LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    assertEquals(expected, actual);
+    assertThat(actual.toTreeString()).isEqualTo("ARRAY(int)");
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("2D Primitive Int array dimensions level check")
+  void test2DPrimitiveIntArrayDimensionInner() throws NoSuchFieldException {
+    LOGGER.info(() -> "Starting test for 2D Primitive Int array dimensions");
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("anIntArrayTwo").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr expected = new TypeExpr.ArrayNode(
+        new TypeExpr.ArrayNode(
+            new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class)
+        )
+    );
+    LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    assertEquals(expected, actual);
+    assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(int))");
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("3D Primitive Int array dimensions level check")
+  void test3DPrimitiveIntArrayDimensionInner() throws NoSuchFieldException {
+    LOGGER.info(() -> "Starting test for 3D Primitive Int array dimensions");
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("anIntArrayThree").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr expected = new TypeExpr.ArrayNode(
+        new TypeExpr.ArrayNode(
+            new TypeExpr.ArrayNode(
+                new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class)
+            )
+        )
+    );
+    LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    assertEquals(expected, actual);
+    assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(ARRAY(int)))");
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(3);
+  }
+
 }
