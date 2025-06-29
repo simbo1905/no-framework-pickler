@@ -121,6 +121,7 @@ class NestedArraysTypeExprTest {
     return getArrayInnerType(((TypeExpr.ArrayNode) arrayType).element());
   }
 
+  @SuppressWarnings("SameParameterValue")
   static Object createArray(Class<?> componentType, int dimensions) {
     int[] dims = new int[dimensions];
     Arrays.fill(dims, 1); // Default size 1 for each dimension
@@ -128,18 +129,22 @@ class NestedArraysTypeExprTest {
   }
 
   static Object createAndPopulateArray(Object sourceArray, TypeExpr typeExpr, Class<?> javaType) {
-    LOGGER.fine(() -> "createAndPopulateArray called with sourceArray: "
+    LOGGER.finer(() -> "createAndPopulateArray called with sourceArray: "
         + (sourceArray == null ? "null" : sourceArray.getClass().getTypeName())
         + ", typeExpr: " + typeExpr.toTreeString()
         + ", javaType: " + javaType.getTypeName());
+
+    // If the current type expression is not an array, then we are at a leaf -> return the sourceArray as is.
+    if (!(typeExpr instanceof TypeExpr.ArrayNode)) {
+      LOGGER.fine(() -> "Leaf node reached, returning sourceArray: " + sourceArray);
+      return sourceArray;
+    }
 
     int length = Array.getLength(sourceArray);
     LOGGER.finer(() -> "Source array length: " + length);
 
     Object newArray = Array.newInstance(
-        typeExpr instanceof TypeExpr.ArrayNode ?
-            javaType :
-            Object.class,
+        javaType,
         length
     );
     LOGGER.finer(() -> "Created new array of type: " + newArray.getClass().getTypeName());
@@ -149,7 +154,6 @@ class NestedArraysTypeExprTest {
       int finalI = i;
       LOGGER.finer(() -> "Processing element " + finalI + ": " + element);
 
-      assert typeExpr instanceof TypeExpr.ArrayNode;
       Object populatedElement = createAndPopulateArray(element, ((TypeExpr.ArrayNode) typeExpr).element(), javaType);
       int finalI1 = i;
       LOGGER.finer(() -> "Populated element " + finalI1 + ": " + populatedElement);
