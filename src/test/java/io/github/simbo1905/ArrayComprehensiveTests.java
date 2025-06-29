@@ -202,7 +202,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testBoxedArrays() {
-    LOGGER.fine("Testing boxed type arrays");
+    LOGGER.info(() -> "Testing boxed type arrays");
 
     BoxedArraysRecord original = new BoxedArraysRecord(
         new Integer[]{1, 2, 3, null, 5, -100, Integer.MAX_VALUE},
@@ -217,7 +217,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testRecordArrays() {
-    LOGGER.fine("Testing arrays of records");
+    LOGGER.info(() -> "Testing arrays of records testRecordArrays");
 
     SimpleRecord[] simpleRecords = {
         new SimpleRecord("first", 1),
@@ -247,7 +247,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testEnumArrays() {
-    LOGGER.fine("Testing enum arrays");
+    LOGGER.info(() -> "Testing enum arrays testEnumArrays");
 
     Color[] colors = {Color.RED, null, Color.BLUE, Color.GREEN, Color.YELLOW};
     Color[][] colorMatrix = {
@@ -263,7 +263,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testVarintEncoding() {
-    LOGGER.fine("Testing varint encoding scenarios");
+    LOGGER.info(() -> "Testing varint encoding scenarios testVarintEncoding");
 
     // Small ints that should use varint encoding (0-127)
     int[] smallInts = IntStream.range(0, 100).toArray();
@@ -287,7 +287,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testOptionalArrays() {
-    LOGGER.fine("Testing arrays of Optional");
+    LOGGER.info(() -> "Testing arrays of Optional testOptionalArrays");
 
     Optional<Integer>[] optionalInts = new Optional[]{
         Optional.of(1),
@@ -320,7 +320,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testCollectionArrays() {
-    LOGGER.fine("Testing arrays of collections");
+    LOGGER.info(() -> "Testing arrays of collections testCollectionArrays");
 
     List<String>[] stringLists = new List[]{
         List.of("a", "b", "c"),
@@ -351,7 +351,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testMapArrays() {
-    LOGGER.fine("Testing arrays of maps");
+    LOGGER.info(() -> "Testing arrays of maps testMapArrays");
 
     Map<Integer, String>[] intStringMaps = new Map[]{
         Map.of(1, "one", 2, "two"),
@@ -387,7 +387,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testDeepNestedArrays() {
-    LOGGER.fine("Testing deeply nested array structures");
+    LOGGER.info(() -> "Testing deeply nested array structures testDeepNestedArrays");
 
     int[][][] threeDimInts = {
         {{1, 2}, {3, 4}},
@@ -423,7 +423,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testMixedContainersWithArrays() {
-    LOGGER.fine("Testing mixed containers with arrays before and after");
+    LOGGER.info(() -> "Testing mixed containers with arrays before and after testMixedContainersWithArrays");
 
     List<int[]> intArrayList = List.of(
         new int[]{1, 2, 3},
@@ -455,7 +455,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testExtremeArraySizes() {
-    LOGGER.fine("Testing extreme array sizes");
+    LOGGER.info(() -> "Testing extreme array sizes testExtremeArraySizes");
 
     ExtremeSizeRecord original = new ExtremeSizeRecord(
         new int[0],
@@ -471,7 +471,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testArraysWithNullElements() {
-    LOGGER.fine("Testing arrays with various null patterns");
+    LOGGER.info(() -> "Testing arrays with various null patterns testArraysWithNullElements");
 
     NullPatternRecord original = new NullPatternRecord(
         new String[]{null, null, null},
@@ -493,7 +493,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testStringArrays() {
-    LOGGER.fine("Testing string arrays");
+    LOGGER.info(() -> "Testing string arrays testStringArrays");
 
     StringArrayRecord original = new StringArrayRecord(
         new String[]{"hello", "world", "", null, "test"},
@@ -511,7 +511,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testUUIDArrays() {
-    LOGGER.fine("Testing UUID arrays");
+    LOGGER.info(() -> "Testing UUID arrays testUUIDArrays");
 
     UUID[] uuids = {
         UUID.randomUUID(),
@@ -533,7 +533,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testPrimitiveEdgeCases() {
-    LOGGER.fine("Testing primitive edge cases");
+    LOGGER.info(() -> "Testing primitive edge cases testPrimitiveEdgeCases");
 
     PrimitiveEdgeCaseRecord original = new PrimitiveEdgeCaseRecord(
         new byte[]{Byte.MIN_VALUE, -1, 0, 1, Byte.MAX_VALUE},
@@ -547,7 +547,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testNestedPrimitiveArrays() {
-    LOGGER.fine("Testing nested primitive arrays");
+    LOGGER.info(() -> "Testing nested primitive arrays testNestedPrimitiveArrays");
 
     int[][] matrix2d = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
     double[][] doubles2d = {{1.1, 2.2}, {3.3, 4.4, 5.5}, {}};
@@ -564,7 +564,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testMixedPrimitiveObjectArrays() {
-    LOGGER.fine("Testing mixed primitive and object arrays");
+    LOGGER.info(() -> "Testing mixed primitive and object arrays testMixedPrimitiveObjectArrays");
 
     MixedPrimitiveObjectArrayRecord original = new MixedPrimitiveObjectArrayRecord(
         new int[]{1, 2, 3},
@@ -579,7 +579,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testEmptyArrays() {
-    LOGGER.fine("Testing empty arrays");
+    LOGGER.info(() -> "Testing empty arrays testEmptyArrays");
 
     EmptyArraysRecord original = new EmptyArraysRecord(
         new Color[0],
@@ -594,7 +594,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testSingleElementArrays() {
-    LOGGER.fine("Testing single element arrays");
+    LOGGER.info(() -> "Testing single element arrays testSingleElementArrays");
 
     SingleElementArraysRecord original = new SingleElementArraysRecord(
         new Color[]{Color.RED},
@@ -796,7 +796,7 @@ public class ArrayComprehensiveTests {
 
   @Test
   void testSimpleNullArrayHandling() {
-    LOGGER.fine("Testing simple null handling in arrays");
+    LOGGER.info(() -> "Testing simple null handling in arrays testSimpleNullArrayHandling");
 
     SimpleNullArrayRecord original = new SimpleNullArrayRecord(
         new String[]{"hello", null, "world"},

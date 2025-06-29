@@ -54,8 +54,8 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
     final Map<Boolean, List<Class<?>>> legalAndIllegalClasses =
         recordClassHierarchy.stream().collect(Collectors.partitioningBy(
             cls -> cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive()
-                || String.class.equals(cls) || UUID.class.isAssignableFrom(cls)
-                || BOXED_PRIMITIVES.contains(cls)
+                || String.class.equals(cls) || UUID.class.isAssignableFrom(cls) || List.class.isAssignableFrom(cls)
+                || Map.class.isAssignableFrom(cls) || BOXED_PRIMITIVES.contains(cls)
         ));
 
     final var illegalClasses = legalAndIllegalClasses.get(Boolean.FALSE);
