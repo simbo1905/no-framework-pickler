@@ -40,8 +40,8 @@ class NestedArraysTypeExprTest {
   public String[][][] aStringArrayThree = {{{"a"}}, {{"b"}, {"c", "d"}}};
 
   @Test
-  @DisplayName("3D String array dimensions")
-  void test3DStringArrayDimensions() throws NoSuchFieldException {
+  @DisplayName("3D String array dimensions level check")
+  void test3DStringArrayDimensionInner() throws NoSuchFieldException {
     LOGGER.info(() -> "Starting test for 3D String array dimensions");
     Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayThree").getGenericType();
     LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
@@ -64,9 +64,21 @@ class NestedArraysTypeExprTest {
     final int dimensionsActual = getArrayDimensions(actual);
     LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
     assertThat(dimensionsActual).isEqualTo(3);
+  }
+
+
+  @Test
+  @DisplayName("3D String array dimensions")
+  void test3DStringArrayDimensions() throws NoSuchFieldException {
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayThree").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    final int dimensionsActual = getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(3);
 
     final TypeExpr innerReferenceType = getArrayInnerType(actual);
-    LOGGER.finer(() -> "Inner reference type: " + innerReferenceType.toTreeString());
     assertThat(innerReferenceType).isEqualTo(
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
     );
@@ -89,16 +101,17 @@ class NestedArraysTypeExprTest {
 
 
   static int getArrayDimensions(TypeExpr arrayType) {
-    if (arrayType instanceof TypeExpr.ArrayNode(var elementNode)) {
-      if (elementNode instanceof TypeExpr.ArrayNode) {
-        final var r = 1 + getArrayDimensions(((TypeExpr.ArrayNode) arrayType).element());
-        LOGGER.finer(() -> "Array dimensions of " + arrayType.toTreeString() + "=" + r);
-        return r;
-      } else {
-        throw new IllegalArgumentException("Unsupported element type: " + elementNode.getClass().getName());
-      }
+    return arrayDimensionsInner(arrayType, 0);
+  }
+
+  static int arrayDimensionsInner(TypeExpr type, int currentCount) {
+    if (type instanceof TypeExpr.ArrayNode) {
+      // We are at an array node, so we add one and then look at the element type.
+      return arrayDimensionsInner(((TypeExpr.ArrayNode) type).element(), currentCount + 1);
+    } else {
+      // We've hit a non-array node. The currentCount is the total number of array dimensions we have traversed.
+      return currentCount;
     }
-    throw new IllegalArgumentException("Unsupported type: " + arrayType.getClass().getName());
   }
 
   static TypeExpr getArrayInnerType(TypeExpr arrayType) {
@@ -115,7 +128,10 @@ class NestedArraysTypeExprTest {
   }
 
   static Object createAndPopulateArray(Object sourceArray, TypeExpr typeExpr, Class<?> javaType) {
-    LOGGER.finer(() -> "Creating and populating array of type: " + typeExpr.toTreeString());
+    LOGGER.fine(() -> "createAndPopulateArray called with sourceArray: "
+        + (sourceArray == null ? "null" : sourceArray.getClass().getTypeName())
+        + ", typeExpr: " + typeExpr.toTreeString()
+        + ", javaType: " + javaType.getTypeName());
 
     int length = Array.getLength(sourceArray);
     LOGGER.finer(() -> "Source array length: " + length);
