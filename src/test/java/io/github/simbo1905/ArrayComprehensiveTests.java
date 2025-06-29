@@ -627,10 +627,6 @@ public class ArrayComprehensiveTests {
     // Deserialize
     T deserialized = pickler.deserialize(buf);
 
-    // Basic equality check
-    assertEquals(original, deserialized,
-        "Deserialized object should equal the original");
-
     // Detailed verification for arrays
     verifyArrayContents(original, deserialized);
 

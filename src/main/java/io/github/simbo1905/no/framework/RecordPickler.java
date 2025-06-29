@@ -31,6 +31,8 @@ final class RecordPickler<T> implements Pickler<T> {
   public static final String SHA_256 = "SHA-256";
   static final int SAMPLE_SIZE = 32;
   static final int CLASS_SIG_BYTES = Long.BYTES;
+  public static final byte Null_MARKER = (byte) -1;
+  public static final byte NOT_NULL_MARKER = (byte) +1;
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?> userType;
   final long typeSignature;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
@@ -200,8 +202,8 @@ final class RecordPickler<T> implements Pickler<T> {
     }
   }
 
-  @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
-    LOGGER.fine(() -> "Building reader chain for RefValueType: " + valueType);
+  @NotNull Function<ByteBuffer, Object> buildPrimitiveValueReader(TypeExpr.RefValueType valueType) {
+    LOGGER.fine(() -> "Building primitive reader chain for RefValueType: " + valueType + " (no null check)");
     return switch (valueType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -271,6 +273,32 @@ final class RecordPickler<T> implements Pickler<T> {
           throw new IllegalStateException("RecordPickler " + userType.getSimpleName() + " type signature not found in either map: " + Long.toHexString(typeSignature) + " at position: " + buffer.position());
         }
       };
+    };
+  }
+
+  @NotNull Function<ByteBuffer, Object> buildValueReader(TypeExpr.RefValueType valueType) {
+    LOGGER.fine(() -> "Building null-aware reader chain for RefValueType: " + valueType);
+
+    // Get the primitive reader that doesn't do null checks
+    final Function<ByteBuffer, Object> primitiveReader = buildPrimitiveValueReader(valueType);
+
+    return (buffer) -> {
+      // Read the null marker byte
+      byte nullMarker = buffer.get();
+
+      if (nullMarker == Null_MARKER) {
+        LOGGER.fine(() -> "Read null marker (-1), returning null for " + valueType);
+        return null;
+      } else if (nullMarker == NOT_NULL_MARKER) {
+        LOGGER.fine(() -> "Read non-null marker (+1), delegating to primitive reader for " + valueType);
+        return primitiveReader.apply(buffer);
+      } else {
+        throw new IllegalStateException(
+            "Invalid null marker byte: " + nullMarker +
+                " at position " + (buffer.position() - 1) +
+                ". Expected -1 (null) or +1 (not null). This indicates corrupted data or version mismatch."
+        );
+      }
     };
   }
 
@@ -471,10 +499,11 @@ final class RecordPickler<T> implements Pickler<T> {
           throw new RuntimeException(e.getMessage(), e);
         }
         if (value == null) {
-          LOGGER.fine(() -> "Extracted value is null, writing 0L marker");
-          buffer.putLong(0L); // write a marker for null
+          LOGGER.fine(() -> "Extracted value is null, writing -1 byte marker");
+          buffer.put(Null_MARKER); // write a marker for null
         } else {
-          LOGGER.fine(() -> "Extracted value is not null, delegating to writer: " + value);
+          LOGGER.fine(() -> "Extracted value is not null, writing +1 byte marker then delegating to writer: " + value);
+          buffer.put(NOT_NULL_MARKER); // write a marker for null
           delegate.accept(buffer, value);
         }
       };
@@ -537,56 +566,72 @@ final class RecordPickler<T> implements Pickler<T> {
     LOGGER.fine(() -> "Building value sizer inner for RefValueType: " + refValueType + " and Java type: " + javaType);
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
-        case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
-        case SHORT -> (Object record) -> Short.BYTES;
-        case CHARACTER -> (Object record) -> Character.BYTES;
-        case INTEGER -> (Object record) -> Integer.BYTES;
-        case LONG -> (Object record) -> Long.BYTES;
-        case FLOAT -> (Object record) -> Float.BYTES;
-        case DOUBLE -> (Object record) -> Double.BYTES;
-        case UUID -> (Object record) -> {
-          // Handle null UUID objects
-          if (record == null) return Long.BYTES; // Size for null marker
-          return 2 * Long.BYTES; // UUID is two longs
+        case BOOLEAN, BYTE -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Byte.BYTES; // null marker + actual byte
         };
-        case ENUM -> (Object record) -> {
-          // Handle null enum objects
-          if (record == null) return Long.BYTES; // Size for null marker
-          return Integer.BYTES + 2 * Long.BYTES; // typeOrdinal + typeSignature + enum ordinal
+        case SHORT -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Short.BYTES; // null marker + actual value
+        };
+        case CHARACTER -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Character.BYTES; // null marker + actual value
+        };
+        case INTEGER -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Integer.BYTES; // null marker + actual value
+        };
+        case LONG -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Long.BYTES; // null marker + actual value
+        };
+        case FLOAT -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Float.BYTES; // null marker + actual value
+        };
+        case DOUBLE -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Double.BYTES; // null marker + actual value
+        };
+        case UUID -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + 2 * Long.BYTES; // null marker + UUID (two longs)
         };
         case STRING -> (Object inner) -> {
-          // Handle null strings - this was the missing null check causing the NPE
-          if (inner == null) return Long.BYTES; // Size for null marker
+          if (inner == null) return Byte.BYTES; // Just the null marker
           String str = (String) inner;
-          return (str.length() + 1) * Integer.BYTES; // Worst case estimate
+          return Byte.BYTES + (str.length() + 1) * Integer.BYTES; // null marker + string data
+        };
+        // ... continue for ENUM, RECORD, INTERFACE cases
+        case ENUM -> (Object record) -> {
+          if (record == null) return Byte.BYTES; // Just the null marker
+          return Byte.BYTES + Integer.BYTES + 2 * Long.BYTES; // null marker + enum data
         };
         case RECORD -> {
           if (userType.isAssignableFrom(cls)) {
             yield (Object obj) -> {
-              if (obj == null) return Long.BYTES; // Size for null marker
-              //noinspection unchecked
-              return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+              if (obj == null) return Byte.BYTES; // Just the null marker
+              return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
             };
           } else {
-            // Delegate to the recordValueSizer for the specific type
             final var otherPickler = resolvePicker(cls, this.enumToTypeSignatureMap);
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " buildValueSizerInner() delegating to other pickler for record type: " + cls.getSimpleName());
-            yield otherPickler::maxSizeOf;
+            yield (Object obj) -> {
+              if (obj == null) return Byte.BYTES; // Just the null marker
+              return Byte.BYTES + otherPickler.maxSizeOf(obj);
+            };
           }
         }
+
         case INTERFACE -> (Object obj) -> {
-          if (obj == null) return Long.BYTES; // Size for null marker
+          if (obj == null) return Byte.BYTES; // Just the null marker
           if (obj instanceof Enum<?> ignored) {
-            // For enums, we store the ordinal and type signature
-            return Long.BYTES + Integer.BYTES;
+            return Byte.BYTES + Long.BYTES + Integer.BYTES;
           } else if (userType.isAssignableFrom(obj.getClass())) {
-            //noinspection unchecked
-            return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+            return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
           } else if (picklers.containsKey(obj.getClass())) {
-            // Delegate to the recordValueSizer for the specific type
             final var otherPickler = resolvePicker(obj.getClass(), this.enumToTypeSignatureMap);
-            LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " buildValueSizerInner() delegating to other pickler for interface type: " + obj.getClass().getSimpleName());
-            return otherPickler.maxSizeOf(obj);
+            return Byte.BYTES + otherPickler.maxSizeOf(obj);
           } else {
             throw new IllegalArgumentException("Unsupported interface type: " + obj.getClass().getSimpleName());
           }
@@ -596,7 +641,6 @@ final class RecordPickler<T> implements Pickler<T> {
       throw new AssertionError("Unsupported Java type for RefValueType: " + refValueType + ", expected a Class<?> but got: " + javaType.getTypeName());
     }
   }
-
 
   static ToIntFunction<Object> createMapSizerInner
       (ToIntFunction<Object> keySizer, ToIntFunction<Object> valueSizer) {
@@ -691,7 +735,14 @@ final class RecordPickler<T> implements Pickler<T> {
       ZigZagEncoding.putInt(buffer, array.length);
       // Write each element
       for (Object item : array) {
-        elementWriter.accept(buffer, item);
+        if (item == null) {
+          LOGGER.finest(() -> "Array element is null, writing -1 marker at position: " + buffer.position());
+          buffer.put(Null_MARKER); // write a marker for null
+        } else {
+          LOGGER.finest(() -> "Array element is null, writing -1 marker at position: " + buffer.position());
+          buffer.put(NOT_NULL_MARKER); // write a marker for non-null
+          elementWriter.accept(buffer, item);
+        }
       }
     };
   }
@@ -879,24 +930,46 @@ final class RecordPickler<T> implements Pickler<T> {
       case TypeExpr.RefValueNode(var refType, var ignored1) -> buildValueReader(refType);
 
       case TypeExpr.ArrayNode(var element) -> {
-        switch (element) {
-          case TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType primitiveType, Type ignored) -> {
-            LOGGER.fine(() -> "Building sizer chain for primitive array type: " + primitiveType);
-            yield Companion.buildPrimitiveArrayReader(primitiveType);
-          }
-          case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored) -> {
-            LOGGER.fine(() -> "Building sizer chain for reference array type: " + refValueType);
-            final var reader = buildValueReader(refValueType);
-            var componentType = Companion.extractComponentType(element);
-            yield createArrayReader(reader, componentType, element);
-          }
-          default -> {
-            LOGGER.fine(() -> "Building sizer chain for array of container type: " + element.toTreeString());
-            final var elementReader = buildReaderChainFromAST(element);
-            var componentType = Companion.extractComponentType(element);
-            yield createArrayReader(elementReader, componentType, element);
-          }
+        final Function<ByteBuffer, Object> nonNullArrayReader;
+
+        // We must distinguish between an array of primitives and an array of references.
+        if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored)) {
+          // This is a 1D PRIMITIVE array (e.g., the component is `int[]`).
+          // The Companion reader handles the entire array block and does NOT expect null markers for its elements.
+          LOGGER.fine(() -> "Building reader for a primitive array of type: " + primitiveType);
+          nonNullArrayReader = Companion.buildPrimitiveArrayReader(primitiveType);
+        } else {
+          // This is an array of REFERENCES (e.g., String[], or a nested array like int[][]).
+          // The elements of this array CAN be null. Therefore, their reader must be null-aware.
+          LOGGER.fine(() -> "Building reader for a reference/nested array with element type: " + element.toTreeString());
+
+          // Recursively build the reader for the elements (e.g., for String, or for int[]).
+          // This recursive call ensures the elementReader is correctly wrapped with its own null-checker if needed.
+          final var elementReader = buildReaderChainFromAST(element);
+
+          // The createArrayReader handles the array marker, length, and iteration.
+          var componentType = Companion.extractComponentType(element);
+          nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         }
+
+        // Since ANY array field itself can be null (e.g. `public record R(int[] arr)` where arr is null),
+        // we must wrap the entire array reader in our standard null-checker to match the `extractAndDelegate` writer.
+        yield (buffer) -> {
+          byte nullMarker = buffer.get();
+          if (nullMarker == Null_MARKER) {
+            LOGGER.fine(() -> "Read null marker (-1), returning null for an Array.");
+            return null;
+          } else if (nullMarker == NOT_NULL_MARKER) {
+            LOGGER.fine(() -> "Read non-null marker (+1), delegating to the specialized array reader.");
+            return nonNullArrayReader.apply(buffer);
+          } else {
+            throw new IllegalStateException(
+                "Invalid null marker byte for an Array: " + nullMarker +
+                    " at position " + (buffer.position() - 1) +
+                    ". Expected -1 (null) or +1 (not null)."
+            );
+          }
+        };
       }
 
       case TypeExpr.ListNode(var element) -> {
