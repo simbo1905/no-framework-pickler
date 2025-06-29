@@ -789,15 +789,20 @@ final class RecordPickler<T> implements Pickler<T> {
 
       case TypeExpr.RefValueNode(var refType, var javaType) -> buildValueWriterInner(refType, javaType);
 
-      case TypeExpr.ArrayNode(var element) -> {
-        if (element.isPrimitive()) {
+      case TypeExpr.ArrayNode(TypeExpr element) -> {
+        LOGGER.fine(() -> "Building writer chain for array of type: " + element.toTreeString());
+        if (element instanceof TypeExpr.PrimitiveValueNode) {
+          // Primitive arrays
           var primitiveType = ((TypeExpr.PrimitiveValueNode) element).type();
           yield Companion.buildPrimitiveArrayWriterInner(primitiveType);
-        } else {
+        } else if (element instanceof TypeExpr.RefValueNode) {
           // Nested container arrays
           var elementWriter = buildWriterChainFromASTInner(element);
           yield createArrayRefWriter(elementWriter, element);
+        } else if (element instanceof TypeExpr.ArrayNode) {
+          // nested arrays
         }
+        throw new AssertionError("Unsupported element type for array writer: " + element.toTreeString());
       }
 
       case TypeExpr.ListNode(var element) -> {
