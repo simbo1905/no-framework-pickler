@@ -9,6 +9,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.util.Arrays;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -112,7 +113,9 @@ class NestedArraysTypeExprTest {
     if (!(arrayType instanceof TypeExpr.ArrayNode)) {
       throw new IllegalArgumentException("Not an array type");
     }
-    return 1 + getArrayDimensions(((TypeExpr.ArrayNode) arrayType).element());
+    final var r = 1 + getArrayDimensions(((TypeExpr.ArrayNode) arrayType).element());
+    LOGGER.finer(() -> "Array dimensions of " + arrayType.toTreeString() + "=" + r);
+    return r;
   }
 
   private TypeExpr getArrayInnerType(TypeExpr arrayType) {
