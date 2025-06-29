@@ -148,7 +148,7 @@ class NestedArraysTypeExprTest {
         + ", javaType: " + javaType.getTypeName());
 
     // If the current type expression is not an array, then we are at a leaf -> return the sourceArray as is.
-    if (!(typeExpr instanceof TypeExpr.ArrayNode arrayNode)) {
+    if (!(typeExpr instanceof TypeExpr.ArrayNode(TypeExpr element))) {
       LOGGER.fine(() -> "Leaf node reached, returning sourceArray: " + sourceArray);
       return sourceArray;
     }
@@ -156,7 +156,7 @@ class NestedArraysTypeExprTest {
     LOGGER.finer(() -> "Source array length: " + length);
 
     // Get the correct component type from the TypeExpr structure
-    Class<?> componentType = typeExprToClass(arrayNode.element());
+    Class<?> componentType = typeExprToClass(element);
     Object newArray = Array.newInstance(componentType, length);
 
     LOGGER.finer(() -> "Creating array for: "
@@ -167,11 +167,11 @@ class NestedArraysTypeExprTest {
     );
 
     for (int i = 0; i < length; i++) {
-      Object element = Array.get(sourceArray, i);
+      Object e = Array.get(sourceArray, i);
       int finalI = i;
-      LOGGER.finer(() -> "Processing element " + finalI + ": " + element);
+      LOGGER.finer(() -> "Processing element " + finalI + ": " + e);
 
-      Object populatedElement = createAndPopulateArray(element, arrayNode.element(), javaType);
+      Object populatedElement = createAndPopulateArray(e, element, javaType);
 
       int finalI1 = i;
       LOGGER.finer(() -> "Populated element " + finalI1 + ": " + populatedElement);
