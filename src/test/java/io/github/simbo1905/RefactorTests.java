@@ -4,7 +4,10 @@
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
-import io.github.simbo1905.no.framework.model.*;
+import io.github.simbo1905.no.framework.model.ArrayExample;
+import io.github.simbo1905.no.framework.model.NullableFieldsExample;
+import io.github.simbo1905.no.framework.model.Person;
+import io.github.simbo1905.no.framework.model.TestEnum;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
@@ -1390,13 +1393,17 @@ public class RefactorTests {
     assertEquals(LinkEnd.END, deserializedEnd);
   }
 
+  public record NestedArrayRefExample(
+      String[][] nestedStringArray,
+      TestEnum[][][] nested3DEnumArray
+  ) {
+  }
+
   // Recursive containers are valid to any depth
   @Test
-  void testNestedArrayUsingModelNestedArray() {
-
+  void testNestedRefArray() {
     // Create a record with nested array structures of different depths
-    NestedArrayExample original = new NestedArrayExample(
-//        new int[][]{{1, 2}, {3, 4}}, // 2D int array
+    NestedArrayRefExample original = new NestedArrayRefExample(
         new String[][]{{"A", "B"}, {"C", "D"}}, // 2D String array
         new TestEnum[][][]{ // 3D enum array
             {{TestEnum.FIRST, TestEnum.SECOND}, {TestEnum.THIRD}},
@@ -1405,7 +1412,7 @@ public class RefactorTests {
     );
 
     // Get a pickler for the record
-    Pickler<NestedArrayExample> pickler = Pickler.forClass(NestedArrayExample.class);
+    Pickler<NestedArrayRefExample> pickler = Pickler.forClass(NestedArrayRefExample.class);
 
     // Calculate size and allocate buffer
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
@@ -1416,11 +1423,7 @@ public class RefactorTests {
     var buf = buffer.flip();
 
     // Deserialize
-    NestedArrayExample deserialized = pickler.deserialize(buf);
-
-    // Verify the 2D int array
-//    assertArrayEquals(original.nestedIntArray()[0], deserialized.nestedIntArray()[0]);
-//    assertArrayEquals(original.nestedIntArray()[1], deserialized.nestedIntArray()[1]);
+    NestedArrayRefExample deserialized = pickler.deserialize(buf);
 
     // Verify the 2D string array
     assertArrayEquals(original.nestedStringArray()[0], deserialized.nestedStringArray()[0]);
@@ -1430,6 +1433,51 @@ public class RefactorTests {
     for (int i = 0; i < original.nested3DEnumArray().length; i++) {
       for (int j = 0; j < original.nested3DEnumArray()[i].length; j++) {
         assertArrayEquals(original.nested3DEnumArray()[i][j], deserialized.nested3DEnumArray()[i][j]);
+      }
+    }
+  }
+
+  public record NestedArrayPrimExample(
+      int[][] nestedIntArray,
+      double[][][] nested3DDoubleArray
+  ) {
+  }
+
+  // Recursive containers are valid to any depth
+  @Test
+  void testNestedPrimArray() {
+    // Create a record with nested array structures of different depths
+    NestedArrayPrimExample original = new NestedArrayPrimExample(
+        new int[][]{{1, 2}, {3, 4}}, // 2D int array
+        new double[][][]{ // 3D enum array
+            {{1.1, 1.2}, {2.1, 2.2}},
+            {{3.1, 3.2}, {4.1, 4.2}}
+        }
+    );
+
+    // Get a pickler for the record
+    Pickler<NestedArrayPrimExample> pickler = Pickler.forClass(NestedArrayPrimExample.class);
+
+    // Calculate size and allocate buffer
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    // Serialize
+    pickler.serialize(buffer, original);
+
+    var buf = buffer.flip();
+
+    // Deserialize
+    NestedArrayPrimExample deserialized = pickler.deserialize(buf);
+
+    // Verify the 2D int array
+    assertArrayEquals(original.nestedIntArray()[0], deserialized.nestedIntArray()[0]);
+    assertArrayEquals(original.nestedIntArray()[1], deserialized.nestedIntArray()[1]);
+
+
+    // Verify the 3D enum array
+    for (int i = 0; i < original.nested3DDoubleArray().length; i++) {
+      for (int j = 0; j < original.nested3DDoubleArray()[i].length; j++) {
+        assertArrayEquals(original.nested3DDoubleArray()[i][j], deserialized.nested3DDoubleArray()[i][j]);
       }
     }
   }
