@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Array;
 import java.lang.reflect.Type;
 import java.util.Arrays;
 
@@ -61,11 +60,10 @@ class NestedArraysTypeExprTest {
     assertEquals(expected, actual);
     assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(ARRAY(String)))");
 
-    final int dimensionsActual = getArrayDimensions(actual);
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
     LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
     assertThat(dimensionsActual).isEqualTo(3);
   }
-
 
   @Test
   @DisplayName("3D String array dimensions")
@@ -74,111 +72,28 @@ class NestedArraysTypeExprTest {
     LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
     TypeExpr actual = TypeExpr.analyze(arrayType);
     LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
-    final int dimensionsActual = getArrayDimensions(actual);
+    final int dimensionsActual = Companion.getArrayDimensions(actual);
     LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
     assertThat(dimensionsActual).isEqualTo(3);
 
-    final TypeExpr innerReferenceType = getArrayInnerType(actual);
+    final TypeExpr innerReferenceType = Companion.getArrayInnerType(actual);
     assertThat(innerReferenceType).isEqualTo(
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
     );
 
-    final Object reflectivelyCreated = createArray(String.class, 3);
+    final Object reflectivelyCreated = Companion.createArray(String.class, 3);
     LOGGER.finer(() -> "Reflectively created array type: " + reflectivelyCreated.getClass().getTypeName());
     assertThat(reflectivelyCreated.getClass()).isEqualTo(String[][][].class);
 
     final var sourceArray = NestedArraysTypeExprTest.this.aStringArrayThree;
     LOGGER.finer(() -> "Source array structure: " + Arrays.deepToString(sourceArray));
 
-    final Object fullyPopulated = createAndPopulateArray(sourceArray, actual, String.class);
+    final Object fullyPopulated = Companion.createAndPopulateArray(sourceArray, actual, String.class);
     LOGGER.finer(() -> "Fully populated array type: " + fullyPopulated.getClass().getTypeName());
 
     // Implement array comparison logic
     boolean arraysEqual = Arrays.deepEquals(sourceArray, (String[][][]) fullyPopulated);
     LOGGER.finer(() -> "Array comparison result: " + arraysEqual);
     assertTrue(arraysEqual);
-  }
-
-
-  static int getArrayDimensions(TypeExpr arrayType) {
-    return arrayDimensionsInner(arrayType, 0);
-  }
-
-  static int arrayDimensionsInner(TypeExpr type, int currentCount) {
-    if (type instanceof TypeExpr.ArrayNode) {
-      // We are at an array node, so we add one and then look at the element type.
-      return arrayDimensionsInner(((TypeExpr.ArrayNode) type).element(), currentCount + 1);
-    } else {
-      // We've hit a non-array node. The currentCount is the total number of array dimensions we have traversed.
-      return currentCount;
-    }
-  }
-
-  static TypeExpr getArrayInnerType(TypeExpr arrayType) {
-    if (!(arrayType instanceof TypeExpr.ArrayNode)) {
-      return arrayType;
-    }
-    return getArrayInnerType(((TypeExpr.ArrayNode) arrayType).element());
-  }
-
-  @SuppressWarnings("SameParameterValue")
-  static Object createArray(Class<?> componentType, int dimensions) {
-    int[] dims = new int[dimensions];
-    Arrays.fill(dims, 1); // Default size 1 for each dimension
-    return Array.newInstance(componentType, dims);
-  }
-
-  static Class<?> typeExprToClass(TypeExpr typeExpr) {
-    return switch (typeExpr) {
-      case TypeExpr.ArrayNode(var element) -> {
-        Class<?> componentClass = typeExprToClass(element);
-        yield Array.newInstance(componentClass, 0).getClass();
-      }
-      case TypeExpr.RefValueNode(var type, var javaType) -> (Class<?>) javaType;
-      case TypeExpr.PrimitiveValueNode(var type, var javaType) -> (Class<?>) javaType;
-      default -> throw new IllegalArgumentException("Unsupported TypeExpr: " + typeExpr);
-    };
-  }
-
-
-  static Object createAndPopulateArray(Object sourceArray, TypeExpr typeExpr, Class<?> javaType) {
-    LOGGER.finer(() -> "createAndPopulateArray called with sourceArray: "
-        + (sourceArray == null ? "null" : sourceArray.getClass().getTypeName())
-        + ", typeExpr: " + typeExpr.toTreeString()
-        + ", javaType: " + javaType.getTypeName());
-
-    // If the current type expression is not an array, then we are at a leaf -> return the sourceArray as is.
-    if (!(typeExpr instanceof TypeExpr.ArrayNode(TypeExpr element))) {
-      LOGGER.fine(() -> "Leaf node reached, returning sourceArray: " + sourceArray);
-      return sourceArray;
-    }
-    int length = Array.getLength(sourceArray);
-    LOGGER.finer(() -> "Source array length: " + length);
-
-    // Get the correct component type from the TypeExpr structure
-    Class<?> componentType = typeExprToClass(element);
-    Object newArray = Array.newInstance(componentType, length);
-
-    LOGGER.finer(() -> "Creating array for: "
-        + typeExpr.toTreeString()
-        + " | Component type: " + componentType.getName()
-        + " | Source component: " + sourceArray.getClass().getComponentType().getName()
-        + " | New array class: " + newArray.getClass().getName()
-    );
-
-    for (int i = 0; i < length; i++) {
-      Object e = Array.get(sourceArray, i);
-      int finalI = i;
-      LOGGER.finer(() -> "Processing element " + finalI + ": " + e);
-
-      Object populatedElement = createAndPopulateArray(e, element, javaType);
-
-      int finalI1 = i;
-      LOGGER.finer(() -> "Populated element " + finalI1 + ": " + populatedElement);
-      Array.set(newArray, i, populatedElement);
-    }
-
-    LOGGER.finer(() -> "Array population complete");
-    return newArray;
   }
 }
