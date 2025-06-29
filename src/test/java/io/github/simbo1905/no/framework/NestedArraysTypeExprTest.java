@@ -128,6 +128,19 @@ class NestedArraysTypeExprTest {
     return Array.newInstance(componentType, dims);
   }
 
+  static Class<?> typeExprToClass(TypeExpr typeExpr) {
+    return switch (typeExpr) {
+      case TypeExpr.ArrayNode(var element) -> {
+        Class<?> componentClass = typeExprToClass(element);
+        yield Array.newInstance(componentClass, 0).getClass();
+      }
+      case TypeExpr.RefValueNode(var type, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.PrimitiveValueNode(var type, var javaType) -> (Class<?>) javaType;
+      default -> throw new IllegalArgumentException("Unsupported TypeExpr: " + typeExpr);
+    };
+  }
+
+
   static Object createAndPopulateArray(Object sourceArray, TypeExpr typeExpr, Class<?> javaType) {
     LOGGER.finer(() -> "createAndPopulateArray called with sourceArray: "
         + (sourceArray == null ? "null" : sourceArray.getClass().getTypeName())
@@ -135,35 +148,36 @@ class NestedArraysTypeExprTest {
         + ", javaType: " + javaType.getTypeName());
 
     // If the current type expression is not an array, then we are at a leaf -> return the sourceArray as is.
-    if (!(typeExpr instanceof TypeExpr.ArrayNode)) {
+    if (!(typeExpr instanceof TypeExpr.ArrayNode arrayNode)) {
       LOGGER.fine(() -> "Leaf node reached, returning sourceArray: " + sourceArray);
       return sourceArray;
     }
-
     int length = Array.getLength(sourceArray);
     LOGGER.finer(() -> "Source array length: " + length);
 
-    Object newArray = Array.newInstance(
-        javaType,
-        length
-    );
+    // Get the correct component type from the TypeExpr structure
+    Class<?> componentType = typeExprToClass(arrayNode.element());
+    Object newArray = Array.newInstance(componentType, length);
+
     LOGGER.finer(() -> "Creating array for: "
         + typeExpr.toTreeString()
-        + " | Java type: " + javaType.getName()
+        + " | Component type: " + componentType.getName()
         + " | Source component: " + sourceArray.getClass().getComponentType().getName()
         + " | New array class: " + newArray.getClass().getName()
     );
+
     for (int i = 0; i < length; i++) {
       Object element = Array.get(sourceArray, i);
       int finalI = i;
       LOGGER.finer(() -> "Processing element " + finalI + ": " + element);
 
-      Object populatedElement = createAndPopulateArray(element, ((TypeExpr.ArrayNode) typeExpr).element(), javaType);
+      Object populatedElement = createAndPopulateArray(element, arrayNode.element(), javaType);
+
       int finalI1 = i;
       LOGGER.finer(() -> "Populated element " + finalI1 + ": " + populatedElement);
-
       Array.set(newArray, i, populatedElement);
     }
+
     LOGGER.finer(() -> "Array population complete");
     return newArray;
   }
