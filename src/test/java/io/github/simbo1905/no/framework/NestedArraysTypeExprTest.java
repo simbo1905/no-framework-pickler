@@ -3,7 +3,10 @@
 //
 package io.github.simbo1905.no.framework;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Type;
@@ -36,58 +39,54 @@ class NestedArraysTypeExprTest {
   public String[][] aStringArrayTwo = {{"a"}, {"b", "c"}};
   public String[][][] aStringArrayThree = {{{"a"}}, {{"b"}, {"c", "d"}}};
 
-  @Nested
-  @DisplayName("Array Dimension Tests")
-  class ArrayDimensionTests {
+  @Test
+  @DisplayName("3D String array dimensions")
+  void test3DStringArrayDimensions() throws NoSuchFieldException {
+    LOGGER.info(() -> "Starting test for 3D String array dimensions");
+    Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayThree").getGenericType();
+    LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
 
-    @Test
-    @DisplayName("3D String array dimensions")
-    void test3DStringArrayDimensions() throws NoSuchFieldException {
-      LOGGER.info(() -> "Starting test for 3D String array dimensions");
-      Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayThree").getGenericType();
-      LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
+    TypeExpr expected = new TypeExpr.ArrayNode(
+        new TypeExpr.ArrayNode(
+            new TypeExpr.ArrayNode(
+                new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
+            )
+        )
+    );
+    LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
 
-      TypeExpr expected = new TypeExpr.ArrayNode(
-          new TypeExpr.ArrayNode(
-              new TypeExpr.ArrayNode(
-                  new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
-              )
-          )
-      );
-      LOGGER.finer(() -> "Expected TypeExpr: " + expected.toTreeString());
+    TypeExpr actual = TypeExpr.analyze(arrayType);
+    LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
 
-      TypeExpr actual = TypeExpr.analyze(arrayType);
-      LOGGER.finer(() -> "Actual TypeExpr: " + actual.toTreeString());
+    assertEquals(expected, actual);
+    assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(ARRAY(String)))");
 
-      assertEquals(expected, actual);
-      assertThat(actual.toTreeString()).isEqualTo("ARRAY(ARRAY(ARRAY(String)))");
+    final int dimensionsActual = getArrayDimensions(actual);
+    LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
+    assertThat(dimensionsActual).isEqualTo(3);
 
-      final int dimensionsActual = getArrayDimensions(actual);
-      LOGGER.finer(() -> "Array dimensions: " + dimensionsActual);
-      assertThat(dimensionsActual).isEqualTo(3);
+    final TypeExpr innerReferenceType = getArrayInnerType(actual);
+    LOGGER.finer(() -> "Inner reference type: " + innerReferenceType.toTreeString());
+    assertThat(innerReferenceType).isEqualTo(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
+    );
 
-      final TypeExpr innerReferenceType = getArrayInnerType(actual);
-      LOGGER.finer(() -> "Inner reference type: " + innerReferenceType.toTreeString());
-      assertThat(innerReferenceType).isEqualTo(
-          new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
-      );
+    final Object reflectivelyCreated = createArray(String.class, 3);
+    LOGGER.finer(() -> "Reflectively created array type: " + reflectivelyCreated.getClass().getTypeName());
+    assertThat(reflectivelyCreated.getClass()).isEqualTo(String[][][].class);
 
-      final Object reflectivelyCreated = createArray(String.class, 3);
-      LOGGER.finer(() -> "Reflectively created array type: " + reflectivelyCreated.getClass().getTypeName());
-      assertThat(reflectivelyCreated.getClass()).isEqualTo(String[][][].class);
+    final var sourceArray = NestedArraysTypeExprTest.this.aStringArrayThree;
+    LOGGER.finer(() -> "Source array structure: " + Arrays.deepToString(sourceArray));
 
-      final var sourceArray = NestedArraysTypeExprTest.this.aStringArrayThree;
-      LOGGER.finer(() -> "Source array structure: " + Arrays.deepToString(sourceArray));
+    final Object fullyPopulated = createAndPopulateArray(sourceArray, actual, String.class);
+    LOGGER.finer(() -> "Fully populated array type: " + fullyPopulated.getClass().getTypeName());
 
-      final Object fullyPopulated = createAndPopulateArray(sourceArray, actual, String.class);
-      LOGGER.finer(() -> "Fully populated array type: " + fullyPopulated.getClass().getTypeName());
-
-      // Implement array comparison logic
-      boolean arraysEqual = Arrays.deepEquals(sourceArray, (String[][][]) fullyPopulated);
-      LOGGER.finer(() -> "Array comparison result: " + arraysEqual);
-      assertTrue(arraysEqual);
-    }
+    // Implement array comparison logic
+    boolean arraysEqual = Arrays.deepEquals(sourceArray, (String[][][]) fullyPopulated);
+    LOGGER.finer(() -> "Array comparison result: " + arraysEqual);
+    assertTrue(arraysEqual);
   }
+
 
   static int getArrayDimensions(TypeExpr arrayType) {
     if (arrayType instanceof TypeExpr.ArrayNode(var elementNode)) {
