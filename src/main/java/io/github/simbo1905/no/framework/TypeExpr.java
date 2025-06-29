@@ -7,6 +7,8 @@ import java.lang.reflect.*;
 import java.util.Objects;
 import java.util.stream.Stream;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+
 /// Public sealed interface for the Type Expression protocol
 /// All type expression nodes are nested within this interface to provide a clean API
 sealed interface TypeExpr permits
@@ -30,11 +32,15 @@ sealed interface TypeExpr permits
 
   /// Recursive descent parser for Java types - builds tree bottom-up
   static TypeExpr analyzeType(Type type) {
+    LOGGER.finer(() -> "Analyzing type: " + type);
 
     // Handle arrays first (both primitive arrays and object arrays)
     if (type instanceof Class<?> clazz) {
+      LOGGER.finer(() -> "Class type: " + clazz.getSimpleName());
       if (clazz.isArray()) {
+        LOGGER.finer(() -> "Processing array type: " + clazz);
         TypeExpr elementTypeExpr = analyzeType(clazz.getComponentType());
+        LOGGER.finer(() -> "Created array node for: " + clazz + " with element type: " + elementTypeExpr.toTreeString());
         return new ArrayNode(elementTypeExpr);
       } else {
         if (clazz.isPrimitive()) {
