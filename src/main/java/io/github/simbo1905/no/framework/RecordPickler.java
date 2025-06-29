@@ -530,17 +530,29 @@ final class RecordPickler<T> implements Pickler<T> {
         case LONG -> (Object record) -> Long.BYTES;
         case FLOAT -> (Object record) -> Float.BYTES;
         case DOUBLE -> (Object record) -> Double.BYTES;
-        case UUID -> (Object record) -> 2 * Long.BYTES; // UUID is two longs
-        case ENUM -> (Object record) -> Integer.BYTES + 2 * Long.BYTES; // typeOrdinal + typeSignature + enum ordinal
+        case UUID -> (Object record) -> {
+          // Handle null UUID objects
+          if (record == null) return Long.BYTES; // Size for null marker
+          return 2 * Long.BYTES; // UUID is two longs
+        };
+        case ENUM -> (Object record) -> {
+          // Handle null enum objects
+          if (record == null) return Long.BYTES; // Size for null marker
+          return Integer.BYTES + 2 * Long.BYTES; // typeOrdinal + typeSignature + enum ordinal
+        };
         case STRING -> (Object inner) -> {
-          // Worst case estimate users the length then one int per UTF-8 encoded character
+          // Handle null strings - this was the missing null check causing the NPE
+          if (inner == null) return Long.BYTES; // Size for null marker
           String str = (String) inner;
-          return (str.length() + 1) * Integer.BYTES;
+          return (str.length() + 1) * Integer.BYTES; // Worst case estimate
         };
         case RECORD -> {
           if (userType.isAssignableFrom(cls)) {
-            //noinspection unchecked
-            yield (Object obj) -> 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+            yield (Object obj) -> {
+              if (obj == null) return Long.BYTES; // Size for null marker
+              //noinspection unchecked
+              return 1 + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+            };
           } else {
             // Delegate to the recordValueSizer for the specific type
             final var otherPickler = resolvePicker(cls, this.enumToTypeSignatureMap);
@@ -549,6 +561,7 @@ final class RecordPickler<T> implements Pickler<T> {
           }
         }
         case INTERFACE -> (Object obj) -> {
+          if (obj == null) return Long.BYTES; // Size for null marker
           if (obj instanceof Enum<?> ignored) {
             // For enums, we store the ordinal and type signature
             return Long.BYTES + Integer.BYTES;
