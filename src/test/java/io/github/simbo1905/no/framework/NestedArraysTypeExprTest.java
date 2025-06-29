@@ -50,6 +50,7 @@ class NestedArraysTypeExprTest {
     @Test
     @DisplayName("3D String array dimensions")
     void test3DStringArrayDimensions() throws NoSuchFieldException {
+      LOGGER.info(() -> "Starting test for 3D String array dimensions");
       Type arrayType = NestedArraysTypeExprTest.class.getDeclaredField("aStringArrayThree").getGenericType();
       LOGGER.finer(() -> "Analyzing array type: " + arrayType.getTypeName());
 
