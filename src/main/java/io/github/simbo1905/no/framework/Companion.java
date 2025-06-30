@@ -438,34 +438,6 @@ class Companion {
       Float.class, Double.class, Character.class, Boolean.class
   );
 
-  static int getArrayDimensions(TypeExpr arrayType) {
-    return arrayDimensionsInner(arrayType, 0);
-  }
-
-  static int arrayDimensionsInner(TypeExpr type, int currentCount) {
-    if (type instanceof TypeExpr.ArrayNode) {
-      // We are at an array node, so we add one and then look at the element type.
-      return arrayDimensionsInner(((TypeExpr.ArrayNode) type).element(), currentCount + 1);
-    } else {
-      // We've hit a non-array node. The currentCount is the total number of array dimensions we have traversed.
-      return currentCount;
-    }
-  }
-
-  static TypeExpr getArrayInnerType(TypeExpr arrayType) {
-    if (!(arrayType instanceof TypeExpr.ArrayNode)) {
-      return arrayType;
-    }
-    return getArrayInnerType(((TypeExpr.ArrayNode) arrayType).element());
-  }
-
-  @SuppressWarnings("SameParameterValue")
-  static Object createArray(Class<?> componentType, int dimensions) {
-    int[] dims = new int[dimensions];
-    Arrays.fill(dims, 1); // Default size 1 for each dimension
-    return Array.newInstance(componentType, dims);
-  }
-
   static Class<?> typeExprToClass(TypeExpr typeExpr) {
     return switch (typeExpr) {
       case TypeExpr.ArrayNode(var element) -> {
@@ -480,44 +452,4 @@ class Companion {
     };
   }
 
-  static Object createAndPopulateArray(Object sourceArray, TypeExpr typeExpr, Class<?> javaType) {
-    LOGGER.finer(() -> "createAndPopulateArray called with sourceArray: "
-        + (sourceArray == null ? "null" : sourceArray.getClass().getTypeName())
-        + ", typeExpr: " + typeExpr.toTreeString()
-        + ", javaType: " + javaType.getTypeName());
-
-    // If the current type expression is not an array, then we are at a leaf -> return the sourceArray as is.
-    if (!(typeExpr instanceof TypeExpr.ArrayNode(TypeExpr element))) {
-      LOGGER.fine(() -> "Leaf node reached, returning sourceArray: " + sourceArray);
-      return sourceArray;
-    }
-    int length = Array.getLength(sourceArray);
-    LOGGER.finer(() -> "Source array length: " + length);
-
-    // Get the correct component type from the TypeExpr structure
-    Class<?> componentType = typeExprToClass(element);
-    Object newArray = Array.newInstance(componentType, length);
-
-    LOGGER.finer(() -> "Creating array for: "
-        + typeExpr.toTreeString()
-        + " | Component type: " + componentType.getName()
-        + " | Source component: " + sourceArray.getClass().getComponentType().getName()
-        + " | New array class: " + newArray.getClass().getName()
-    );
-
-    for (int i = 0; i < length; i++) {
-      Object e = Array.get(sourceArray, i);
-      int finalI = i;
-      LOGGER.finer(() -> "Processing element " + finalI + ": " + e);
-
-      Object populatedElement = createAndPopulateArray(e, element, javaType);
-
-      int finalI1 = i;
-      LOGGER.finer(() -> "Populated element " + finalI1 + ": " + populatedElement);
-      Array.set(newArray, i, populatedElement);
-    }
-
-    LOGGER.finer(() -> "Array population complete");
-    return newArray;
-  }
 }
