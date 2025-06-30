@@ -4,6 +4,7 @@
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -261,6 +262,7 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
   void testOptionalArrays() {
     LOGGER.info(() -> "Testing arrays of Optional testOptionalArrays");
 
@@ -300,6 +302,7 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
   void testCollectionArrays() {
     LOGGER.info(() -> "Testing arrays of collections testCollectionArrays");
 
@@ -331,6 +334,7 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
   void testMapArrays() {
     LOGGER.info(() -> "Testing arrays of maps testMapArrays");
 
@@ -367,6 +371,7 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
   void testDeepNestedArrays() {
     LOGGER.info(() -> "Testing deeply nested array structures testDeepNestedArrays");
 
@@ -393,6 +398,14 @@ public class ArrayComprehensiveTests {
     };
 
     // This was the primary source of the error.
+    DeepNestedArrayRecord original = getDeepNestedArrayRecord(threeDimInts, crazyNested);
+
+    // Assuming testRoundTrip is a helper method you have defined elsewhere.
+    testRoundTrip(original, DeepNestedArrayRecord.class);
+  }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  static @NotNull DeepNestedArrayRecord getDeepNestedArrayRecord(int[][][] threeDimInts, List<Map<String, int[]>>[] crazyNested) {
     Map<String, List<Optional<Integer>[]>>[] ultraNested = new Map[]{
         // The inner List.of(...) contained a null, which is not allowed.
         Map.of(
@@ -406,12 +419,9 @@ public class ArrayComprehensiveTests {
         null
     };
 
-    DeepNestedArrayRecord original = new DeepNestedArrayRecord(
+    return new DeepNestedArrayRecord(
         threeDimInts, crazyNested, ultraNested
     );
-
-    // Assuming testRoundTrip is a helper method you have defined elsewhere.
-    testRoundTrip(original, DeepNestedArrayRecord.class);
   }
 
   @Test
@@ -566,6 +576,7 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
+  @SuppressWarnings({"unchecked", "rawtypes"})
   void testEmptyArrays() {
     LOGGER.info(() -> "Testing empty arrays testEmptyArrays");
 
@@ -896,6 +907,20 @@ public class ArrayComprehensiveTests {
   @Test
   void test_05_FullComplexArray() {
     LOGGER.info("Testing the full comprehensive array of complex records test_05_FullComplexArray");
+    RecordArrayRecordComplex original = getRecordArrayRecordComplex();
+
+    Pickler<RecordArrayRecordComplex> pickler = Pickler.forClass(RecordArrayRecordComplex.class);
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+
+    pickler.serialize(buffer, original);
+    buffer.flip();
+    RecordArrayRecordComplex deserialized = pickler.deserialize(buffer);
+
+    verifyArrayContents(original, deserialized);
+    LOGGER.fine("Round-trip successful for the full comprehensive array");
+  }
+
+  private static @NotNull RecordArrayRecordComplex getRecordArrayRecordComplex() {
     ComplexRecord[] complexRecords = {
         new ComplexRecord("c1",
             List.of(1, 2, 3),
@@ -910,17 +935,7 @@ public class ArrayComprehensiveTests {
               put("key", null);
             }})
     };
-    RecordArrayRecordComplex original = new RecordArrayRecordComplex(complexRecords);
-
-    Pickler<RecordArrayRecordComplex> pickler = Pickler.forClass(RecordArrayRecordComplex.class);
-    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
-
-    pickler.serialize(buffer, original);
-    buffer.flip();
-    RecordArrayRecordComplex deserialized = pickler.deserialize(buffer);
-
-    verifyArrayContents(original, deserialized);
-    LOGGER.fine("Round-trip successful for the full comprehensive array");
+    return new RecordArrayRecordComplex(complexRecords);
   }
 
 }
