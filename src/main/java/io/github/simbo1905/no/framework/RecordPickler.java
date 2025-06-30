@@ -29,11 +29,6 @@ import static io.github.simbo1905.no.framework.ManyPickler.resolvePicker;
 import static io.github.simbo1905.no.framework.ManyPickler.resolvePickerNoCache;
 
 final class RecordPickler<T> implements Pickler<T> {
-  public static final String SHA_256 = "SHA-256";
-  static final int SAMPLE_SIZE = 32;
-  static final int CLASS_SIG_BYTES = Long.BYTES;
-  public static final byte NULL_MARKER = (byte) -1;
-  public static final byte NOT_NULL_MARKER = (byte) 1;
   // Global lookup tables indexed by ordinal - the core of the unified architecture
   final Class<?> userType;
   final long typeSignature;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking

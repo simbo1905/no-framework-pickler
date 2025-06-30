@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
@@ -44,14 +47,20 @@ public class PublicApiDemo {
 
   static List<Animal> animals = List.of(dog, dog2, eagle, penguin, alicorn);
 
-  public static void main(String[] args) throws Exception {
+  public static void main(String[] args) {
+    // Create a pickler for the sealed interface Animal
     Pickler<Animal> pickler = Pickler.forClass(Animal.class);
-    // TODO: fix the allocateSufficient of WriteBuffer
 
-    final var buffer = ByteBuffer.allocate(1024);
+    // Rather than just using a fixed buffer if we so wish we can use a fast approximate size of the data
+    final int sizeOfMany = animals.size() * Integer.BYTES + animals.stream().mapToInt(pickler::maxSizeOf).sum();
 
+    // Allocate a buffer large enough to hold all serialized animals
+    final var buffer = ByteBuffer.allocate(sizeOfMany);
+
+    // We need to know how many animals are in the buffer when we load them back
     buffer.putInt(animals.size());
 
+    // Serialize each animal into the buffer
     for (Animal animal : animals) {
       pickler.serialize(buffer, animal);
     }
@@ -59,11 +68,16 @@ public class PublicApiDemo {
     // Prepare the buffer for reading
     buffer.flip();
 
+    // Read the size of the serialized animals
     final int size = buffer.getInt();
 
+    // Deserialize each animal and verify it matches the original
     IntStream.range(0, size).forEach(i -> {
-      Animal animal = animals.get(i);
+      // Deserialize the next animal from the buffer
       Animal deserializedAnimal = pickler.deserialize(buffer);
+      // Get the original animal from the list
+      Animal animal = animals.get(i);
+      // Verify the deserialized animal matches the original
       Assertions.assertEquals(animal, deserializedAnimal);
     });
 

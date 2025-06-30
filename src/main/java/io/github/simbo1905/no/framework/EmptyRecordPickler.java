@@ -8,7 +8,7 @@ import java.nio.ByteOrder;
 import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 
-import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
+import static io.github.simbo1905.no.framework.Companion.SHA_256;
 
 public final class EmptyRecordPickler<T> implements Pickler<T> {
 
@@ -36,7 +36,7 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
     long result;
     try {
       final String uniqueNess = userType.getSimpleName();
-      result = RecordPickler.hashSignature(uniqueNess);
+      result = Companion.hashSignature(uniqueNess);
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(SHA_256 + " not available", e);
     }

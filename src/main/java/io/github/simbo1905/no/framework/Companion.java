@@ -6,6 +6,7 @@ package io.github.simbo1905.no.framework;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Array;
+import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,9 +22,17 @@ import java.util.stream.Stream;
 import static io.github.simbo1905.no.framework.Constants.INTEGER;
 import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
 
-class Companion {
+sealed interface Companion permits Companion.Nothing {
+
+  record Nothing() implements Companion {
+  }
+
+  String SHA_256 = "SHA-256";
+  int SAMPLE_SIZE = 32;
+  int CLASS_SIG_BYTES = Long.BYTES;
+  byte NULL_MARKER = (byte) -1;
+  byte NOT_NULL_MARKER = (byte) 1;
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
   static Set<Class<?>> recordClassHierarchy(final Class<?> current) {
@@ -181,7 +190,7 @@ class Companion {
         final var longs = (long[]) inner;
         final var length = Array.getLength(inner);
         final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
-        if ((length <= RecordPickler.SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) || (length > RecordPickler.SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
+        if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) || (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
           ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
@@ -207,9 +216,6 @@ class Companion {
         .sum();
     return sampleSize / sampleLength;
   }
-
-
-  static final int SAMPLE_SIZE = 32;
 
   static int estimateAverageSizeInt(int[] integers, int length) {
     final var sampleLength = Math.min(length, SAMPLE_SIZE);
@@ -427,7 +433,7 @@ class Companion {
 
       byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
 
-      return IntStream.range(0, RecordPickler.CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+      return IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(SHA_256 + " not available", e);
     }
@@ -452,4 +458,27 @@ class Companion {
     };
   }
 
+  static long hashSignature(String uniqueNess) throws NoSuchAlgorithmException {
+    long result;
+    MessageDigest digest = MessageDigest.getInstance(SHA_256);
+
+    byte[] hash = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
+
+    // Convert first CLASS_SIG_BYTES to long
+    //      Byte Index:   0       1       2        3        4        5        6        7
+    //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
+    //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
+    result = IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+    return result;
+  }
+
+  /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
+  static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
+    String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
+    try {
+      return hashSignature(input);
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
 }
