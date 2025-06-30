@@ -16,6 +16,8 @@ import java.util.stream.Collectors;
 
 final class ManyPickler<R> implements Pickler<R> {
 
+  // TODO: I am not so sure that this is a good idea we should be able to pass a callback down to the record picklers
+  //  to resolve other pickers from this class. Users of this library should create their own cache if they want to
   static final Map<Class<?>, Pickler<?>> REGISTRY = new ConcurrentHashMap<>();
 
   final List<Class<?>> userTypes;
@@ -28,7 +30,6 @@ final class ManyPickler<R> implements Pickler<R> {
     this.userTypes = recordClasses;
     this.enumToTypeSignatureMap = enumToTypeSignatureMap;
 
-    // TODO had to not cache here due to circular cache updates that can be fixed later
     LOGGER.fine(() -> "ManyPickler resolve componentPicker for " + recordClasses.stream().map(Class::getSimpleName)
         .collect(Collectors.joining(", ")));
     picklers = recordClasses.stream().collect(Collectors.toMap(
