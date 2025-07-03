@@ -381,24 +381,57 @@ final class RecordPickler<T> implements Pickler<T> {
     LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " deserialize() read type signature 0x" + Long.toHexString(incomingSignature) + " at position " + typeSigPosition + ", expected 0x" + Long.toHexString(typeSignature));
 
     if (incomingSignature != this.typeSignature) {
-      throw new IllegalStateException("Type signature mismatch: expected " + Long.toHexString(this.typeSignature) + " but got " + Long.toHexString(incomingSignature) + " at position: " + typeSigPosition);
+        if (CompatibilityMode.current() == CompatibilityMode.ENABLED) {
+            LOGGER.info(() -> "Type signature mismatch, but compatibility mode is ENABLED. Proceeding with deserialization.");
+            // we need to rewind the buffer so that the reader can read the signature again
+            buffer.position(typeSigPosition);
+            return readFromWire(buffer, true);
+        } else {
+            throw new IllegalStateException("Type signature mismatch: expected " + Long.toHexString(this.typeSignature) + " but got " + Long.toHexString(incomingSignature) + " at position: " + typeSigPosition);
+        }
     }
 
     LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
-    return readFromWire(buffer);
+    return readFromWire(buffer, false);
   }
 
   void serializeRecordComponents(ByteBuffer buffer, T record) {
+    // we need to write out the length so that opt-in backwards compatiblity can read more components
+    ZigZagEncoding.putInt(buffer, componentWriters.length);
     IntStream.range(0, componentWriters.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex + " at position " + buffer.position() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
+      LOGGER.info(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex + " at position " + buffer.position() );
       componentWriters[componentIndex].accept(buffer, record);
     });
   }
 
+  // TODO not sure why we have an inner and outer version of this
   T readFromWire(ByteBuffer buffer) {
+    return readFromWire(buffer, false);
+  }
+
+  T readFromWire(ByteBuffer buffer, boolean compatibility) {
+    if (compatibility) {
+        buffer.getLong(); // skip the signature
+    }
+    final int wireCount = ZigZagEncoding.getInt(buffer);
+    if (wireCount == 0 && compatibility) {
+        Object[] components = new Object[componentReaders.length];
+        for (int i = 0; i < componentReaders.length; i++) {
+            RecordComponent rc = userType.getRecordComponents()[i];
+            components[i] = defaultValue(rc.getType());
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            T result = (T) recordConstructor.invokeWithArguments(components);
+            return result;
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     Object[] components = new Object[componentReaders.length];
-    IntStream.range(0, componentReaders.length).forEach(i -> {
+    IntStream.range(0, wireCount).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
       final int beforePosition = buffer.position();
       LOGGER.fine(() -> "RecordPickler reading component " + componentIndex + " at position " + beforePosition + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
@@ -407,6 +440,18 @@ final class RecordPickler<T> implements Pickler<T> {
       final int afterPosition = buffer.position();
       LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " moved from position " + beforePosition + " to " + afterPosition);
     });
+
+    if (wireCount < componentReaders.length) {
+        if (CompatibilityMode.current() == CompatibilityMode.ENABLED) {
+            LOGGER.warning(() -> "wireCount(" + wireCount + ") < componentReaders.length(" + componentReaders.length + "). Filling remaining with default values.");
+            for (int i = wireCount; i < componentReaders.length; i++) {
+                RecordComponent rc = userType.getRecordComponents()[i];
+                components[i] = defaultValue(rc.getType());
+            }
+        } else {
+            throw new IllegalStateException("wireCount(" + wireCount + ") < componentReaders.length(" + componentReaders.length + ") and compatibility mode is disabled.");
+        }
+    }
 
     // Invoke constructor
     try {
@@ -1245,5 +1290,28 @@ final class RecordPickler<T> implements Pickler<T> {
         "userType=" + userType +
         ", typeSignature=" + typeSignature +
         '}';
+  }
+
+  static Object defaultValue(Class<?> type) {
+      if (type.isPrimitive()) {
+          if (type == boolean.class) {
+              return false;
+          } else if (type == byte.class) {
+              return (byte) 0;
+          } else if (type == short.class) {
+              return (short) 0;
+          } else if (type == int.class) {
+              return 0;
+          } else if (type == long.class) {
+              return 0L;
+          } else if (type == float.class) {
+              return 0.0f;
+          } else if (type == double.class) {
+              return 0.0;
+          } else if (type == char.class) {
+              return '\u0000';
+          }
+      }
+      return null;
   }
 }
