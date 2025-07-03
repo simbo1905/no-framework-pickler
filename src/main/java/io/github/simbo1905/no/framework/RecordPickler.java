@@ -14,7 +14,6 @@ import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -38,6 +37,7 @@ final class RecordPickler<T> implements Pickler<T> {
   final long typeSignature;    // CLASS_SIG_BYTES SHA256 signatures for backwards compatibility checking
   final MethodHandle recordConstructor;      // Constructor direct method handle
   final MethodHandle[] componentAccessors;    // Accessor direct method handle
+  final Class<?>[] componentTypes; // Component types for the record, used for backwards compatibility defaults
   final TypeExpr[] componentTypeExpressions;       // Component type AST structure
   final BiConsumer<ByteBuffer, Object>[] componentWriters;  // writer chain of delegating lambda eliminating use of `switch` on write the hot path
   final Function<ByteBuffer, Object>[] componentReaders;    // reader chain of delegating lambda eliminating use of `switch` on read the hot path
@@ -48,7 +48,7 @@ final class RecordPickler<T> implements Pickler<T> {
   final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap;
   final Map<Long, Class<Enum<?>>> typeSignatureToEnumMap;
 
-  @SuppressWarnings({"unchecked","rawtypes"})
+  @SuppressWarnings({"unchecked"})
   public RecordPickler(@NotNull Class<?> userType, final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     assert userType.isRecord() && enumToTypeSignatureMap != null;
     this.userType = userType;
@@ -143,12 +143,14 @@ final class RecordPickler<T> implements Pickler<T> {
     }
 
     componentAccessors = new MethodHandle[numComponents];
+    componentTypes = new Class[numComponents];
     IntStream.range(0, numComponents).forEach(i -> {
       try {
         componentAccessors[i] = MethodHandles.lookup().unreflect(components[i].getAccessor());
       } catch (IllegalAccessException e) {
         throw new RuntimeException("Failed to un reflect accessor for " + components[i].getName(), e);
       }
+      componentTypes[i] = components[i].getType();
     });
 
     LOGGER.fine(() -> "Building code for : " + userType.getSimpleName());
@@ -412,26 +414,29 @@ final class RecordPickler<T> implements Pickler<T> {
 
   T readFromWire(ByteBuffer buffer, boolean compatibility) {
     if (compatibility) {
+      // FIXME why is this skip needed?
         buffer.getLong(); // skip the signature
     }
     final int wireCount = ZigZagEncoding.getInt(buffer);
     if (wireCount == 0 && compatibility) {
         Object[] components = new Object[componentReaders.length];
-        for (int i = 0; i < componentReaders.length; i++) {
-            RecordComponent rc = userType.getRecordComponents()[i];
-            components[i] = defaultValue(rc.getType());
-        }
+        LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " read wireCount=0, filling components with "+componentReaders.length+" default values.");
+        Arrays.setAll(components, i -> defaultValue(componentTypes[i]));
+        final T result;
         try {
             @SuppressWarnings("unchecked")
-            T result = (T) recordConstructor.invokeWithArguments(components);
-            return result;
+            final var t = (T) recordConstructor.invokeWithArguments(components);
+            result = t;
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
+        LOGGER.finer(() -> "RecordPickler " + userType.getSimpleName() + " read wireCount=0, returning default record: " + result);
+        return result;
     }
 
+    // Fill the components from the buffer up to the wireCount
     Object[] components = new Object[componentReaders.length];
-    IntStream.range(0, wireCount).forEach(i -> {
+    IntStream.range(0, Math.min(wireCount, componentReaders.length)).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
       final int beforePosition = buffer.position();
       LOGGER.fine(() -> "RecordPickler reading component " + componentIndex + " at position " + beforePosition + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
@@ -441,16 +446,20 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " moved from position " + beforePosition + " to " + afterPosition);
     });
 
+    // If we need more and we are in backwards compatibility mode, fill the remaining components with default values
     if (wireCount < componentReaders.length) {
         if (CompatibilityMode.current() == CompatibilityMode.ENABLED) {
-            LOGGER.warning(() -> "wireCount(" + wireCount + ") < componentReaders.length(" + componentReaders.length + "). Filling remaining with default values.");
-            for (int i = wireCount; i < componentReaders.length; i++) {
-                RecordComponent rc = userType.getRecordComponents()[i];
-                components[i] = defaultValue(rc.getType());
-            }
+            LOGGER.info(() ->  "RecordPickler " + userType.getSimpleName() + "wireCount(" + wireCount + ") < componentReaders.length(" + componentReaders.length + "). Filling remaining with default values.");
+            IntStream.range(wireCount, componentReaders.length).forEach(i -> {
+              final RecordComponent rc = userType.getRecordComponents()[i];
+              LOGGER.fine(() -> "Filling component " + i + " with default value for type: " + rc.getType().getName());
+              components[i] = defaultValue(rc.getType());
+            });
         } else {
             throw new IllegalStateException("wireCount(" + wireCount + ") < componentReaders.length(" + componentReaders.length + ") and compatibility mode is disabled.");
         }
+    } else if(wireCount > componentReaders.length) {
+      throw new IllegalStateException( "RecordPickler " + userType.getSimpleName() + " wireCount(" + wireCount + ") > componentReaders.length(" + componentReaders.length + "). This indicates a version mismatch or corrupted data.");
     }
 
     // Invoke constructor
