@@ -5,10 +5,7 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
-
-import static io.github.simbo1905.no.framework.RecordPickler.SHA_256;
 
 public final class EmptyRecordPickler<T> implements Pickler<T> {
 

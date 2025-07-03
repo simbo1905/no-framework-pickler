@@ -398,7 +398,7 @@ final class RecordPickler<T> implements Pickler<T> {
   }
 
   void serializeRecordComponents(ByteBuffer buffer, T record) {
-    // we need to write out the length so that opt-in backwards compatiblity can read more components
+    // we need to write out the length so that opt-in backwards compatibility can read more components
     ZigZagEncoding.putInt(buffer, componentWriters.length);
     IntStream.range(0, componentWriters.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
@@ -446,7 +446,7 @@ final class RecordPickler<T> implements Pickler<T> {
       LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " moved from position " + beforePosition + " to " + afterPosition);
     });
 
-    // If we need more and we are in backwards compatibility mode, fill the remaining components with default values
+    // If we need more, and we are in backwards compatibility mode, fill the remaining components with default values
     if (wireCount < componentReaders.length) {
         if (CompatibilityMode.current() == CompatibilityMode.ENABLED) {
             LOGGER.info(() ->  "RecordPickler " + userType.getSimpleName() + "wireCount(" + wireCount + ") < componentReaders.length(" + componentReaders.length + "). Filling remaining with default values.");
