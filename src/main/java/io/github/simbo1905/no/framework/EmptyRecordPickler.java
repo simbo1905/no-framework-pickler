@@ -56,6 +56,7 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
           buffer.limit() + " capacity: " + buffer.capacity()
       );
       buffer.putLong(this.typeSignature);
+      ZigZagEncoding.putInt(buffer, 0); // no components, so size is zero
       return Long.BYTES;
     } else {
       throw new IllegalArgumentException("EmptyRecordPickler cannot serialize " +
@@ -85,7 +86,7 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
 
   @Override
   public int maxSizeOf(T record) {
-    return Long.BYTES; // only the type signature is serialized
+    return Long.BYTES + 1; // only the type signature is serialized plus a zero-length component count
   }
 
   @Override
