@@ -83,8 +83,8 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
         " buffer remaining bytes: " + buffer.remaining() + " limit: " +
         buffer.limit() + " capacity: " + buffer.capacity());
 
-    //noinspection unchecked
-    return (T) this.singleton; // return the singleton instance
+    @SuppressWarnings("unchecked") final var result = (T) this.singleton; // return the singleton instance
+    return result;
   }
 
   @Override

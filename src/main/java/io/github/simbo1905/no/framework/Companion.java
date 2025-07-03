@@ -411,8 +411,8 @@ class Companion {
 
   static <X> void writeToWireWitness(RecordPickler<X> rp, ByteBuffer buffer, Object record) {
     LOGGER.fine(() -> "Writing record to wire using " + rp + " for record: " + record.getClass().getSimpleName() + " at position: " + buffer.position());
-    //noinspection unchecked
-    rp.writeToWire(buffer, (X) record);
+    @SuppressWarnings("unchecked") final X castedRecord = (X) record;
+    rp.writeToWire(buffer, castedRecord);
   }
 
   /// Compute a CLASS_SIG_BYTES signature from enum class and constant names

@@ -49,7 +49,7 @@ final class RecordPickler<T> implements Pickler<T> {
   final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap;
   final Map<Long, Class<Enum<?>>> typeSignatureToEnumMap;
 
-
+  @SuppressWarnings({"unchecked","rawtypes"})
   public RecordPickler(@NotNull Class<?> userType, final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     assert userType.isRecord() && enumToTypeSignatureMap != null;
     this.userType = userType;
@@ -118,11 +118,9 @@ final class RecordPickler<T> implements Pickler<T> {
     LOGGER.finer(() -> "Found " + numComponents + " components for " + userType.getSimpleName());
 
     componentTypeExpressions = new TypeExpr[numComponents];
-    //noinspection unchecked
+
     componentWriters = new BiConsumer[numComponents];
-    //noinspection unchecked
     componentReaders = new Function[numComponents];
-    //noinspection unchecked
     componentSizers = new ToIntFunction[numComponents];
 
     IntStream.range(0, numComponents).forEach(i -> {
@@ -432,8 +430,8 @@ final class RecordPickler<T> implements Pickler<T> {
     // Invoke constructor
     try {
       LOGGER.finer(() -> "Constructing record at position " + buffer.position() + " with components: " + Arrays.toString(components));
-      //noinspection unchecked we know by static inspection that this is safe
-      return (T) this.recordConstructor.invokeWithArguments(components);
+      @SuppressWarnings("unchecked") final var result = (T) this.recordConstructor.invokeWithArguments(components);
+      return result;
     } catch (Throwable e) {
       throw new RuntimeException(e.getMessage(), e);
     }
@@ -612,8 +610,8 @@ final class RecordPickler<T> implements Pickler<T> {
           if (userType.isAssignableFrom(cls)) {
             yield (Object obj) -> {
               if (obj == null) return Byte.BYTES; // Just the null marker
-              //noinspection unchecked
-              return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+              @SuppressWarnings("unchecked") final var cast = (T) obj;
+              return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(cast);
             };
           } else {
             final var otherPickler = resolvePicker(cls, this.enumToTypeSignatureMap);
@@ -629,8 +627,8 @@ final class RecordPickler<T> implements Pickler<T> {
           if (obj instanceof Enum<?> ignored) {
             return Byte.BYTES + Long.BYTES + Integer.BYTES;
           } else if (userType.isAssignableFrom(obj.getClass())) {
-            //noinspection unchecked
-            return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents((T) obj);
+            @SuppressWarnings("unchecked") final var result = (T) obj;
+            return Byte.BYTES + Integer.BYTES + CLASS_SIG_BYTES + maxSizeOfRecordComponents(result);
           } else if (picklers.containsKey(obj.getClass())) {
             final var otherPickler = resolvePicker(obj.getClass(), this.enumToTypeSignatureMap);
             return Byte.BYTES + otherPickler.maxSizeOf(obj);
@@ -1211,8 +1209,8 @@ final class RecordPickler<T> implements Pickler<T> {
               buffer.putLong(typeSignature);
               ZigZagEncoding.putInt(buffer, enumValue.ordinal());
             } else if (userType.isAssignableFrom(obj.getClass())) {
-              //noinspection unchecked
-              writeToWire(buffer, (T) obj);
+              @SuppressWarnings("unchecked") final T result = (T) obj;
+              writeToWire(buffer, result);
             } else if (picklers.containsKey(obj.getClass())) {
               // If we have a pickler for this interface type, use it
               final var pickler = picklers.get(obj.getClass());
@@ -1237,8 +1235,8 @@ final class RecordPickler<T> implements Pickler<T> {
     if (userType.isAssignableFrom(clz)) {
       LOGGER.fine(() -> "Building self writer chain for userType " + userType.getSimpleName());
       return (ByteBuffer buffer, Object record) -> {
-        //noinspection unchecked
-        writeToWire(buffer, (T) record);
+        @SuppressWarnings("unchecked") final var cast = (T) record;
+        writeToWire(buffer, cast);
       };
     } else {
       LOGGER.fine(() -> "Building delegating writer chain for Record " + clz.getSimpleName());

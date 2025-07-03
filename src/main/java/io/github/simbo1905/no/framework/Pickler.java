@@ -73,8 +73,8 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
 
     final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap = enumClasses.stream()
         .map(cls -> {
-          //noinspection unchecked
-          return (Class<Enum<?>>) cls;
+          @SuppressWarnings("unchecked") final Class<Enum<?>> cast = (Class<Enum<?>>) cls;
+          return cast;
         })
         .filter(Enum.class::isAssignableFrom)
         .map(enumClass -> Map.entry(enumClass, Companion.hashEnumSignature(enumClass)))
