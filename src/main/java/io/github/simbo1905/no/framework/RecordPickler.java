@@ -14,7 +14,6 @@ import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.function.BiConsumer;
@@ -131,7 +130,7 @@ final class RecordPickler<T> implements Pickler<T> {
     });
 
     // Compute and store the type signature for this record
-    typeSignature = hashClassSignature(userType, components, componentTypeExpressions);
+    typeSignature = hashRecordSignature(userType, components, componentTypeExpressions);
     LOGGER.finer(() -> "Computed type signature: 0x" + Long.toHexString(typeSignature) + " for " + userType.getSimpleName());
 
     final Constructor<?> constructor;
@@ -177,28 +176,10 @@ final class RecordPickler<T> implements Pickler<T> {
     LOGGER.info(() -> "RecordPickler " + userType.getSimpleName() + " construction complete for " + userType.getSimpleName());
   }
 
-  static long hashSignature(String uniqueNess) throws NoSuchAlgorithmException {
-    long result;
-    MessageDigest digest = MessageDigest.getInstance(SHA_256);
-
-    byte[] hash = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
-
-    // Convert first CLASS_SIG_BYTES to long
-    //      Byte Index:   0       1       2        3        4        5        6        7
-    //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
-    //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-    result = IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
-    return result;
-  }
-
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
-  static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
-    String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
-    try {
-      return RecordPickler.hashSignature(input);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(e.getMessage(), e);
-    }
+  static long hashRecordSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
+    String input = Stream.concat(Stream.of(clazz.getName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
+    return hashSignature(input);
   }
 
   @NotNull Function<ByteBuffer, Object> buildPrimitiveValueReader(TypeExpr.RefValueType valueType) {

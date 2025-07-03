@@ -45,44 +45,26 @@ final var rootNode = new TreeNode.InternalNode("Root",
 Pickler<TreeNode> treeNodePickler = Pickler.forClass(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer and load it back out again:
-treeNodePickler.
-
-serialize(buffer, rootNode);
-buffer.
-
-flip();
-
+treeNodePickler.serialize(buffer, rootNode);
+buffer.flip();
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
-if(TreeNode.
-
-areTreesEqual(rootNode, deserializedRoot) ){
-    System.out.
-
-println("The trees are equal!");
+if(TreeNode.areTreesEqual(rootNode, deserializedRoot) ){
+    System.out.println("The trees are equal!");
 }
 ```
 
 **No Framework Pickler is Java** where in a single line of code creates a typesafe pickler for a sealed interface
-hierarchy of records. There are no annotations. There are no build-time steps. There are n generated data structures you
-need to map to your regular code. There is no special configuration files. There is no manual just Java. You get all the
-convenience that the built-in JDK serialization with none of the downsides.
+hierarchy of records. There are no annotations. There are no build-time steps. There are no generated data structures you
+need to map to your regular code. There is no special configuration files. It is just Java Records and Sealed Interfaces. 
+You get all the convenience that the built-in JDK serialization with none of the downsides.
 
-**No Framework Pickler is fast** as it avoids reflection on the hot path by using the JDK's `unreflect` on the resolved
-constructors and component accessors of the Java records. This work is one once when the type-safe pickler is
-constructed. The
-cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh)
-then do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary
-payload that is 0.5x the size.
+**No Framework Pickler is fast** as it avoids deep reflection on the hot path by using the JDK's `unreflect` on the 
+resolved the public constructors and public component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) are then used to do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
 
-**No Framework Pickler is compact** as the entire codebase is in one Java source file with 1,300 lines of code not
-counting the extensive comments. It creates a single Jar file with no dependencies that is around 36k in size. It has no
-dependencies.
-
-**No Framework Pickler is safer** than many alternative approaches. The pickler resolves the legal code paths that
-regular Java code would take when creating the pickler; not when it is reading binary data. Bad data on the wire will
-never result in mal-constructed data structures with undefined behaviour.
+**No Framework Pickler is safer** than many alternative approaches including JDK Serialization itself. The pickler 
+resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
 
 **No Framework Pickler is expressive** as it works out of the box with nested sealed interfaces of permitted record
 types or an outer array of such where the records may contain arbitrarily nested:
@@ -155,23 +137,15 @@ int size = pickler.maxSizeOf(december);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize to a ByteBuffer
-pickler.
-
-serialize(buffer, december);
-buffer.
-
-flip();
+pickler.serialize(buffer, december);
+buffer.flip();
 
 // Deserialize from the ByteBuffer
 Month deserializedMonth = pickler.deserialize(buffer);
 
 // Verify the deserialized enum value
-if(!deserializedMonth.
-
-equals(december)){
-    throw new
-
-AssertionError("should not be reached");
+if(!deserializedMonth.equals(december)){
+    throw new AssertionError("should not be reached");
 }
 ```
 
@@ -216,14 +190,10 @@ final var bufferSize = pickler.maxSizeOf(originalRoot);
 final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize the root node (which includes the entire graph)
-pickler.
-
-serialize(buffer, originalRoot);
+pickler.serialize(buffer, originalRoot);
 
 // Prepare buffer for reading
-buffer.
-
-flip();
+buffer.flip();
 
 // Deserialize the root node (which will reconstruct the entire graph depth first)
 final var deserializedRoot = pickler.deserialize(buffer);
@@ -243,12 +213,8 @@ record NestedListRecord(List<List<String>> nestedList) {
 
 // Make the inner lists.
 List<List<String>> nestedList = new ArrayList<>();
-nestedList.
-
-add(Arrays.asList("A", "B","C"));
-    nestedList.
-
-add(Arrays.asList("D", "E"));
+nestedList.add(Arrays.asList("A", "B","C"));
+nestedList.add(Arrays.asList("D", "E"));
 
 // The record has mutable inner lists
 NestedListRecord original = new NestedListRecord(nestedList);
@@ -261,22 +227,14 @@ int size = pickler.maxSizeOf(original);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize
-pickler.
-
-serialize(buffer, original);
-buffer.
-
-flip();
+pickler.serialize(buffer, original);
+buffer.flip();
 
 // Deserialize
 NestedListRecord deserialized = pickler.deserialize(buffer);
 
 // The returned inner lists are immutable
-assertThrows(UnsupportedOperationException .class, () ->deserialized.
-
-nestedList().
-
-removeFirst());
+assertThrows(UnsupportedOperationException .class, () ->deserialized.nestedList().removeFirst());
 ```
 
 Maps within records are also returned as immutable:
@@ -291,12 +249,8 @@ Person michael = new Person("Michael", 65);
 Person sarah = new Person("Sarah", 63);
 
 Map<String, Person> familyMap = new HashMap<>();
-familyMap.
-
-put("father",michael);
-familyMap.
-
-put("mother",sarah);
+familyMap.put("father",michael);
+familyMap.put("mother",sarah);
 
 final var original = new NestedFamilyMapContainer(john, familyMap);
 
@@ -306,21 +260,15 @@ final var pickler = Pickler.forClass(NestedFamilyMapContainer.class);
 int size = pickler.maxSizeOf(original);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 // Serialize
-pickler.
-
-serialize(buffer, original);
+pickler.serialize(buffer, original);
 // Prepare buffer for reading
-buffer.
-
-flip();
+buffer.flip();
 
 // Deserialize
 NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
 
 // The returned inner map are immutable
-assertThrows(UnsupportedOperationException .class, () ->deserialized.
-
-relationships().
+assertThrows(UnsupportedOperationException .class, () ->deserialized.relationships().
 
 put("brother",new Person("Tom", 35)));
 ```
@@ -369,35 +317,22 @@ Pickler<Animal> pickler = Pickler.forClass(Animal.class);
 final var buffer = ByteBuffer.allocate(1024);
 
 // anyone reading back needs to know how many records to read back
-buffer.
+buffer.putInt(animals.size());
 
-putInt(animals.size());
-
-    for(
-Animal animal :animals){
-    pickler.
-
-serialize(buffer, animal);
+for(Animal animal :animals){
+    pickler.serialize(buffer, animal);
 }
 
-    buffer.
-
-flip(); // Prepare for reading
+buffer.flip(); // Prepare for reading
 
 // any service reading back needs to know how many records to read back
 int size = buffer.getInt();
 
 // Deserialize the correct number of records
 List<Animal> deserializedAnimals = new ArrayList<>(size);
-IntStream.
-
-range(0,size).
-
-forEach(i ->{
+IntStream.range(0,size).forEach(i ->{
 Animal animal = pickler.deserialize(buffer);
-    deserializedAnimals.
-
-add(animal);
+    deserializedAnimals.add(animal);
 });
 ```
 
@@ -417,50 +352,29 @@ List<Person> people = List.of(
 ByteBuffer buffer = ByteBuffer.allocate(1024);
 
 // Write the count first
-buffer.
-
-putInt(people.size());
+buffer.putInt(people.size());
 
 // Serialize each person
-    for(
-Person person :people){
-    pickler.
-
-serialize(buffer, person);
+for(Person person :people){
+    pickler.serialize(buffer, person);
 }
 
-    buffer.
-
-flip(); // Prepare for reading
+buffer.flip(); // Prepare for reading
 
 // Read the count
 int count = buffer.getInt();
 
 // Deserialize each person
 List<Person> deserializedPeople = new ArrayList<>(count);
-for(
-int i = 0;
-i<count;i++){
-    deserializedPeople.
-
-add(pickler.deserialize(buffer));
-    }
+for( int i = 0; i < count; i++){
+    deserializedPeople.add(pickler.deserialize(buffer));
+}
 
 // Verify the deserialization
-assertEquals(people.size(),deserializedPeople.
-
-size());
-    for(
-int i = 0; i <people.
-
-size();
-
-i++){
-
-assertEquals(people.get(i),deserializedPeople.
-
-get(i));
-    }
+assertEquals(people.size(),deserializedPeople.size());
+for(int i = 0; i <people.size(); i++){
+  assertEquals(people.get(i), deserializedPeople.get(i));
+}
 ```
 
 ## Security
@@ -518,15 +432,15 @@ prevent against any form of tampering attack, which is beyond the scope of this 
 
 ## TL;DR
 
-- **DISABLED**: Default mode. Strictly no backwards compatibility. Fails fast on any schema mismatch.
-- **DEFAULTED**: Opt-in mode. Emulates JDK serialization functionality with a risky corner case.
+- **DISABLED**: The safe mode which is the default mode. Strictly no backwards compatibility. Fails fast on any schema mismatch.
+- **ENABLED**: Opt-in mode. Emulates JDK serialization functionality with a risky corner case.
 - If you do opt-in **never** reorder existing fields or enum constants in your source file to avoid the risky corner
   case of "swapping" components or enum constants when deserializing.
 
 To opt-in set the system property `no.framework.Pickler.Compatibility`:
 
 ```shell
--Dno.framework.Pickler.Compatibility=DISABLED|DEFAULTED
+-Dno.framework.Pickler.Compatibility=DISABLED|ENABLED
 ```
 
 ## Compatibility Modes Explained
@@ -535,7 +449,7 @@ With No Framework Pickler your java code is the "schema" of your data structures
 in a way that is safe only by adding new values to the end of the record or enum definitions. This is because we do not
 write out field names or enum constant names to the wire.
 
-The two gotcha are only if you opt in to the `DEFAULTED` mode:
+The two gotcha are only if you opt in to the `ENABLED` mode:
 
 - If you serialize to storage when your code was `record Point(int x, int y)`, then later read it back with
   `record Point(int y, int x)`, there is an undetectable "swapping" of data.
@@ -554,7 +468,7 @@ No Framework Pickler is designed:
 - compact and fast
 - safe by default
 
-This requires us to use cryptographic hashes to detect schema changes and forbid them by default to be safe by default.
+It therefore use cryptographic hashes to detect schema changes and forbid them by default to be safe by default.
 
 ### Example: Adding a Field to a Record
 
@@ -572,7 +486,7 @@ public record SimpleRecord(int value) {
 ```java
 package io.github.simbo1905.no.framework.evolution;
 
-// Only works with: -Dno.framework.Pickler.Compatibility=DEFAULTED
+// Only works with: -Dno.framework.Pickler.Compatibility=ENABLED
 public record SimpleRecord(int value, String name, double score) {
   // Backward compatibility constructor for original schema
   public SimpleRecord(int value) {
@@ -581,7 +495,7 @@ public record SimpleRecord(int value, String name, double score) {
 }
 ```
 
-When deserializing V1 data with V2 code in `DEFAULTED` mode:
+When deserializing V1 data with V2 code in `ENABLED` mode:
 
 - `value` retains its serialized value (42)
 - `name` and `score` use the compatibility constructor's defaults ("default" and 0.0)
@@ -716,80 +630,12 @@ sequenceDiagram
     end
 ```
 
-## Why Did Your Write This Framework Killer Code As A Single Java File?
-
-No Framework Pickler came about because I was doing Java Data Oriented programming over sealed traits using Java 21. I
-wanted to quickly transmit them as a simple message protocol. Including large framework for something so basic seemed
-like a world of future security issues and forced upgrades. Doing something quick and simple in a single Java file felt
-right. I wanted to avoid reflection and found out:
-
-- The Java `record` types is specifically designed to be a safe data transfer object.
-- The JDK's `ByteBuffer` class correctly validates UTF8 bytes for Strings and safely handles all primitive types.
-- The JDK's `MethodHandle` class lets you `unreflect` them to get lower
-  overhead [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh)
-- Nested `sealed interfaces` that only contain `records` can be exhaustively matched switch statements to deconstruct
-  the records are exactly what you need to model message protocol on Java 21+.
-
-When I looked at just adding a bit more it all seemed easy enough. Until now the challenge with using record patterns in
-switch statements for a pure data exchange protocols are:
-
-- The built-in Java Serialization mechanism is university loathed. Even if was magically fixed in future Java versions
-  no-one will ever trust it
-- Drop in replacements for java serialization like [Apache Fury](https://github.com/apache/fury/tree/main/java) at the
-  time of writing only (v0.10.1) under `fure-core/src/main/java` has 229 java source files and 56,000 lines of code. The
-  `fury-core-0.10.1.jar` Jar file is 1.9M in size.
-- The historic way to deal with things is to use a "standard" protocol like JDK Serialization, Protocol Buffers, Apache
-  Avro, JSON, Hessian, Flatbuffers,, Thrift (TBinaryProtocol, TCompactProtocol, TJSONProtocol), MessagePack, XML, etc.
-- Picking any of those makes you have to learn and deal with the complexities and security vulnerabilities of libraries
-  such as Kryo, Fst, Protostuff, Jsonb, Protobuf, Flatbuffers, Jackson, Thrift, Fury (when it is stable), FastJSON,
-  JBoss Serialization, etc
-
-That amount of choice is overwhelming. You are spoilt for choices you become a prisoner of then. The answer to avoid all
-this complexity is to leverage the modern JDK. We can then potentially free thousands of teams from thousands of hours
-of build time with a "no framework pickler" solution that replaces entire frameworks in a single Java file.
-
 ## Acknowledgements
 
 This library uses ZigZag-encoded LEB128-64b9B "varint" functionality written by Gil Tene of Azul Systems. The original
 identical code can be found
 at [github.com/HdrHistogram/HdrHistogram](https://github.com/HdrHistogram/HdrHistogram/blob/ad76bb512b510a37f6a55fdea32f8f3dd3355771/src/main/java/org/HdrHistogram/ZigZagEncoding.java).
 The code was released to the public domain under [CC0 1.0 Universal](http://creativecommons.org/publicdomain/zero/1.0/).
-
-## Implementation Note: Recursive Meta-programming
-
-No Framework Pickler achieves its support for arbitrarily nested container types through a recursive metaprogramming
-pattern implemented at construction time. This pattern enables serialization of deeply nested structures like
-`List<Map<String, Optional<Integer[]>[]>>` without any special-case code.
-
-The core pattern is: `(ARRAY|LIST|MAP)* -> (ENUM|RECORD|DOUBLE|INTEGER|...)`
-
-When you create a pickler, it performs static analysis on your types using `TypeStructure.analyze()`, which recursively
-unwraps:
-
-- Generic types (List<T>, Map<K,V>, Optional<T>)
-- Array types (T[], T[][], etc.)
-- Raw types to their component types
-
-This analysis produces a chain of container types ending in a leaf type. The metaprogramming then walks this chain from
-right-to-left (leaf back through containers), building delegation chains where each container handler knows how to:
-
-1. Serialize/deserialize its own structure (e.g., array length, map size)
-2. Delegate to its component type's handler for each element
-
-For example, given `List<List<Double[]>>`, the system builds:
-
-- A DOUBLE writer that knows how to write individual doubles
-- An ARRAY writer that writes array metadata then delegates to the DOUBLE writer for each element
-- A LIST writer that writes list size then delegates to the ARRAY writer for each element
-- An outer LIST writer that delegates to the inner LIST writer
-
-This delegation chain is built once at construction time using the `buildWriterChain()`, `buildReaderChain()`, and
-`buildSizerChain()` methods. At runtime, there's zero type inspection - just direct method handle invocations through
-the pre-built chain.
-
-The beauty of this approach is that it automatically handles any nesting depth and any combination of container types.
-Whether you have `Optional<Map<String, List<Integer[]>[]>>` or `List<List<List<List<String>>>>`, the same recursive
-pattern builds the appropriate delegation chain without any special cases in the code.
 
 ## Logging
 

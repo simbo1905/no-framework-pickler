@@ -415,24 +415,6 @@ class Companion {
     rp.writeToWire(buffer, castedRecord);
   }
 
-  /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
-  static long hashEnumSignature(Class<?> enumClass) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance(SHA_256);
-
-      Object[] enumConstants = enumClass.getEnumConstants();
-      assert enumConstants != null : "Not an enum class: " + enumClass;
-
-      String input = Stream.concat(Stream.of(enumClass.getSimpleName()), Arrays.stream(enumConstants).map(e -> ((Enum<?>) e).name())).collect(Collectors.joining("!"));
-
-      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-
-      return IntStream.range(0, RecordPickler.CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(SHA_256 + " not available", e);
-    }
-  }
-
   static final Set<Class<?>> BOXED_PRIMITIVES = Set.of(
       Byte.class, Short.class, Integer.class, Long.class,
       Float.class, Double.class, Character.class, Boolean.class
@@ -452,4 +434,22 @@ class Companion {
     };
   }
 
+  static long hashSignature(final String uniqueNess) {
+    long result;
+    final MessageDigest digest;
+    try {
+      digest = MessageDigest.getInstance(SHA_256);
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
+
+    byte[] hash = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
+
+    // Convert first CLASS_SIG_BYTES to long
+    //      Byte Index:   0       1       2        3        4        5        6        7
+    //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
+    //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
+    result = IntStream.range(0, RecordPickler.CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+    return result;
+  }
 }

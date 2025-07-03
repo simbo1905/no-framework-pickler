@@ -398,19 +398,6 @@ programming** without runtime type inspection.
 - No class name serialization or compression needed
 - Optimal encoding for common cases
 
-### Backwards/Forwards Compatibility Strategy
-
-In the older generation architecture we wrote class names and enum names so that in the future new types can be ignored
-or skipped over. In the new architecture if the user adds a new Enum or Record user type then the ordinal will be set by
-lexicographical ordering on the class names. This will be a breaking change. Yet backwards and forwards compatibility is
-opt-in. Some users will never need this. It is solved in things like protocol buffers by managing ordering via a mapping
-file which is a .proto file. If a user needs to support backwards and forwards compatibility then they must give us an
-ordinal mapping where they have not put in a breaking change of adding a new class at an ordinal of an existing class.
-The application user can give us a different ordinal map of classes and we can validate that it is complete. We can
-provide diagnostic tools to make it easier to get that correct or an easier 'migrations tool' or such. We do not need to
-solve that now as it is a migration path between old and new user code that can be made easier yet we need peak
-performance for users who are not opting into that feature as it is unnecessary for them.
-
 ### Buffer Allocation and maxSizeOf Strategy
 
 **The maxSizeOf method is an optional hot path**. While serialize/deserialize are always on the hot path, maxSizeOf

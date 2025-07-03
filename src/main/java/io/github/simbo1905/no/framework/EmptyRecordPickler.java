@@ -34,12 +34,8 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
       throw new RuntimeException("Failed to create singleton instance for " + userType.getName(), e);
     }
     long result;
-    try {
-      final String uniqueNess = userType.getSimpleName();
-      result = RecordPickler.hashSignature(uniqueNess);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(SHA_256 + " not available", e);
-    }
+    final String emptyClassName = userType.getName();
+    result = Companion.hashSignature(emptyClassName);
     this.typeSignature = result;
     LOGGER.fine(() -> "EmptyRecordPickler construction complete for " + userType.getSimpleName());
   }

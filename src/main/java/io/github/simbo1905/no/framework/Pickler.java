@@ -77,7 +77,7 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
           return cast;
         })
         .filter(Enum.class::isAssignableFrom)
-        .map(enumClass -> Map.entry(enumClass, Companion.hashEnumSignature(enumClass)))
+        .map(enumClass -> Map.entry(enumClass, Companion.hashSignature(enumClass.getName())))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
     if (recordClasses.size() == 1) {

@@ -21,6 +21,11 @@ import static org.junit.jupiter.api.Assertions.*;
 /// Tests for backwards compatibility support in No Framework Pickler.
 /// This test uses dynamic compilation to test different versions of records
 /// to ensure data serialized with older schemas can be read by newer versions.
+/// @deprecated This test covers a legacy opt-in compatibility mode. The modern approach,
+/// as implemented in `src/main/java/io/github/simbo1905/no/framework/Pickler.java`,
+/// is to be safe-by-default using cryptographic hashes to detect schema changes.
+/// The recommended strategy for deliberate schema evolution is described in `ARCHITECTURE.md`.
+@Deprecated
 public class BackwardsCompatibilityTest {
 
     // Original schema with just one field
