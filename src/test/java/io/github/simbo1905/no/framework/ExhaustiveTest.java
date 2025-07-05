@@ -159,7 +159,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
         import io.github.simbo1905.no.framework.TestableRecord;
         
         public record %s(%s value) implements TestableRecord {
-            public %s() { 
+            public %s() {
                 this(null);
             }
         
