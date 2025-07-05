@@ -45,26 +45,42 @@ final var rootNode = new TreeNode.InternalNode("Root",
 Pickler<TreeNode> treeNodePickler = Pickler.forClass(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer and load it back out again:
-treeNodePickler.serialize(buffer, rootNode);
-buffer.flip();
+treeNodePickler.
+
+serialize(buffer, rootNode);
+buffer.
+
+flip();
+
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
-if(TreeNode.areTreesEqual(rootNode, deserializedRoot) ){
-    System.out.println("The trees are equal!");
+if(TreeNode.
+
+areTreesEqual(rootNode, deserializedRoot) ){
+    System.out.
+
+println("The trees are equal!");
 }
 ```
 
 **No Framework Pickler is Java** where in a single line of code creates a typesafe pickler for a sealed interface
-hierarchy of records. There are no annotations. There are no build-time steps. There are no generated data structures you
-need to map to your regular code. There is no special configuration files. It is just Java Records and Sealed Interfaces. 
+hierarchy of records. There are no annotations. There are no build-time steps. There are no generated data structures
+you
+need to map to your regular code. There is no special configuration files. It is just Java Records and Sealed
+Interfaces.
 You get all the convenience that the built-in JDK serialization with none of the downsides.
 
-**No Framework Pickler is fast** as it avoids deep reflection on the hot path by using the JDK's `unreflect` on the 
-resolved the public constructors and public component accessors of the Java records. This work is one once when the type-safe pickler is constructed. The cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh) are then used to do the actual work. On some workloads it can be 2x faster than standard Java serialization while creating a binary payload that is 0.5x the size.
+**No Framework Pickler is fast** as it avoids deep reflection on the hot path by using the JDK's `unreflect` on the
+resolved the public constructors and public component accessors of the Java records. This work is one once when the
+type-safe pickler is constructed. The
+cached [Direct Method Handles](https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/MethodHandleInfo.html#directmh)
+are then used to do the actual work. On some workloads it can be 2x faster than standard Java serialization while
+creating a binary payload that is 0.5x the size.
 
-**No Framework Pickler is safer** than many alternative approaches including JDK Serialization itself. The pickler 
-resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
+**No Framework Pickler is safer** than many alternative approaches including JDK Serialization itself. The pickler
+resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary
+data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
 
 **No Framework Pickler is expressive** as it works out of the box with nested sealed interfaces of permitted record
 types or an outer array of such where the records may contain arbitrarily nested:
@@ -137,15 +153,23 @@ int size = pickler.maxSizeOf(december);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize to a ByteBuffer
-pickler.serialize(buffer, december);
-buffer.flip();
+pickler.
+
+serialize(buffer, december);
+buffer.
+
+flip();
 
 // Deserialize from the ByteBuffer
 Month deserializedMonth = pickler.deserialize(buffer);
 
 // Verify the deserialized enum value
-if(!deserializedMonth.equals(december)){
-    throw new AssertionError("should not be reached");
+if(!deserializedMonth.
+
+equals(december)){
+    throw new
+
+AssertionError("should not be reached");
 }
 ```
 
@@ -190,10 +214,14 @@ final var bufferSize = pickler.maxSizeOf(originalRoot);
 final var buffer = ByteBuffer.allocate(bufferSize);
 
 // Serialize the root node (which includes the entire graph)
-pickler.serialize(buffer, originalRoot);
+pickler.
+
+serialize(buffer, originalRoot);
 
 // Prepare buffer for reading
-buffer.flip();
+buffer.
+
+flip();
 
 // Deserialize the root node (which will reconstruct the entire graph depth first)
 final var deserializedRoot = pickler.deserialize(buffer);
@@ -213,8 +241,12 @@ record NestedListRecord(List<List<String>> nestedList) {
 
 // Make the inner lists.
 List<List<String>> nestedList = new ArrayList<>();
-nestedList.add(Arrays.asList("A", "B","C"));
-nestedList.add(Arrays.asList("D", "E"));
+nestedList.
+
+add(Arrays.asList("A", "B","C"));
+    nestedList.
+
+add(Arrays.asList("D", "E"));
 
 // The record has mutable inner lists
 NestedListRecord original = new NestedListRecord(nestedList);
@@ -227,14 +259,22 @@ int size = pickler.maxSizeOf(original);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize
-pickler.serialize(buffer, original);
-buffer.flip();
+pickler.
+
+serialize(buffer, original);
+buffer.
+
+flip();
 
 // Deserialize
 NestedListRecord deserialized = pickler.deserialize(buffer);
 
 // The returned inner lists are immutable
-assertThrows(UnsupportedOperationException .class, () ->deserialized.nestedList().removeFirst());
+assertThrows(UnsupportedOperationException .class, () ->deserialized.
+
+nestedList().
+
+removeFirst());
 ```
 
 Maps within records are also returned as immutable:
@@ -249,8 +289,12 @@ Person michael = new Person("Michael", 65);
 Person sarah = new Person("Sarah", 63);
 
 Map<String, Person> familyMap = new HashMap<>();
-familyMap.put("father",michael);
-familyMap.put("mother",sarah);
+familyMap.
+
+put("father",michael);
+familyMap.
+
+put("mother",sarah);
 
 final var original = new NestedFamilyMapContainer(john, familyMap);
 
@@ -260,15 +304,21 @@ final var pickler = Pickler.forClass(NestedFamilyMapContainer.class);
 int size = pickler.maxSizeOf(original);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 // Serialize
-pickler.serialize(buffer, original);
+pickler.
+
+serialize(buffer, original);
 // Prepare buffer for reading
-buffer.flip();
+buffer.
+
+flip();
 
 // Deserialize
 NestedFamilyMapContainer deserialized = pickler.deserialize(buffer);
 
 // The returned inner map are immutable
-assertThrows(UnsupportedOperationException .class, () ->deserialized.relationships().
+assertThrows(UnsupportedOperationException .class, () ->deserialized.
+
+relationships().
 
 put("brother",new Person("Tom", 35)));
 ```
@@ -317,22 +367,35 @@ Pickler<Animal> pickler = Pickler.forClass(Animal.class);
 final var buffer = ByteBuffer.allocate(1024);
 
 // anyone reading back needs to know how many records to read back
-buffer.putInt(animals.size());
+buffer.
 
-for(Animal animal :animals){
-    pickler.serialize(buffer, animal);
+putInt(animals.size());
+
+    for(
+Animal animal :animals){
+    pickler.
+
+serialize(buffer, animal);
 }
 
-buffer.flip(); // Prepare for reading
+    buffer.
+
+flip(); // Prepare for reading
 
 // any service reading back needs to know how many records to read back
 int size = buffer.getInt();
 
 // Deserialize the correct number of records
 List<Animal> deserializedAnimals = new ArrayList<>(size);
-IntStream.range(0,size).forEach(i ->{
+IntStream.
+
+range(0,size).
+
+forEach(i ->{
 Animal animal = pickler.deserialize(buffer);
-    deserializedAnimals.add(animal);
+    deserializedAnimals.
+
+add(animal);
 });
 ```
 
@@ -352,29 +415,50 @@ List<Person> people = List.of(
 ByteBuffer buffer = ByteBuffer.allocate(1024);
 
 // Write the count first
-buffer.putInt(people.size());
+buffer.
+
+putInt(people.size());
 
 // Serialize each person
-for(Person person :people){
-    pickler.serialize(buffer, person);
+    for(
+Person person :people){
+    pickler.
+
+serialize(buffer, person);
 }
 
-buffer.flip(); // Prepare for reading
+    buffer.
+
+flip(); // Prepare for reading
 
 // Read the count
 int count = buffer.getInt();
 
 // Deserialize each person
 List<Person> deserializedPeople = new ArrayList<>(count);
-for( int i = 0; i < count; i++){
-    deserializedPeople.add(pickler.deserialize(buffer));
-}
+for(
+int i = 0;
+i<count;i++){
+    deserializedPeople.
+
+add(pickler.deserialize(buffer));
+    }
 
 // Verify the deserialization
-assertEquals(people.size(),deserializedPeople.size());
-for(int i = 0; i <people.size(); i++){
-  assertEquals(people.get(i), deserializedPeople.get(i));
-}
+assertEquals(people.size(),deserializedPeople.
+
+size());
+    for(
+int i = 0; i <people.
+
+size();
+
+i++){
+
+assertEquals(people.get(i),deserializedPeople.
+
+get(i));
+    }
 ```
 
 ## Security
@@ -416,6 +500,7 @@ Each record type has an 8-byte signature computed from:
 - Each component's name and generic return type signature
 
 For example, `record MyThing(List<Optional<Double>>[] compA)` generates a SHA-256 hash of:
+// FIXME this is wrong
 
 ```
 MyThing!ARRAY!LIST!OPTIONAL!Double!compA
@@ -432,7 +517,8 @@ prevent against any form of tampering attack, which is beyond the scope of this 
 
 ## TL;DR
 
-- **DISABLED**: The safe mode which is the default mode. Strictly no backwards compatibility. Fails fast on any schema mismatch.
+- **DISABLED**: The safe mode which is the default mode. Strictly no backwards compatibility. Fails fast on any schema
+  mismatch.
 - **ENABLED**: Opt-in mode. Emulates JDK serialization functionality with a risky corner case.
 - If you do opt-in **never** reorder existing fields or enum constants in your source file to avoid the risky corner
   case of "swapping" components or enum constants when deserializing.

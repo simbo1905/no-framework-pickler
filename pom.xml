@@ -63,6 +63,7 @@
             <groupId>net.jqwik</groupId>
             <artifactId>jqwik</artifactId>
             <version>1.9.3</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
