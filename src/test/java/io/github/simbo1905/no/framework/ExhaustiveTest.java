@@ -26,6 +26,13 @@ public class ExhaustiveTest implements ArbitraryProvider {
     log.setLevel(Level.INFO);
   }
 
+  // Add these test are just to have things that can be nested
+  public enum TestEnum {A}
+
+  public record TestRecord(int value) {
+  }
+
+
   @Override
   public boolean canProvideFor(TypeUsage targetType) {
     return targetType.isOfType(TypeExpr.class);
@@ -38,30 +45,81 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
   @Provide
   Arbitrary<TypeExpr> typeExprs() {
+    return generateStructuralPatterns();
+  }
+
+  private Arbitrary<TypeExpr> generateStructuralPatterns() {
+    // Base value types - no nesting
     Arbitrary<TypeExpr> primitives = Arbitraries.of(
-        boolean.class, byte.class, short.class, char.class,
-        int.class, long.class, float.class, double.class
-    ).map(TypeExpr::analyze);
-
-    Arbitrary<TypeExpr> boxed = Arbitraries.of(
-        Boolean.class, Byte.class, Short.class, Character.class,
-        Integer.class, Long.class, Float.class, Double.class,
-        String.class, UUID.class
-    ).map(TypeExpr::analyze);
-
-    Arbitrary<TypeExpr> baseTypes = Arbitraries.oneOf(primitives, boxed, records, enums);
-
-    return Arbitraries.recursive(() -> baseTypes,
-        (typeExprArbitrary) -> Arbitraries.oneOf(
-            typeExprArbitrary.map(TypeExpr.ArrayNode::new),
-            typeExprArbitrary.map(TypeExpr.ListNode::new),
-            typeExprArbitrary.filter(te -> !te.isPrimitive()).map(TypeExpr.OptionalNode::new),
-            Combinators.combine(
-                typeExprArbitrary.filter(te -> !te.isPrimitive()),
-                typeExprArbitrary.filter(te -> !te.isPrimitive())
-            ).as(TypeExpr.MapNode::new)
-        ), 1, 3 // max depth
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BOOLEAN, boolean.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.DOUBLE, double.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.LONG, long.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.FLOAT, float.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BYTE, byte.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.SHORT, short.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.CHARACTER, char.class)
     );
+
+    Arbitrary<TypeExpr> boxedTypes = Arbitraries.of(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTEGER, Integer.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.BOOLEAN, Boolean.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.DOUBLE, Double.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LONG, Long.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.FLOAT, Float.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.BYTE, Byte.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.SHORT, Short.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.CHARACTER, Character.class)
+    );
+
+    Arbitrary<TypeExpr> referenceTypes = Arbitraries.of(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.UUID, UUID.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, TestRecord.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TestEnum.class)
+    );
+
+    Arbitrary<TypeExpr> valueTypes = Arbitraries.oneOf(primitives, boxedTypes, referenceTypes);
+
+    return Arbitraries.oneOf(
+        valueTypes,                           // Depth 0: Value types
+        singleContainers(valueTypes),         // Depth 1: Container(Value)
+        doubleContainers(valueTypes),         // Depth 2: Container(Container(Value))
+        tripleContainers(valueTypes)          // Depth 3: Essential combinations only
+    );
+  }
+
+  private Arbitrary<TypeExpr> singleContainers(Arbitrary<TypeExpr> valueTypes) {
+    return Arbitraries.oneOf(
+        valueTypes.map(TypeExpr.ArrayNode::new),
+        valueTypes.map(TypeExpr.ListNode::new),
+        valueTypes.map(TypeExpr.OptionalNode::new),
+        // Map with String keys to avoid key type explosion
+        valueTypes.map(v -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), v))
+    );
+  }
+
+  private Arbitrary<TypeExpr> doubleContainers(Arbitrary<TypeExpr> valueTypes) {
+    Arbitrary<TypeExpr> singleContainers = singleContainers(valueTypes);
+
+    return Arbitraries.oneOf(
+        singleContainers.map(TypeExpr.ArrayNode::new),      // Array(Container(Value))
+        singleContainers.map(TypeExpr.ListNode::new),       // List(Container(Value))
+        singleContainers.map(TypeExpr.OptionalNode::new),   // Optional(Container(Value))
+        singleContainers.map(s -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), s))
+    );
+  }
+
+  private Arbitrary<TypeExpr> tripleContainers(Arbitrary<TypeExpr> valueTypes) {
+    // Only essential patterns to avoid combinatorial explosion
+    Arbitrary<TypeExpr> essentialDouble = Arbitraries.oneOf(
+        valueTypes.map(v -> new TypeExpr.ArrayNode(new TypeExpr.ListNode(v))),           // Array(List(Value))
+        valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.ArrayNode(v))),           // List(Array(Value))
+        valueTypes.map(v -> new TypeExpr.OptionalNode(new TypeExpr.ArrayNode(v))),       // Optional(Array(Value))
+        valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.OptionalNode(v)))         // List(Optional(Value))
+    );
+
+    return essentialDouble.map(TypeExpr.ArrayNode::new);  // Array(essential double combinations)
   }
 
   @Property(generation = GenerationMode.EXHAUSTIVE)
