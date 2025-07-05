@@ -8,9 +8,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
-import java.util.Collections;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -84,7 +82,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
     return Arbitraries.oneOf(
         valueTypes,                           // Depth 0: Value types
         singleContainers(valueTypes),         // Depth 1: Container(Value)
-        doubleContainers(valueTypes),         // Depth 2: Container(Container(Value))
+        doubleContainers(valueTypes),
         tripleContainers(valueTypes)          // Depth 3: Essential combinations only
     );
   }
@@ -104,8 +102,8 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
     return Arbitraries.oneOf(
         singleContainers.map(TypeExpr.ArrayNode::new),      // Array(Container(Value))
-        singleContainers.map(TypeExpr.ListNode::new),       // List(Container(Value))
-        singleContainers.map(TypeExpr.OptionalNode::new),   // Optional(Container(Value))
+        singleContainers.map(TypeExpr.ListNode::new),
+        singleContainers.map(TypeExpr.OptionalNode::new),
         singleContainers.map(s -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), s))
     );
   }
@@ -116,7 +114,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
         valueTypes.map(v -> new TypeExpr.ArrayNode(new TypeExpr.ListNode(v))),           // Array(List(Value))
         valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.ArrayNode(v))),           // List(Array(Value))
         valueTypes.map(v -> new TypeExpr.OptionalNode(new TypeExpr.ArrayNode(v))),       // Optional(Array(Value))
-        valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.OptionalNode(v)))         // List(Optional(Value))
+        valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.OptionalNode(v)))
     );
 
     return essentialDouble.map(TypeExpr.ArrayNode::new);  // Array(essential double combinations)
@@ -149,9 +147,11 @@ public class ExhaustiveTest implements ArbitraryProvider {
   private String generateRecordSource(String recordName, TypeExpr typeExpr) {
     String typeName = toJavaType(typeExpr);
     String instanceValue = generateInstanceValue(typeExpr);
+    String defaultValue = generateDefaultValue(typeExpr);
 
     return String.format("""
         package io.github.simbo1905.no.framework.generated;
+        import static io.github.simbo1905.no.framework.ExhaustiveTest.*;
         
         import java.util.*;
         import io.github.simbo1905.no.framework.ExhaustiveTest.TestEnum;
@@ -160,19 +160,53 @@ public class ExhaustiveTest implements ArbitraryProvider {
         
         public record %s(%s value) implements TestableRecord {
             public %s() {
-                this(null);
+                this(%s);
             }
         
             public Object instance() {
                 return new %s(%s);
             }
         }
-        """, recordName, typeName, recordName, recordName, instanceValue);
+        """, recordName, typeName, recordName, defaultValue, recordName, instanceValue);
+  }
+
+  private String generateDefaultValue(TypeExpr typeExpr) {
+    if (typeExpr instanceof TypeExpr.PrimitiveValueNode p) {
+      return switch (p.type()) {
+        case BOOLEAN -> "false";
+        case BYTE -> "(byte) 0";
+        case SHORT -> "(short) 0";
+        case CHARACTER -> "'\u0000'";
+        case INTEGER -> "0";
+        case LONG -> "0L";
+        case FLOAT -> "0.0f";
+        case DOUBLE -> "0.0d";
+      };
+    }
+    return "null";
   }
 
   private String toJavaType(TypeExpr typeExpr) {
+    return toJavaType(typeExpr, false);
+  }
+
+  private String toJavaType(TypeExpr typeExpr, boolean inGeneric) {
     return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var type, var javaType) -> ((Class<?>) javaType).getName();
+      case TypeExpr.PrimitiveValueNode(var type, var javaType) -> {
+        if (inGeneric) {
+          yield switch (type) {
+            case INTEGER -> "Integer";
+            case BOOLEAN -> "Boolean";
+            case DOUBLE -> "Double";
+            case LONG -> "Long";
+            case FLOAT -> "Float";
+            case BYTE -> "Byte";
+            case SHORT -> "Short";
+            case CHARACTER -> "Character";
+          };
+        }
+        yield ((Class<?>) javaType).getName();
+      }
       case TypeExpr.RefValueNode(var type, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.equals(TestRecord.class) || clazz.equals(TestEnum.class)) {
@@ -180,10 +214,11 @@ public class ExhaustiveTest implements ArbitraryProvider {
         }
         yield clazz.getSimpleName();
       }
-      case TypeExpr.ArrayNode(var element) -> toJavaType(element) + "[]";
-      case TypeExpr.ListNode(var element) -> "List<" + toJavaType(element) + ">";
-      case TypeExpr.OptionalNode(var wrapped) -> "Optional<" + toJavaType(wrapped) + ">";
-      case TypeExpr.MapNode(var key, var value) -> "Map<" + toJavaType(key) + ", " + toJavaType(value) + ">";
+      case TypeExpr.ArrayNode(var element) -> toJavaType(element, true) + "[]";
+      case TypeExpr.ListNode(var element) -> "List<" + toJavaType(element, true) + ">";
+      case TypeExpr.OptionalNode(var wrapped) -> "Optional<" + toJavaType(wrapped, true) + ">";
+      case TypeExpr.MapNode(var key, var value) ->
+          "Map<" + toJavaType(key, true) + ", " + toJavaType(value, true) + ">";
     };
   }
 
@@ -214,16 +249,35 @@ public class ExhaustiveTest implements ArbitraryProvider {
         case RECORD -> "new io.github.simbo1905.no.framework.ExhaustiveTest.TestRecord(123)";
         case INTERFACE -> "null"; // Cannot instantiate interface
       };
-      case TypeExpr.ArrayNode(var element) ->
-          "new " + toJavaType(element) + "[]{" + generateInstanceValue(element) + "}";
-      case TypeExpr.ListNode(var element) -> "List.of(" + generateInstanceValue(element) + ")";
+      case TypeExpr.ArrayNode(var element) -> {
+        if (element instanceof TypeExpr.PrimitiveValueNode) {
+          yield "new " + toJavaType(element, true) + "[]{" + generateInstanceValue(element) + "}";
+        }
+        if (element instanceof TypeExpr.ListNode) {
+          yield "createListArray(" + generateInstanceValue(element) + ")";
+        }
+        if (element instanceof TypeExpr.OptionalNode) {
+          yield "createOptionalArray(" + generateInstanceValue(element) + ")";
+        }
+        if (element instanceof TypeExpr.MapNode) {
+          yield "createMapArray(" + generateInstanceValue(element) + ")";
+        }
+        yield "new " + toJavaType(element) + "[]{" + generateInstanceValue(element) + "}";
+      }
+      case TypeExpr.ListNode(var element) -> {
+        String elementInstance = generateInstanceValue(element);
+        if (element instanceof TypeExpr.ArrayNode) {
+          yield "List.of(" + elementInstance + ", " + elementInstance + ")";
+        }
+        yield "List.of(" + elementInstance + ")";
+      }
       case TypeExpr.OptionalNode(var wrapped) -> "Optional.of(" + generateInstanceValue(wrapped) + ")";
       case TypeExpr.MapNode(var key, var value) ->
           "Map.of(" + generateInstanceValue(key) + ", " + generateInstanceValue(value) + ")";
     };
   }
 
-  private void assertDeepEquals(Object expected, Object actual) throws Exception {
+  void assertDeepEquals(Object expected, Object actual) throws Exception {
     if (expected == null || actual == null) {
       assertEquals(expected, actual);
       return;
@@ -231,8 +285,33 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
     Class<?> recordClass = expected.getClass();
     if (!recordClass.isRecord()) {
-      assertEquals(expected, actual);
-      return;
+      Class<?> expectedClass = expected.getClass();
+      if (!expectedClass.equals(actual.getClass())) {
+        throw new IllegalArgumentException("Expected and actual objects are not of the same class: " +
+            expectedClass.getName() + " vs " + actual.getClass().getName());
+      } else if (expectedClass.isArray()) {
+        assertArrayEquals((Object[]) expected, (Object[]) actual, "Arrays differ");
+        return;
+      } else if (expected instanceof List) {
+        List<?> expectedList = (List<?>) expected;
+        List<?> actualList = (List<?>) actual;
+        assertEquals(expectedList.size(), actualList.size(), "List size differs");
+        for (int i = 0; i < expectedList.size(); i++) {
+          assertDeepEquals(expectedList.get(i), actualList.get(i));
+        }
+        return;
+      } else if (expected instanceof Map) {
+        Map<?, ?> expectedMap = (Map<?, ?>) expected;
+        Map<?, ?> actualMap = (Map<?, ?>) actual;
+        assertEquals(expectedMap.size(), actualMap.size(), "Map size differs");
+        for (Object key : expectedMap.keySet()) {
+          assertDeepEquals(expectedMap.get(key), actualMap.get(key));
+        }
+        return;
+      } else {
+        assertEquals(expected, actual, "Objects differ");
+        return;
+      }
     }
 
     for (RecordComponent component : recordClass.getRecordComponents()) {
@@ -251,6 +330,27 @@ public class ExhaustiveTest implements ArbitraryProvider {
             assertEquals(Array.get(expectedValue, i), Array.get(actualValue, i));
           }
         }
+      } else if (expectedValue instanceof List && actualValue instanceof List<?>) {
+        List<?> expectedList = (List<?>) expectedValue;
+        List<?> actualList = (List<?>) actualValue;
+        assertEquals(expectedList.size(), actualList.size(), "List size differs for component " + component.getName());
+        for (int i = 0; i < expectedList.size(); i++) {
+          assertDeepEquals(expectedList.get(i), actualList.get(i));
+        }
+      } else if (expectedValue instanceof Optional<?> && actualValue instanceof Optional<?>) {
+        Optional<?> expectedOptional = (Optional<?>) expectedValue;
+        Optional<?> actualOptional = (Optional<?>) actualValue;
+        assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs for component " + component.getName());
+        if (expectedOptional.isPresent()) {
+          assertDeepEquals(expectedOptional.get(), actualOptional.get());
+        }
+      } else if (expectedValue instanceof Map<?, ?> && actualValue instanceof Map<?, ?>) {
+        Map<?, ?> expectedMap = (Map<?, ?>) expectedValue;
+        Map<?, ?> actualMap = (Map<?, ?>) actualValue;
+        assertEquals(expectedMap.size(), actualMap.size(), "Map size differs for component " + component.getName());
+        for (Object key : expectedMap.keySet()) {
+          assertDeepEquals(expectedMap.get(key), actualMap.get(key));
+        }
       } else if (component.getType().isRecord()) {
         assertDeepEquals(expectedValue, actualValue);
       } else {
@@ -258,4 +358,24 @@ public class ExhaustiveTest implements ArbitraryProvider {
       }
     }
   }
+
+
+  @SafeVarargs
+  @SuppressWarnings("varargs")
+  public static <T> List<T>[] createListArray(List<T>... lists) {
+    return lists;
+  }
+
+  @SafeVarargs
+  @SuppressWarnings("varargs")
+  public static <T> Optional<T>[] createOptionalArray(Optional<T>... optionals) {
+    return optionals;
+  }
+
+  @SafeVarargs
+  @SuppressWarnings("varargs")
+  public static <K, V> Map<K, V>[] createMapArray(Map<K, V>... maps) {
+    return maps;
+  }
 }
+

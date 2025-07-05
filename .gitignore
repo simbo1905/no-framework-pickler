@@ -21,3 +21,5 @@ benchmark/*-test-*.png
 benchmark/benchmark-verification-*.png
 benchmark/regression-test-*.png
 .jqwik-database
+
+.env
