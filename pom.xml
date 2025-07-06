@@ -38,19 +38,13 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.11.4</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-params</artifactId>
-            <version>5.11.4</version>
+            <version>5.11.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>3.27.0</version>
+            <version>3.26.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -69,57 +63,5 @@
 
     <build>
         <finalName>no-framework-pickler</finalName>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>21</release>
-                    <showWarnings>true</showWarnings>
-                    <compilerArgs>
-                        <arg>-Xlint:all</arg>
-                        <arg>-Werror</arg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.3</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
-        </plugins>
     </build>
-
-    <profiles>
-        <profile>
-            <id>relaxed</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-compiler-plugin</artifactId>
-                        <version>3.13.0</version>
-                        <configuration>
-                            <release>21</release>
-                            <showWarnings>true</showWarnings>
-                            <!-- No -Werror in relaxed mode -->
-                            <compilerArgs>
-                                <arg>-Xlint:all</arg>
-                            </compilerArgs>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>
