@@ -64,7 +64,7 @@ public class PrimitiveValueTests {
       }
       // Analyze the type of the component
       Type type = component.getGenericType();
-      typeExprs[i] = TypeExpr.analyze(type);
+      typeExprs[i] = TypeExpr.analyzeType(type);
     });
 
     // Test boolean component

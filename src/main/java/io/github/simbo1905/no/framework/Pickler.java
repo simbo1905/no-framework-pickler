@@ -73,11 +73,11 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
 
     final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap = enumClasses.stream()
         .map(cls -> {
-          //noinspection unchecked
-          return (Class<Enum<?>>) cls;
+          @SuppressWarnings("unchecked") final Class<Enum<?>> cast = (Class<Enum<?>>) cls;
+          return cast;
         })
         .filter(Enum.class::isAssignableFrom)
-        .map(enumClass -> Map.entry(enumClass, Companion.hashEnumSignature(enumClass)))
+        .map(enumClass -> Map.entry(enumClass, Companion.hashSignature(enumClass.getName())))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
     if (recordClasses.size() == 1) {
@@ -85,16 +85,16 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
       final var components = first.getRecordComponents();
       if (components.length == 0) {
         // If the record has no components, we can return an EmptyRecordPickler
-        LOGGER.info("Creating EmptyRecordPickler for record class: " + first.getSimpleName());
+        LOGGER.fine(() -> "Creating EmptyRecordPickler for record class: " + first.getSimpleName());
         return new EmptyRecordPickler<>(first);
       } else {
         // If the record has components, we can return a RecordPickler
-        LOGGER.info("Creating RecordPickler for record class: " + first.getSimpleName());
+        LOGGER.fine(() -> "Creating RecordPickler for record class: " + first.getSimpleName());
         return new RecordPickler<>(first, enumToTypeSignatureMap);
       }
     } else {
       // If there are multiple record classes return a RecordPickler that will delegate to a RecordPickler
-      LOGGER.info("Creating PicklerRoot for multiple record classes: " +
+      LOGGER.fine(() -> "Creating PicklerRoot for multiple record classes: " +
           recordClasses.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
       return new ManyPickler<>(recordClasses, enumToTypeSignatureMap);
     }

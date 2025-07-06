@@ -5,10 +5,8 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
 
-import static io.github.simbo1905.no.framework.Companion.SHA_256;
 
 public final class EmptyRecordPickler<T> implements Pickler<T> {
 
@@ -34,12 +32,8 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
       throw new RuntimeException("Failed to create singleton instance for " + userType.getName(), e);
     }
     long result;
-    try {
-      final String uniqueNess = userType.getSimpleName();
-      result = Companion.hashSignature(uniqueNess);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(SHA_256 + " not available", e);
-    }
+    final String emptyClassName = userType.getName();
+    result = Companion.hashSignature(emptyClassName);
     this.typeSignature = result;
     LOGGER.fine(() -> "EmptyRecordPickler construction complete for " + userType.getSimpleName());
   }
@@ -60,6 +54,7 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
           buffer.limit() + " capacity: " + buffer.capacity()
       );
       buffer.putLong(this.typeSignature);
+      ZigZagEncoding.putInt(buffer, 0); // no components, so size is zero
       return Long.BYTES;
     } else {
       throw new IllegalArgumentException("EmptyRecordPickler cannot serialize " +
@@ -83,13 +78,13 @@ public final class EmptyRecordPickler<T> implements Pickler<T> {
         " buffer remaining bytes: " + buffer.remaining() + " limit: " +
         buffer.limit() + " capacity: " + buffer.capacity());
 
-    //noinspection unchecked
-    return (T) this.singleton; // return the singleton instance
+    @SuppressWarnings("unchecked") final var result = (T) this.singleton; // return the singleton instance
+    return result;
   }
 
   @Override
   public int maxSizeOf(T record) {
-    return Long.BYTES; // only the type signature is serialized
+    return Long.BYTES + 1; // only the type signature is serialized plus a zero-length component count
   }
 
   @Override

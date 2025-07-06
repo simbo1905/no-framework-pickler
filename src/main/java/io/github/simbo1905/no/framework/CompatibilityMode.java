@@ -1,5 +1,7 @@
 package io.github.simbo1905.no.framework;
 
+import java.util.Arrays;
+
 /// Compatibility mode. Set via system property `no.framework.Pickler.Compatibility`. The default is DISABLED.
 /// **Record Types** If set to DISABLED (our default) the pickler will during deserialization of `records`:
 /// - verify 8-bytes of a sha256 hash of class simple nane as well as components full generic types and name.
@@ -24,6 +26,15 @@ enum CompatibilityMode {
   DISABLED,
 
   /// Lenient mode: Allows missing fields (uses defaults) but does not permit field reordering.
-  /// More permissive than DISABLED but differs from JDK behavior by disallowing reordering.
-  DEFAULTED
+  /// More permissive than ENABLED but differs from JDK behavior by disallowing reordering.
+  ENABLED;
+
+  public static CompatibilityMode current() {
+    final String mode = System.getProperty("no.framework.Pickler.Compatibility", "DISABLED").toUpperCase();
+    try {
+      return CompatibilityMode.valueOf(mode);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid compatibility mode: " + mode + ". Must be one of: " + Arrays.toString(CompatibilityMode.values()));
+    }
+  }
 }

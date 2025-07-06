@@ -417,8 +417,8 @@ sealed interface Companion permits Companion.Nothing {
 
   static <X> void writeToWireWitness(RecordPickler<X> rp, ByteBuffer buffer, Object record) {
     LOGGER.fine(() -> "Writing record to wire using " + rp + " for record: " + record.getClass().getSimpleName() + " at position: " + buffer.position());
-    //noinspection unchecked
-    rp.writeToWire(buffer, (X) record);
+    @SuppressWarnings("unchecked") final X castedRecord = (X) record;
+    rp.writeToWire(buffer, castedRecord);
   }
 
   /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
@@ -458,9 +458,14 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static long hashSignature(String uniqueNess) throws NoSuchAlgorithmException {
+  static long hashSignature(String uniqueNess) {
     long result;
-    MessageDigest digest = MessageDigest.getInstance(SHA_256);
+    MessageDigest digest = null;
+    try {
+      digest = MessageDigest.getInstance(SHA_256);
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
 
     byte[] hash = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
 
@@ -475,10 +480,6 @@ sealed interface Companion permits Companion.Nothing {
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
     String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
-    try {
-      return hashSignature(input);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(e.getMessage(), e);
-    }
+    return hashSignature(input);
   }
 }

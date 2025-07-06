@@ -3,6 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.lang.reflect.*;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -32,6 +34,12 @@ sealed interface TypeExpr permits
 
   /// Recursive descent parser for Java types - builds tree bottom-up
   static TypeExpr analyzeType(Type type) {
+    final var result = analyzeTypeInner(type);
+    LOGGER.finer(() -> "Got TypeExpr: " + result.toTreeString());
+    return result;
+  }
+
+  private static @NotNull TypeExpr analyzeTypeInner(Type type) {
     LOGGER.finer(() -> "Analyzing type: " + type);
 
     // Handle arrays first (both primitive arrays and object arrays)
@@ -200,25 +208,15 @@ sealed interface TypeExpr permits
       case ArrayNode(var element) -> "ARRAY(" + element.toTreeString() + ")";
       case ListNode(var element) -> "LIST(" + element.toTreeString() + ")";
       case OptionalNode(var wrapped) -> "OPTIONAL(" + wrapped.toTreeString() + ")";
-      case MapNode(var key, var value) -> "MAP(" + key.toTreeString() + ", " + value.toTreeString() + ")";
+      case MapNode(var key, var value) -> "MAP(" + key.toTreeString() + "," + value.toTreeString() + ")";
       case RefValueNode(var type, var ignored) -> type.name();
       case PrimitiveValueNode(var type, var ignored) -> type.name();
     };
   }
 
-  /// Static method to analyze a type and return the TypeExpr
-  /// This is the public API entry point that delegates to package-private implementation
-  static TypeExpr analyze(Type type) {
-    java.util.Objects.requireNonNull(type, "Type cannot be null");
-    return analyzeType(type);
-  }
-
   boolean isPrimitive();
 
-  boolean isContainer();
-
   boolean isRecord();
-
 
   /// Container node for arrays - has one child (element type)
   record ArrayNode(TypeExpr element) implements TypeExpr {
@@ -229,11 +227,6 @@ sealed interface TypeExpr permits
     @Override
     public boolean isPrimitive() {
       return false;
-    }
-
-    @Override
-    public boolean isContainer() {
-      return true;
     }
 
     @Override
@@ -254,11 +247,6 @@ sealed interface TypeExpr permits
     }
 
     @Override
-    public boolean isContainer() {
-      return true;
-    }
-
-    @Override
     public boolean isRecord() {
       return false;
     }
@@ -273,11 +261,6 @@ sealed interface TypeExpr permits
     @Override
     public boolean isPrimitive() {
       return false;
-    }
-
-    @Override
-    public boolean isContainer() {
-      return true;
     }
 
     @Override
@@ -296,11 +279,6 @@ sealed interface TypeExpr permits
     @Override
     public boolean isPrimitive() {
       return false;
-    }
-
-    @Override
-    public boolean isContainer() {
-      return true;
     }
 
     @Override
@@ -325,11 +303,6 @@ sealed interface TypeExpr permits
 
     @Override
     public boolean isPrimitive() {
-      return false;
-    }
-
-    @Override
-    public boolean isContainer() {
       return false;
     }
 
@@ -362,11 +335,6 @@ sealed interface TypeExpr permits
     @Override
     public boolean isPrimitive() {
       return true;
-    }
-
-    @Override
-    public boolean isContainer() {
-      return false;
     }
 
     @Override

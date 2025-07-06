@@ -38,7 +38,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Boolean primitive")
     void testBooleanPrimitive() {
-      TypeExpr node = TypeExpr.analyze(boolean.class);
+      TypeExpr node = TypeExpr.analyzeType(boolean.class);
       assertInstanceOf(TypeExpr.PrimitiveValueNode.class, node);
       TypeExpr.PrimitiveValueNode prim = (TypeExpr.PrimitiveValueNode) node;
       assertEquals(TypeExpr.PrimitiveValueType.BOOLEAN, prim.type());
@@ -49,7 +49,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Boolean boxed")
     void testBooleanBoxed() {
-      TypeExpr node = TypeExpr.analyze(Boolean.class);
+      TypeExpr node = TypeExpr.analyzeType(Boolean.class);
       assertInstanceOf(TypeExpr.RefValueNode.class, node);
       TypeExpr.RefValueNode prim = (TypeExpr.RefValueNode) node;
       assertEquals(TypeExpr.RefValueType.BOOLEAN, prim.type());
@@ -60,7 +60,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Integer primitive")
     void testIntegerPrimitive() {
-      TypeExpr node = TypeExpr.analyze(int.class);
+      TypeExpr node = TypeExpr.analyzeType(int.class);
       assertInstanceOf(TypeExpr.PrimitiveValueNode.class, node);
       TypeExpr.PrimitiveValueNode prim = (TypeExpr.PrimitiveValueNode) node;
       assertEquals(TypeExpr.PrimitiveValueType.INTEGER, prim.type());
@@ -71,7 +71,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Integer boxed")
     void testIntegerBoxed() {
-      TypeExpr node = TypeExpr.analyze(Integer.class);
+      TypeExpr node = TypeExpr.analyzeType(Integer.class);
       assertInstanceOf(TypeExpr.RefValueNode.class, node);
       TypeExpr.RefValueNode prim = (TypeExpr.RefValueNode) node;
       assertEquals(TypeExpr.RefValueType.INTEGER, prim.type());
@@ -82,7 +82,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("String type")
     void testStringType() {
-      TypeExpr node = TypeExpr.analyze(String.class);
+      TypeExpr node = TypeExpr.analyzeType(String.class);
 
       assertInstanceOf(TypeExpr.RefValueNode.class, node);
       TypeExpr.RefValueNode prim = (TypeExpr.RefValueNode) node;
@@ -94,7 +94,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("UUID type")
     void testUUIDType() {
-      TypeExpr node = TypeExpr.analyze(UUID.class);
+      TypeExpr node = TypeExpr.analyzeType(UUID.class);
 
       assertInstanceOf(TypeExpr.RefValueNode.class, node);
       TypeExpr.RefValueNode prim = (TypeExpr.RefValueNode) node;
@@ -111,7 +111,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Array of int")
     void testIntArray() {
-      TypeExpr node = TypeExpr.analyze(int[].class);
+      TypeExpr node = TypeExpr.analyzeType(int[].class);
 
       assertInstanceOf(TypeExpr.ArrayNode.class, node);
       TypeExpr.ArrayNode array = (TypeExpr.ArrayNode) node;
@@ -127,7 +127,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Array of boxed int")
     void testIntegerArray() {
-      TypeExpr node = TypeExpr.analyze(Integer[].class);
+      TypeExpr node = TypeExpr.analyzeType(Integer[].class);
 
       assertInstanceOf(TypeExpr.ArrayNode.class, node);
       TypeExpr.ArrayNode array = (TypeExpr.ArrayNode) node;
@@ -144,7 +144,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Array of String")
     void testStringArray() {
-      TypeExpr node = TypeExpr.analyze(String[].class);
+      TypeExpr node = TypeExpr.analyzeType(String[].class);
 
       assertInstanceOf(TypeExpr.ArrayNode.class, node);
       TypeExpr.ArrayNode array = (TypeExpr.ArrayNode) node;
@@ -160,7 +160,7 @@ class TreeTypeExprTest {
     @DisplayName("List of String")
     void testListString() throws Exception {
       Type listType = TreeTypeExprTest.class.getDeclaredField("stringList").getGenericType();
-      TypeExpr node = TypeExpr.analyze(listType);
+      TypeExpr node = TypeExpr.analyzeType(listType);
 
       assertInstanceOf(TypeExpr.ListNode.class, node);
       TypeExpr.ListNode list = (TypeExpr.ListNode) node;
@@ -176,7 +176,7 @@ class TreeTypeExprTest {
     @DisplayName("Optional of Integer")
     void testOptionalInteger() throws Exception {
       Type optType = TreeTypeExprTest.class.getDeclaredField("optionalInt").getGenericType();
-      TypeExpr node = TypeExpr.analyze(optType);
+      TypeExpr node = TypeExpr.analyzeType(optType);
 
       assertInstanceOf(TypeExpr.OptionalNode.class, node);
       TypeExpr.OptionalNode opt = (TypeExpr.OptionalNode) node;
@@ -197,7 +197,7 @@ class TreeTypeExprTest {
     @DisplayName("Map String to Integer")
     void testMapStringInteger() throws Exception {
       Type mapType = TreeTypeExprTest.class.getDeclaredField("stringIntMap").getGenericType();
-      TypeExpr node = TypeExpr.analyze(mapType);
+      TypeExpr node = TypeExpr.analyzeType(mapType);
 
       assertInstanceOf(TypeExpr.MapNode.class, node);
       TypeExpr.MapNode map = (TypeExpr.MapNode) node;
@@ -212,7 +212,7 @@ class TreeTypeExprTest {
       TypeExpr.RefValueNode value = (TypeExpr.RefValueNode) map.value();
       assertEquals(TypeExpr.RefValueType.INTEGER, value.type());
 
-      assertEquals("MAP(String, Integer)", node.toTreeString());
+      assertEquals("MAP(String,Integer)", node.toTreeString());
     }
   }
 
@@ -224,7 +224,7 @@ class TreeTypeExprTest {
     @DisplayName("List of Optional String")
     void testListOptionalString() throws Exception {
       Type type = TreeTypeExprTest.class.getDeclaredField("listOptionalString").getGenericType();
-      TypeExpr node = TypeExpr.analyze(type);
+      TypeExpr node = TypeExpr.analyzeType(type);
 
       assertInstanceOf(TypeExpr.ListNode.class, node);
       TypeExpr.ListNode list = (TypeExpr.ListNode) node;
@@ -243,7 +243,7 @@ class TreeTypeExprTest {
     @DisplayName("Map with List values")
     void testMapStringListInteger() throws Exception {
       Type type = TreeTypeExprTest.class.getDeclaredField("mapStringListInt").getGenericType();
-      TypeExpr node = TypeExpr.analyze(type);
+      TypeExpr node = TypeExpr.analyzeType(type);
 
       assertInstanceOf(TypeExpr.MapNode.class, node);
       TypeExpr.MapNode map = (TypeExpr.MapNode) node;
@@ -258,7 +258,7 @@ class TreeTypeExprTest {
       assertInstanceOf(TypeExpr.RefValueNode.class, list.element());
       assertEquals(TypeExpr.RefValueType.INTEGER, ((TypeExpr.RefValueNode) list.element()).type());
 
-      assertEquals("MAP(String, LIST(Integer))", node.toTreeString());
+      assertEquals("MAP(String,LIST(Integer))", node.toTreeString());
     }
 
     @Test
@@ -266,7 +266,7 @@ class TreeTypeExprTest {
     void testListArrayDouble() throws NoSuchFieldException {
       // listArrayPrimitiveDouble
       Type type = TreeTypeExprTest.class.getDeclaredField("listArrayPrimitiveDouble").getGenericType();
-      TypeExpr node = TypeExpr.analyze(type);
+      TypeExpr node = TypeExpr.analyzeType(type);
 
       assertInstanceOf(TypeExpr.ListNode.class, node);
       TypeExpr.ListNode list = (TypeExpr.ListNode) node;
@@ -291,7 +291,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Enum type")
     void testEnumType() {
-      TypeExpr node = TypeExpr.analyze(TestEnum.class);
+      TypeExpr node = TypeExpr.analyzeType(TestEnum.class);
 
       assertInstanceOf(TypeExpr.RefValueNode.class, node);
       TypeExpr.RefValueNode prim = (TypeExpr.RefValueNode) node;
@@ -303,7 +303,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Record type")
     void testRecordType() {
-      TypeExpr node = TypeExpr.analyze(TestRecord.class);
+      TypeExpr node = TypeExpr.analyzeType(TestRecord.class);
 
       assertInstanceOf(TypeExpr.RefValueNode.class, node);
       TypeExpr.RefValueNode prim = (TypeExpr.RefValueNode) node;
@@ -321,6 +321,7 @@ class TreeTypeExprTest {
   Map<String, List<Integer>> mapStringListInt;
   List<double[]> listArrayPrimitiveDouble;
 
+  @SuppressWarnings("unused")
   enum TestEnum {ONE, TWO}
 
   record TestRecord(String name, int value) {
@@ -340,28 +341,30 @@ class TreeTypeExprTest {
       // Cache not implemented in TypeExpr
     }
 
-    TypeExpr intType = TypeExpr.analyze(int.class);
+    TypeExpr intType = TypeExpr.analyzeType(int.class);
 
-    TypeExpr booleanType = TypeExpr.analyze(boolean.class);
+    TypeExpr booleanType = TypeExpr.analyzeType(boolean.class);
 
     // ===============================
     // Example 1: Basic Record and Enum (Month/Season)
     // ===============================
 
+    @SuppressWarnings("unused")
     public record Month(Season season, String name) {
     }
 
+    @SuppressWarnings("unused")
     public enum Season {SPRING, SUMMER, FALL, WINTER}
 
     @Test
     @DisplayName("Month Record with Season Enum")
     void testMonthSeasonExample() {
       // Test the Season enum directly
-      TypeExpr seasonEnum = TypeExpr.analyze(Season.class);
+      TypeExpr seasonEnum = TypeExpr.analyzeType(Season.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, Season.class), seasonEnum);
 
       // Test String type
-      TypeExpr stringType = TypeExpr.analyze(String.class);
+      TypeExpr stringType = TypeExpr.analyzeType(String.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), stringType);
     }
 
@@ -370,6 +373,7 @@ class TreeTypeExprTest {
     // ===============================
 
     public sealed interface TreeNode permits InternalNode, LeafNode, TreeEnum {
+      @SuppressWarnings("unused")
       static TreeNode empty() {
         return TreeEnum.EMPTY;
       }
@@ -387,15 +391,15 @@ class TreeTypeExprTest {
     @DisplayName("TreeNode Sealed Interface")
     void testTreeNodeSealedInterface() {
       // Test the sealed interface itself
-      TypeExpr treeNodeInterface = TypeExpr.analyze(TreeNode.class);
+      TypeExpr treeNodeInterface = TypeExpr.analyzeType(TreeNode.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTERFACE, TreeNode.class), treeNodeInterface);
 
       // Test record implementing interface
-      TypeExpr internalNodeRecord = TypeExpr.analyze(InternalNode.class);
+      TypeExpr internalNodeRecord = TypeExpr.analyzeType(InternalNode.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, InternalNode.class), internalNodeRecord);
 
       // Test enum implementing interface
-      TypeExpr treeEnum = TypeExpr.analyze(TreeEnum.class);
+      TypeExpr treeEnum = TypeExpr.analyzeType(TreeEnum.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TreeEnum.class), treeEnum);
     }
 
@@ -404,11 +408,11 @@ class TreeTypeExprTest {
     void testInternalNodeStructure() {
       // Test the types of fields in InternalNode
       // name: String
-      TypeExpr stringType = TypeExpr.analyze(String.class);
+      TypeExpr stringType = TypeExpr.analyzeType(String.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), stringType);
 
       // left/right: TreeNode (recursive reference to sealed interface)
-      TypeExpr treeNodeType = TypeExpr.analyze(TreeNode.class);
+      TypeExpr treeNodeType = TypeExpr.analyzeType(TreeNode.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTERFACE, TreeNode.class), treeNodeType);
     }
 
@@ -416,7 +420,7 @@ class TreeTypeExprTest {
     @DisplayName("LeafNode Record Structure")
     void testLeafNodeStructure() {
       // Test int type for value field
-      TypeExpr intType = TypeExpr.analyze(int.class);
+      TypeExpr intType = TypeExpr.analyzeType(int.class);
       assertEquals(new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class), intType);
     }
 
@@ -439,7 +443,7 @@ class TreeTypeExprTest {
           )
       );
 
-      TypeExpr actual = TypeExpr.analyze(nestedListType);
+      TypeExpr actual = TypeExpr.analyzeType(nestedListType);
       assertEquals(expected, actual);
       assertEquals("LIST(LIST(String))", actual.toTreeString());
     }
@@ -458,10 +462,10 @@ class TreeTypeExprTest {
     @DisplayName("Person Record Structure")
     void testPersonRecordStructure() {
       // Test the types used in Person record
-      TypeExpr stringType = TypeExpr.analyze(String.class);
+      TypeExpr stringType = TypeExpr.analyzeType(String.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), stringType);
 
-      TypeExpr intType = TypeExpr.analyze(int.class);
+      TypeExpr intType = TypeExpr.analyzeType(int.class);
       assertEquals(new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class), intType);
     }
 
@@ -469,18 +473,18 @@ class TreeTypeExprTest {
     @DisplayName("NestedFamilyMapContainer Structure")
     void testNestedFamilyMapContainerStructure() throws Exception {
       // subject: Person (record)
-      TypeExpr personType = TypeExpr.analyze(Person.class);
+      TypeExpr personType = TypeExpr.analyzeType(Person.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, Person.class), personType);
 
-      // relationships: Map<String, Person>
+      // relationships: Map<String,Person>
       Type mapType = NestedFamilyMapContainer.class.getDeclaredField("relationships").getGenericType();
       TypeExpr expected = new TypeExpr.MapNode(
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class),
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, Person.class)
       );
-      TypeExpr actual = TypeExpr.analyze(mapType);
+      TypeExpr actual = TypeExpr.analyzeType(mapType);
       assertEquals(expected, actual);
-      assertEquals("MAP(String, Person)", actual.toTreeString());
+      assertEquals("MAP(String,Person)", actual.toTreeString());
     }
 
     // ===============================
@@ -515,13 +519,13 @@ class TreeTypeExprTest {
     @DisplayName("Animal Sealed Hierarchy Analysis")
     void testAnimalSealedHierarchy() {
       // Test various types in the hierarchy
-      TypeExpr alicornType = TypeExpr.analyze(Alicorn.class);
+      TypeExpr alicornType = TypeExpr.analyzeType(Alicorn.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, Alicorn.class), alicornType);
 
-      TypeExpr mammalType = TypeExpr.analyze(Mammal.class);
+      TypeExpr mammalType = TypeExpr.analyzeType(Mammal.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTERFACE, Mammal.class), mammalType);
 
-      TypeExpr dogType = TypeExpr.analyze(Dog.class);
+      TypeExpr dogType = TypeExpr.analyzeType(Dog.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, Dog.class), dogType);
     }
 
@@ -529,7 +533,7 @@ class TreeTypeExprTest {
     @DisplayName("Alicorn Record with String Array")
     void testAlicornRecordStructure() throws Exception {
       // name: String
-      TypeExpr stringType = TypeExpr.analyze(String.class);
+      TypeExpr stringType = TypeExpr.analyzeType(String.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), stringType);
 
       // magicPowers: String[]
@@ -537,7 +541,7 @@ class TreeTypeExprTest {
       TypeExpr expected = new TypeExpr.ArrayNode(
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
       );
-      TypeExpr actual = TypeExpr.analyze(arrayType);
+      TypeExpr actual = TypeExpr.analyzeType(arrayType);
       assertEquals(expected, actual);
       assertThat(actual).isEqualTo(expected);
       assertEquals("ARRAY(String)", actual.toTreeString());
@@ -547,7 +551,7 @@ class TreeTypeExprTest {
     @DisplayName("Dog and Cat Record Structures")
     void testMammalRecordStructures() {
       // Test types used in Dog and Cat records
-      TypeExpr stringType = TypeExpr.analyze(String.class);
+      TypeExpr stringType = TypeExpr.analyzeType(String.class);
       assertEquals(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), stringType);
       assertEquals(new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class), intType);
       assertEquals(new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BOOLEAN, boolean.class), booleanType);
@@ -557,20 +561,20 @@ class TreeTypeExprTest {
     @DisplayName("Eagle and Penguin Record Structures")
     void testBirdRecordStructures() {
       // Test types used in Eagle and Penguin records
-      TypeExpr doubleType = TypeExpr.analyze(double.class);
+      TypeExpr doubleType = TypeExpr.analyzeType(double.class);
       assertEquals(new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.DOUBLE, double.class), doubleType);
 
-      TypeExpr booleanType = TypeExpr.analyze(boolean.class);
+      TypeExpr booleanType = TypeExpr.analyzeType(boolean.class);
       assertEquals(new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BOOLEAN, boolean.class), booleanType);
     }
 
     // ===============================
     // Example 6: Complex Type from Academic Analysis
-    // List<Map<String, Optional<Integer[]>[]>>
+    // List<Map<String,Optional<Integer[]>[]>>
     // ===============================
 
     @Test
-    @DisplayName("README Academic Example: List<Map<String, Optional<Integer[]>[]>>")
+    @DisplayName("README Academic Example: List<Map<String,Optional<Integer[]>[]>>")
     void testComplexAcademicExample() throws Exception {
       Type complexType = getClass().getDeclaredField("complexAcademicExample").getGenericType();
 
@@ -583,9 +587,9 @@ class TreeTypeExprTest {
       TypeExpr mapNode = new TypeExpr.MapNode(stringNode, outerArrayNode);
       TypeExpr expected = new TypeExpr.ListNode(mapNode);
 
-      TypeExpr actual = TypeExpr.analyze(complexType);
+      TypeExpr actual = TypeExpr.analyzeType(complexType);
       assertEquals(expected, actual);
-      assertEquals("LIST(MAP(String, ARRAY(OPTIONAL(ARRAY(Integer)))))", actual.toTreeString());
+      assertEquals("LIST(MAP(String,ARRAY(OPTIONAL(ARRAY(Integer)))))", actual.toTreeString());
     }
 
     // ===============================
@@ -625,7 +629,7 @@ class TreeTypeExprTest {
           case TypeExpr.RefValueType refValueType -> new TypeExpr.RefValueNode(refValueType, javaType);
           default -> throw new IllegalArgumentException("Unexpected type: " + expectedType);
         };
-        TypeExpr actual = TypeExpr.analyze(javaType);
+        TypeExpr actual = TypeExpr.analyzeType(javaType);
 
         assertEquals(expected, actual, "Failed for " + javaType);
       }
@@ -638,7 +642,7 @@ class TreeTypeExprTest {
       TypeExpr expectedArray = new TypeExpr.ArrayNode(
           new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class)
       );
-      TypeExpr actualArray = TypeExpr.analyze(int[].class);
+      TypeExpr actualArray = TypeExpr.analyzeType(int[].class);
       assertEquals(expectedArray, actualArray);
       assertEquals("ARRAY(int)", actualArray.toTreeString());
 
@@ -647,7 +651,7 @@ class TreeTypeExprTest {
       TypeExpr expectedList = new TypeExpr.ListNode(
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
       );
-      TypeExpr actualList = TypeExpr.analyze(listType);
+      TypeExpr actualList = TypeExpr.analyzeType(listType);
       assertEquals(expectedList, actualList);
       assertEquals("LIST(String)", actualList.toTreeString());
 
@@ -656,19 +660,19 @@ class TreeTypeExprTest {
       TypeExpr expectedOptional = new TypeExpr.OptionalNode(
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class)
       );
-      TypeExpr actualOptional = TypeExpr.analyze(optionalType);
+      TypeExpr actualOptional = TypeExpr.analyzeType(optionalType);
       assertEquals(expectedOptional, actualOptional);
       assertEquals("OPTIONAL(String)", actualOptional.toTreeString());
 
-      // Test Map: Map<String, Integer> -> MAP(STRING, INTEGER)
+      // Test Map: Map<String,Integer> -> MAP(STRING, INTEGER)
       Type mapType = getClass().getDeclaredField("stringIntMap").getGenericType();
       TypeExpr expectedMap = new TypeExpr.MapNode(
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class),
           new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTEGER, Integer.class)
       );
-      TypeExpr actualMap = TypeExpr.analyze(mapType);
+      TypeExpr actualMap = TypeExpr.analyzeType(mapType);
       assertEquals(expectedMap, actualMap);
-      assertEquals("MAP(String, Integer)", actualMap.toTreeString());
+      assertEquals("MAP(String,Integer)", actualMap.toTreeString());
     }
 
 

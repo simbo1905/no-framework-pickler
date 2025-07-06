@@ -71,11 +71,11 @@ final class ManyPickler<R> implements Pickler<R> {
     assert userType.isRecord() : "User type must be a record type: " + userType;
     RecordComponent[] components = userType.getRecordComponents();
     if (components.length == 0) {
-      //noinspection rawtypes,unchecked
-      return new EmptyRecordPickler(userType);
+      @SuppressWarnings({"rawtypes", "unchecked"}) final var result = new EmptyRecordPickler(userType);
+      return result;
     } else {
-      //noinspection rawtypes,unchecked
-      return new RecordPickler(userType, enumToTypeSignatureMap);
+      @SuppressWarnings({"rawtypes", "unchecked"}) final var result = new RecordPickler(userType, enumToTypeSignatureMap);
+      return result;
     }
   }
 
@@ -128,13 +128,13 @@ final class ManyPickler<R> implements Pickler<R> {
         LOGGER.fine(() -> "RecordPickler deserializing record of type " + rp.userType.getSimpleName() +
             " at position: " + buffer.position() +
             " with type signature: 0x" + Long.toHexString(typeSignature));
-        //noinspection unchecked
-        return (R) rp.readFromWire(buffer);
+        @SuppressWarnings("unchecked") final var result = (R) rp.readFromWire(buffer);
+        return result;
       }
       case EmptyRecordPickler<?> erp -> {
         // EmptyRecordPickler is a special case for records with no components
-        //noinspection unchecked
-        return (R) erp.singleton;
+        @SuppressWarnings("unchecked") final var result = (R) erp.singleton;
+        return result;
       }
       default -> throw new IllegalArgumentException("Unexpected pickler type: " + pickler.getClass());
     }
@@ -155,14 +155,14 @@ final class ManyPickler<R> implements Pickler<R> {
                                                Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     LOGGER.fine(() -> "ManyPickler " + userType + " resolve componentPicker for userType: " + userType.getSimpleName());
     final var pickler = REGISTRY.computeIfAbsent(userType, aClass -> componentPicker(userType, enumToTypeSignatureMap));
-    //noinspection unchecked
-    return (Pickler<R>) pickler;
+    @SuppressWarnings("unchecked") final var result = (Pickler<R>) pickler;
+    return result;
   }
 
   static <R> @NotNull Pickler<R> resolvePickerNoCache(Class<?> userType,
                                                       Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    //noinspection unchecked
-    return (Pickler<R>) componentPicker(userType, enumToTypeSignatureMap);
+    @SuppressWarnings("unchecked") final var result = (Pickler<R>) componentPicker(userType, enumToTypeSignatureMap);
+    return result;
   }
 
   @Override
