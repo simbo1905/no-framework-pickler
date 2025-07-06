@@ -35,7 +35,7 @@ sealed interface TypeExpr permits
   /// Recursive descent parser for Java types - builds tree bottom-up
   static TypeExpr analyzeType(Type type) {
     final var result = analyzeTypeInner(type);
-    LOGGER.info(() -> "Got TypeExpr: " + result.toTreeString());
+    LOGGER.finer(() -> "Got TypeExpr: " + result.toTreeString());
     return result;
   }
 

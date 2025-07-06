@@ -4,24 +4,22 @@ import net.jqwik.api.*;
 import net.jqwik.api.providers.ArbitraryProvider;
 import net.jqwik.api.providers.TypeUsage;
 import org.jetbrains.annotations.NotNull;
+import org.junit.jupiter.api.BeforeAll;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class ExhaustiveTestIT implements ArbitraryProvider {
 
-  private static final Logger log = Logger.getLogger(ExhaustiveTestIT.class.getName());
-
-  static {
-    // To see the generated source code in the console
-    log.setLevel(Level.INFO);
+  @BeforeAll
+  static void setupLogging() {
+    io.github.simbo1905.LoggingControl.setupCleanLogging();
   }
 
   // Add these test are just to have things that can be nested
@@ -114,7 +112,7 @@ public class ExhaustiveTestIT implements ArbitraryProvider {
         valueTypes.map(v -> new TypeExpr.ArrayNode(new TypeExpr.ListNode(v))),           // Array(List(Value))
         valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.ArrayNode(v))),           // List(Array(Value))
         valueTypes.map(v -> new TypeExpr.OptionalNode(new TypeExpr.ArrayNode(v))),       // Optional(Array(Value))
-        valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.OptionalNode(v)))
+        valueTypes.map(v -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), v))
     );
 
     return essentialDouble.map(TypeExpr.ArrayNode::new);  // Array(essential double combinations)
@@ -127,7 +125,7 @@ public class ExhaustiveTestIT implements ArbitraryProvider {
     String fullClassName = "io.github.simbo1905.no.framework.generated." + recordName;
 
     String sourceCode = generateRecordSource(recordName, typeExpr);
-    log.fine(() -> "Generated source for " + typeExpr.toTreeString() + ":\n" + sourceCode);
+    LOGGER.fine(() -> "Generated source for " + typeExpr.toTreeString() + ":\n" + sourceCode);
 
     Class<?> compiledClass = RecordSourceCodeToClassLoadWithInstance.compileAndClassLoad(fullClassName, sourceCode);
     TestableRecord instance = (TestableRecord) compiledClass.getConstructor().newInstance();
