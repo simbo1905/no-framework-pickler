@@ -16,7 +16,7 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.*;
 
 /// Test nested Map support 
-public class NestedMapTest {
+public class NestedMapTests {
 
   @BeforeAll
   static void setupLogging() {
