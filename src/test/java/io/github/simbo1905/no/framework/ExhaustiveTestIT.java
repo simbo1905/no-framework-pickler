@@ -13,12 +13,11 @@ import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class ExhaustiveTest implements ArbitraryProvider {
+public class ExhaustiveTestIT implements ArbitraryProvider {
 
-  private static final Logger log = Logger.getLogger(ExhaustiveTest.class.getName());
+  private static final Logger log = Logger.getLogger(ExhaustiveTestIT.class.getName());
 
   static {
     // To see the generated source code in the console
@@ -152,11 +151,11 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
     return String.format("""
         package io.github.simbo1905.no.framework.generated;
-        import static io.github.simbo1905.no.framework.ExhaustiveTest.*;
+        import static io.github.simbo1905.no.framework.ExhaustiveTestIT.*;
         
         import java.util.*;
-        import io.github.simbo1905.no.framework.ExhaustiveTest.TestEnum;
-        import io.github.simbo1905.no.framework.ExhaustiveTest.TestRecord;
+        import io.github.simbo1905.no.framework.ExhaustiveTestIT.TestEnum;
+        import io.github.simbo1905.no.framework.ExhaustiveTestIT.TestRecord;
         import io.github.simbo1905.no.framework.TestableRecord;
         
         public record %s(%s value) implements TestableRecord {
@@ -246,8 +245,8 @@ public class ExhaustiveTest implements ArbitraryProvider {
         case DOUBLE -> "Double.valueOf(6.0d)";
         case STRING -> "\"hello\"";
         case UUID -> "UUID.fromString(\"00000000-0000-0000-0000-000000000001\")";
-        case ENUM -> "io.github.simbo1905.no.framework.ExhaustiveTest.TestEnum.A";
-        case RECORD -> "new io.github.simbo1905.no.framework.ExhaustiveTest.TestRecord(123)";
+        case ENUM -> "io.github.simbo1905.no.framework.ExhaustiveTestIT.TestEnum.A";
+        case RECORD -> "new io.github.simbo1905.no.framework.ExhaustiveTestIT.TestRecord(123)";
         case INTERFACE -> "null"; // Cannot instantiate interface
       };
       case TypeExpr.ArrayNode(var element) -> {
@@ -295,15 +294,46 @@ public class ExhaustiveTest implements ArbitraryProvider {
       return;
     }
 
-    Class<?> recordClass = expected.getClass();
-    if (!recordClass.isRecord()) {
-      Class<?> expectedClass = expected.getClass();
-      if (!expectedClass.equals(actual.getClass())) {
-        throw new IllegalArgumentException("Expected and actual objects are not of the same class: " +
-            expectedClass.getName() + " vs " + actual.getClass().getName());
-      } else if (expectedClass.isArray()) {
-        assertArrayEquals((Object[]) expected, (Object[]) actual, "Arrays differ");
-        return;
+    Class<?> expectedClass = expected.getClass();
+    if (expectedClass.isRecord()) {
+      for (RecordComponent component : expectedClass.getRecordComponents()) {
+        Method accessor = component.getAccessor();
+        Object expectedValue = accessor.invoke(expected);
+        Object actualValue = accessor.invoke(actual);
+
+        if (component.getType().isArray()) {
+          assertDeepArrayEquals(expectedValue, actualValue);
+        } else if (expectedValue instanceof List && actualValue instanceof List<?>) {
+          @SuppressWarnings("PatternVariableCanBeUsed") List<?> expectedList = (List<?>) expectedValue;
+          @SuppressWarnings("PatternVariableCanBeUsed") List<?> actualList = (List<?>) actualValue;
+          assertEquals(expectedList.size(), actualList.size(), "List size differs for component " + component.getName());
+          for (int i = 0; i < expectedList.size(); i++) {
+            assertDeepEquals(expectedList.get(i), actualList.get(i));
+          }
+        } else if (expectedValue instanceof Optional<?> && actualValue instanceof Optional<?>) {
+          @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> expectedOptional = (Optional<?>) expectedValue;
+          @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> actualOptional = (Optional<?>) actualValue;
+          assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs for component " + component.getName());
+          if (expectedOptional.isPresent() && actualOptional.isPresent()) {
+            assertDeepEquals(expectedOptional.get(), actualOptional.get());
+          } else
+            throw new AssertionError("Optional values differ for component " + component.getName() + " as one is present and the other is not");
+        } else if (expectedValue instanceof Map<?, ?> && actualValue instanceof Map<?, ?>) {
+          @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> expectedMap = (Map<?, ?>) expectedValue;
+          @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> actualMap = (Map<?, ?>) actualValue;
+          assertEquals(expectedMap.size(), actualMap.size(), "Map size differs for component " + component.getName());
+          for (Object key : expectedMap.keySet()) {
+            assertDeepEquals(expectedMap.get(key), actualMap.get(key));
+          }
+        } else if (component.getType().isRecord()) {
+          assertDeepEquals(expectedValue, actualValue);
+        } else {
+          assertEquals(expectedValue, actualValue, "Component " + component.getName() + " differs");
+        }
+      }
+    } else {
+      if (expectedClass.isArray()) {
+        assertDeepArrayEquals(expected, actual);
       } else if (expected instanceof List) {
         @SuppressWarnings("PatternVariableCanBeUsed") List<?> expectedList = (List<?>) expected;
         List<?> actualList = (List<?>) actual;
@@ -311,7 +341,6 @@ public class ExhaustiveTest implements ArbitraryProvider {
         for (int i = 0; i < expectedList.size(); i++) {
           assertDeepEquals(expectedList.get(i), actualList.get(i));
         }
-        return;
       } else if (expected instanceof Map) {
         @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> expectedMap = (Map<?, ?>) expected;
         Map<?, ?> actualMap = (Map<?, ?>) actual;
@@ -319,55 +348,46 @@ public class ExhaustiveTest implements ArbitraryProvider {
         for (Object key : expectedMap.keySet()) {
           assertDeepEquals(expectedMap.get(key), actualMap.get(key));
         }
-        return;
-      } else {
-        assertEquals(expected, actual, "Objects differ");
-        return;
-      }
-    }
-
-    for (RecordComponent component : recordClass.getRecordComponents()) {
-      Method accessor = component.getAccessor();
-      Object expectedValue = accessor.invoke(expected);
-      Object actualValue = accessor.invoke(actual);
-
-      if (component.getType().isArray()) {
-        // This is a simplified array comparison. For a real-world scenario, a recursive deep equals for arrays of any dimension would be better.
-        if (expectedValue instanceof Object[] && actualValue instanceof Object[]) {
-          assertArrayEquals((Object[]) expectedValue, (Object[]) actualValue);
-        } else {
-          // fallback for primitive arrays
-          assertEquals(Array.getLength(expectedValue), Array.getLength(actualValue));
-          for (int i = 0; i < Array.getLength(expectedValue); i++) {
-            assertEquals(Array.get(expectedValue, i), Array.get(actualValue, i));
-          }
-        }
-      } else if (expectedValue instanceof List && actualValue instanceof List<?>) {
-        @SuppressWarnings("PatternVariableCanBeUsed") List<?> expectedList = (List<?>) expectedValue;
-        @SuppressWarnings("PatternVariableCanBeUsed") List<?> actualList = (List<?>) actualValue;
-        assertEquals(expectedList.size(), actualList.size(), "List size differs for component " + component.getName());
-        for (int i = 0; i < expectedList.size(); i++) {
-          assertDeepEquals(expectedList.get(i), actualList.get(i));
-        }
-      } else if (expectedValue instanceof Optional<?> && actualValue instanceof Optional<?>) {
-        @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> expectedOptional = (Optional<?>) expectedValue;
-        @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> actualOptional = (Optional<?>) actualValue;
-        assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs for component " + component.getName());
+      } else if (expected instanceof Optional<?> && actual instanceof Optional<?>) {
+        @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> expectedOptional = (Optional<?>) expected;
+        @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> actualOptional = (Optional<?>) actual;
+        assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs");
         if (expectedOptional.isPresent() && actualOptional.isPresent()) {
           assertDeepEquals(expectedOptional.get(), actualOptional.get());
         } else
-          throw new AssertionError("Optional values differ for component " + component.getName() + " as one is present and the other is not");
-      } else if (expectedValue instanceof Map<?, ?> && actualValue instanceof Map<?, ?>) {
-        @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> expectedMap = (Map<?, ?>) expectedValue;
-        @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> actualMap = (Map<?, ?>) actualValue;
-        assertEquals(expectedMap.size(), actualMap.size(), "Map size differs for component " + component.getName());
-        for (Object key : expectedMap.keySet()) {
-          assertDeepEquals(expectedMap.get(key), actualMap.get(key));
-        }
-      } else if (component.getType().isRecord()) {
-        assertDeepEquals(expectedValue, actualValue);
+          throw new AssertionError("Optional values differ as one is present and the other is not");
       } else {
-        assertEquals(expectedValue, actualValue, "Component " + component.getName() + " differs");
+        assertEquals(expected, actual, "Objects differ");
+      }
+    }
+  }
+
+  /// Recursively compares arrays of any dimension, handling both primitive and object arrays.
+  void assertDeepArrayEquals(Object expected, Object actual) throws Exception {
+    if (expected == null || actual == null) {
+      assertEquals(expected, actual, "One array is null while the other is not");
+      return;
+    }
+
+    if (!expected.getClass().isArray() || !actual.getClass().isArray()) {
+      assertEquals(expected, actual, "Expected array types but got different types");
+      return;
+    }
+
+    int expectedLength = Array.getLength(expected);
+    int actualLength = Array.getLength(actual);
+    assertEquals(expectedLength, actualLength, "Array lengths differ");
+
+    for (int i = 0; i < expectedLength; i++) {
+      Object expectedElement = Array.get(expected, i);
+      Object actualElement = Array.get(actual, i);
+
+      if (expectedElement != null && expectedElement.getClass().isArray()) {
+        // Recursive call for nested arrays
+        assertDeepArrayEquals(expectedElement, actualElement);
+      } else {
+        // For non-array elements, use deep equals to handle complex objects
+        assertDeepEquals(expectedElement, actualElement);
       }
     }
   }
@@ -380,7 +400,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
   }
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
+  @SuppressWarnings({"varargs", "unused"}) // used by generated code do not delete
   public static <T> List<T>[][] createListArray2D(List<T>... lists) {
     //noinspection RedundantSuppression
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -424,4 +444,3 @@ public class ExhaustiveTest implements ArbitraryProvider {
   }
 
 }
-

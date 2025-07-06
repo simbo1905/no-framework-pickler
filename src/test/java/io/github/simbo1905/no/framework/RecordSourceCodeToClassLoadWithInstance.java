@@ -4,10 +4,7 @@ import javax.tools.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.RecordComponent;
 import java.net.URI;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,15 +36,6 @@ public sealed interface RecordSourceCodeToClassLoadWithInstance permits RecordSo
         RecordSourceCodeToClassLoadWithInstance.class.getClassLoader(),
         Map.of(fullClassName, classBytes));
     return classLoader.loadClass(fullClassName);
-  }
-
-  static Object createRecordInstance(Class<?> recordClass, Object[] args) throws Exception {
-    RecordComponent[] components = recordClass.getRecordComponents();
-    Class<?>[] paramTypes = Arrays.stream(components)
-        .map(RecordComponent::getType)
-        .toArray(Class<?>[]::new);
-    Constructor<?> constructor = recordClass.getDeclaredConstructor(paramTypes);
-    return constructor.newInstance(args);
   }
 
   static void throwCompilationError(DiagnosticCollector<JavaFileObject> diagnostics) {

@@ -94,7 +94,7 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
       }
     } else {
       // If there are multiple record classes return a RecordPickler that will delegate to a RecordPickler
-      LOGGER.info("Creating PicklerRoot for multiple record classes: " +
+      LOGGER.fine(() -> "Creating PicklerRoot for multiple record classes: " +
           recordClasses.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
       return new ManyPickler<>(recordClasses, enumToTypeSignatureMap);
     }

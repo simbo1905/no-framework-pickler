@@ -117,10 +117,13 @@ final class RecordPickler<T> implements Pickler<T> {
 
     componentTypeExpressions = new TypeExpr[numComponents];
 
+    //noinspection RedundantSuppression
     @SuppressWarnings({"unchecked", "rawtypes"}) final BiConsumer<ByteBuffer, Object>[] x = new BiConsumer[numComponents];
     componentWriters = x;
+    //noinspection RedundantSuppression
     @SuppressWarnings({"unchecked", "rawtypes"}) final Function<ByteBuffer, Object>[] y = new Function[numComponents];
     componentReaders = y;
+    //noinspection RedundantSuppression
     @SuppressWarnings({"unchecked", "rawtypes"}) final ToIntFunction<Object>[] z = new ToIntFunction[numComponents];
     componentSizers = z;
 
