@@ -421,25 +421,7 @@ sealed interface Companion permits Companion.Nothing {
     rp.writeToWire(buffer, castedRecord);
   }
 
-  /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
-  static long hashEnumSignature(Class<?> enumClass) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance(SHA_256);
-
-      Object[] enumConstants = enumClass.getEnumConstants();
-      assert enumConstants != null : "Not an enum class: " + enumClass;
-
-      String input = Stream.concat(Stream.of(enumClass.getSimpleName()), Arrays.stream(enumConstants).map(e -> ((Enum<?>) e).name())).collect(Collectors.joining("!"));
-
-      byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-
-      return IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException(SHA_256 + " not available", e);
-    }
-  }
-
-  static final Set<Class<?>> BOXED_PRIMITIVES = Set.of(
+  Set<Class<?>> BOXED_PRIMITIVES = Set.of(
       Byte.class, Short.class, Integer.class, Long.class,
       Float.class, Double.class, Character.class, Boolean.class
   );
@@ -458,9 +440,23 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
+  /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
+  static long hashEnumSignature(Class<?> enumClass) {
+    Object[] enumConstants = enumClass.getEnumConstants();
+    assert enumConstants != null : "Not an enum class: " + enumClass;
+    String input = Stream.concat(Stream.of(enumClass.getSimpleName()), Arrays.stream(enumConstants).map(e -> ((Enum<?>) e).name())).collect(Collectors.joining("!"));
+    return hashSignature(input);
+  }
+
+  /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
+  static long hashRecordSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
+    String input = Stream.concat(Stream.of(clazz.getName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
+    return hashSignature(input);
+  }
+
   static long hashSignature(String uniqueNess) {
     long result;
-    MessageDigest digest = null;
+    final MessageDigest digest;
     try {
       digest = MessageDigest.getInstance(SHA_256);
     } catch (NoSuchAlgorithmException e) {
@@ -475,11 +471,5 @@ sealed interface Companion permits Companion.Nothing {
     //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
     result = IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     return result;
-  }
-
-  /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
-  static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
-    String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
-    return hashSignature(input);
   }
 }

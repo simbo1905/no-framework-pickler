@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905.no.framework;
 
 import net.jqwik.api.*;
@@ -127,7 +130,7 @@ public class ExhaustiveTestIT implements ArbitraryProvider {
     String sourceCode = generateRecordSource(recordName, typeExpr);
     LOGGER.fine(() -> "Generated source for " + typeExpr.toTreeString() + ":\n" + sourceCode);
 
-    Class<?> compiledClass = RecordSourceCodeToClassLoadWithInstance.compileAndClassLoad(fullClassName, sourceCode);
+    Class<?> compiledClass = CompileAndLoadClass.compileAndClassLoad(fullClassName, sourceCode);
     TestableRecord instance = (TestableRecord) compiledClass.getConstructor().newInstance();
     Object recordInstance = instance.instance();
 

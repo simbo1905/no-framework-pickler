@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905.no.framework;
 
 import javax.tools.*;
@@ -9,10 +12,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public sealed interface RecordSourceCodeToClassLoadWithInstance permits RecordSourceCodeToClassLoadWithInstance.None {
+public sealed interface CompileAndLoadClass permits CompileAndLoadClass.None {
 
   @SuppressWarnings("unused")
-  enum None implements RecordSourceCodeToClassLoadWithInstance {INSTANCE}
+  enum None implements CompileAndLoadClass {INSTANCE}
 
   class CompilerHolder {
     static final JavaCompiler COMPILER = ToolProvider.getSystemJavaCompiler();
@@ -33,7 +36,7 @@ public sealed interface RecordSourceCodeToClassLoadWithInstance permits RecordSo
 
     byte[] classBytes = fileManager.getClassBytes(fullClassName);
     InMemoryClassLoader classLoader = new InMemoryClassLoader(
-        RecordSourceCodeToClassLoadWithInstance.class.getClassLoader(),
+        CompileAndLoadClass.class.getClassLoader(),
         Map.of(fullClassName, classBytes));
     return classLoader.loadClass(fullClassName);
   }

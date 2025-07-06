@@ -20,7 +20,6 @@ import java.util.function.Function;
 import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Companion.*;
 import static io.github.simbo1905.no.framework.ManyPickler.resolvePicker;
@@ -177,12 +176,6 @@ final class RecordPickler<T> implements Pickler<T> {
             .collect(Collectors.joining(", ")));
 
     LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " construction complete for " + userType.getSimpleName());
-  }
-
-  /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
-  static long hashRecordSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
-    String input = Stream.concat(Stream.of(clazz.getName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
-    return hashSignature(input);
   }
 
   @NotNull Function<ByteBuffer, Object> buildPrimitiveValueReader(TypeExpr.RefValueType valueType) {
