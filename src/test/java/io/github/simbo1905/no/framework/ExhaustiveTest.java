@@ -3,6 +3,7 @@ package io.github.simbo1905.no.framework;
 import net.jqwik.api.*;
 import net.jqwik.api.providers.ArbitraryProvider;
 import net.jqwik.api.providers.TypeUsage;
+import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
@@ -37,7 +38,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
   }
 
   @Override
-  public Set<Arbitrary<?>> provideFor(TypeUsage targetType, SubtypeProvider subtypeProvider) {
+  public @NotNull Set<Arbitrary<?>> provideFor(@NotNull TypeUsage targetType, @NotNull SubtypeProvider subtypeProvider) {
     return Collections.singleton(typeExprs());
   }
 
@@ -207,7 +208,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
         }
         yield ((Class<?>) javaType).getName();
       }
-      case TypeExpr.RefValueNode(var type, var javaType) -> {
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.equals(TestRecord.class) || clazz.equals(TestEnum.class)) {
           yield clazz.getCanonicalName();
@@ -304,7 +305,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
         assertArrayEquals((Object[]) expected, (Object[]) actual, "Arrays differ");
         return;
       } else if (expected instanceof List) {
-        List<?> expectedList = (List<?>) expected;
+        @SuppressWarnings("PatternVariableCanBeUsed") List<?> expectedList = (List<?>) expected;
         List<?> actualList = (List<?>) actual;
         assertEquals(expectedList.size(), actualList.size(), "List size differs");
         for (int i = 0; i < expectedList.size(); i++) {
@@ -312,7 +313,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
         }
         return;
       } else if (expected instanceof Map) {
-        Map<?, ?> expectedMap = (Map<?, ?>) expected;
+        @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> expectedMap = (Map<?, ?>) expected;
         Map<?, ?> actualMap = (Map<?, ?>) actual;
         assertEquals(expectedMap.size(), actualMap.size(), "Map size differs");
         for (Object key : expectedMap.keySet()) {
@@ -342,22 +343,23 @@ public class ExhaustiveTest implements ArbitraryProvider {
           }
         }
       } else if (expectedValue instanceof List && actualValue instanceof List<?>) {
-        List<?> expectedList = (List<?>) expectedValue;
-        List<?> actualList = (List<?>) actualValue;
+        @SuppressWarnings("PatternVariableCanBeUsed") List<?> expectedList = (List<?>) expectedValue;
+        @SuppressWarnings("PatternVariableCanBeUsed") List<?> actualList = (List<?>) actualValue;
         assertEquals(expectedList.size(), actualList.size(), "List size differs for component " + component.getName());
         for (int i = 0; i < expectedList.size(); i++) {
           assertDeepEquals(expectedList.get(i), actualList.get(i));
         }
       } else if (expectedValue instanceof Optional<?> && actualValue instanceof Optional<?>) {
-        Optional<?> expectedOptional = (Optional<?>) expectedValue;
-        Optional<?> actualOptional = (Optional<?>) actualValue;
+        @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> expectedOptional = (Optional<?>) expectedValue;
+        @SuppressWarnings("PatternVariableCanBeUsed") Optional<?> actualOptional = (Optional<?>) actualValue;
         assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs for component " + component.getName());
-        if (expectedOptional.isPresent()) {
+        if (expectedOptional.isPresent() && actualOptional.isPresent()) {
           assertDeepEquals(expectedOptional.get(), actualOptional.get());
-        }
+        } else
+          throw new AssertionError("Optional values differ for component " + component.getName() + " as one is present and the other is not");
       } else if (expectedValue instanceof Map<?, ?> && actualValue instanceof Map<?, ?>) {
-        Map<?, ?> expectedMap = (Map<?, ?>) expectedValue;
-        Map<?, ?> actualMap = (Map<?, ?>) actualValue;
+        @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> expectedMap = (Map<?, ?>) expectedValue;
+        @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> actualMap = (Map<?, ?>) actualValue;
         assertEquals(expectedMap.size(), actualMap.size(), "Map size differs for component " + component.getName());
         for (Object key : expectedMap.keySet()) {
           assertDeepEquals(expectedMap.get(key), actualMap.get(key));
@@ -372,7 +374,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
+  @SuppressWarnings({"varargs", "unused"}) // used by generated code do not delete
   public static <T> List<T>[] createListArray(List<T>... lists) {
     return lists;
   }
@@ -380,7 +382,8 @@ public class ExhaustiveTest implements ArbitraryProvider {
   @SafeVarargs
   @SuppressWarnings("varargs")
   public static <T> List<T>[][] createListArray2D(List<T>... lists) {
-    @SuppressWarnings("unchecked")
+    //noinspection RedundantSuppression
+    @SuppressWarnings({"unchecked", "rawtypes"})
     List<T>[][] result = (List<T>[][]) new List[1][];
     result[0] = lists;
     return result;
@@ -388,18 +391,20 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
+  @SuppressWarnings({"varargs", "unused"}) // used by generated code do not delete
   public static <T> Optional<T>[][] createOptionalArray2D(Optional<T>... optionals) {
-    @SuppressWarnings("unchecked")
+    //noinspection RedundantSuppression
+    @SuppressWarnings({"unchecked", "rawtypes"})
     Optional<T>[][] result = (Optional<T>[][]) new Optional[1][];
     result[0] = optionals;
     return result;
   }
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
+  @SuppressWarnings({"varargs", "unused"}) // used by generated code do not delete
   public static <K, V> Map<K, V>[][] createMapArray2D(Map<K, V>... maps) {
-    @SuppressWarnings("unchecked")
+    //noinspection RedundantSuppression
+    @SuppressWarnings({"unchecked", "rawtypes"})
     Map<K, V>[][] result = (Map<K, V>[][]) new Map[1][];
     result[0] = maps;
     return result;
@@ -407,13 +412,13 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
+  @SuppressWarnings({"varargs", "unused"}) // used by generated code do not delete
   public static <T> Optional<T>[] createOptionalArray(Optional<T>... optionals) {
     return optionals;
   }
 
   @SafeVarargs
-  @SuppressWarnings("varargs")
+  @SuppressWarnings({"varargs", "unused"}) // used by generated code do not delete
   public static <K, V> Map<K, V>[] createMapArray(Map<K, V>... maps) {
     return maps;
   }
