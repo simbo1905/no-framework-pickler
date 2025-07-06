@@ -127,7 +127,7 @@ public class ExhaustiveTest implements ArbitraryProvider {
     String fullClassName = "io.github.simbo1905.no.framework.generated." + recordName;
 
     String sourceCode = generateRecordSource(recordName, typeExpr);
-    log.info("Generated source for " + typeExpr.toTreeString() + ":\n" + sourceCode);
+    log.fine(() -> "Generated source for " + typeExpr.toTreeString() + ":\n" + sourceCode);
 
     Class<?> compiledClass = RecordSourceCodeToClassLoadWithInstance.compileAndClassLoad(fullClassName, sourceCode);
     TestableRecord instance = (TestableRecord) compiledClass.getConstructor().newInstance();
@@ -250,6 +250,17 @@ public class ExhaustiveTest implements ArbitraryProvider {
         case INTERFACE -> "null"; // Cannot instantiate interface
       };
       case TypeExpr.ArrayNode(var element) -> {
+        if (element instanceof TypeExpr.ArrayNode(var innerElement)) {
+          if (innerElement instanceof TypeExpr.ListNode) {
+            yield "createListArray2D(" + generateInstanceValue(innerElement) + ")";
+          }
+          if (innerElement instanceof TypeExpr.OptionalNode) {
+            yield "createOptionalArray2D(" + generateInstanceValue(innerElement) + ")";
+          }
+          if (innerElement instanceof TypeExpr.MapNode) {
+            yield "createMapArray2D(" + generateInstanceValue(innerElement) + ")";
+          }
+        }
         if (element instanceof TypeExpr.PrimitiveValueNode) {
           yield "new " + toJavaType(element, true) + "[]{" + generateInstanceValue(element) + "}";
         }
@@ -368,6 +379,35 @@ public class ExhaustiveTest implements ArbitraryProvider {
 
   @SafeVarargs
   @SuppressWarnings("varargs")
+  public static <T> List<T>[][] createListArray2D(List<T>... lists) {
+    @SuppressWarnings("unchecked")
+    List<T>[][] result = (List<T>[][]) new List[1][];
+    result[0] = lists;
+    return result;
+  }
+
+
+  @SafeVarargs
+  @SuppressWarnings("varargs")
+  public static <T> Optional<T>[][] createOptionalArray2D(Optional<T>... optionals) {
+    @SuppressWarnings("unchecked")
+    Optional<T>[][] result = (Optional<T>[][]) new Optional[1][];
+    result[0] = optionals;
+    return result;
+  }
+
+  @SafeVarargs
+  @SuppressWarnings("varargs")
+  public static <K, V> Map<K, V>[][] createMapArray2D(Map<K, V>... maps) {
+    @SuppressWarnings("unchecked")
+    Map<K, V>[][] result = (Map<K, V>[][]) new Map[1][];
+    result[0] = maps;
+    return result;
+  }
+
+
+  @SafeVarargs
+  @SuppressWarnings("varargs")
   public static <T> Optional<T>[] createOptionalArray(Optional<T>... optionals) {
     return optionals;
   }
@@ -377,5 +417,6 @@ public class ExhaustiveTest implements ArbitraryProvider {
   public static <K, V> Map<K, V>[] createMapArray(Map<K, V>... maps) {
     return maps;
   }
+
 }
 

@@ -85,11 +85,11 @@ public sealed interface Pickler<T> permits EmptyRecordPickler, ManyPickler, Reco
       final var components = first.getRecordComponents();
       if (components.length == 0) {
         // If the record has no components, we can return an EmptyRecordPickler
-        LOGGER.info("Creating EmptyRecordPickler for record class: " + first.getSimpleName());
+        LOGGER.fine(() -> "Creating EmptyRecordPickler for record class: " + first.getSimpleName());
         return new EmptyRecordPickler<>(first);
       } else {
         // If the record has components, we can return a RecordPickler
-        LOGGER.info("Creating RecordPickler for record class: " + first.getSimpleName());
+        LOGGER.fine(() -> "Creating RecordPickler for record class: " + first.getSimpleName());
         return new RecordPickler<>(first, enumToTypeSignatureMap);
       }
     } else {

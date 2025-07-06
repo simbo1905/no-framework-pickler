@@ -4,12 +4,14 @@ import io.github.simbo1905.no.framework.TestableRecord;
 
 import java.util.List;
 
-public record GeneratedRecord(List<Integer[]> value) implements TestableRecord {
+import static io.github.simbo1905.no.framework.ExhaustiveTest.createListArray2D;
+
+public record GeneratedRecord(List<Integer>[][] value) implements TestableRecord {
   public GeneratedRecord() {
-    this(List.of(new Integer[]{1, 2, 3}, new Integer[]{1, 2, 3}));
+    this(null);
   }
 
   public Object instance() {
-    return new GeneratedRecord();
+    return new GeneratedRecord(createListArray2D(List.of(3)));
   }
 }

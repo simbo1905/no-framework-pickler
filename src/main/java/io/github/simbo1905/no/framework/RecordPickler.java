@@ -178,7 +178,7 @@ final class RecordPickler<T> implements Pickler<T> {
             .map(entry -> entry.getKey().getSimpleName() + " -> 0x" + Long.toHexString(entry.getValue()))
             .collect(Collectors.joining(", ")));
 
-    LOGGER.info(() -> "RecordPickler " + userType.getSimpleName() + " construction complete for " + userType.getSimpleName());
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " construction complete for " + userType.getSimpleName());
   }
 
   /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
@@ -405,7 +405,7 @@ final class RecordPickler<T> implements Pickler<T> {
     ZigZagEncoding.putInt(buffer, componentWriters.length);
     IntStream.range(0, componentWriters.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
-      LOGGER.info(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex + " at position " + buffer.position());
+      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " writing component " + componentIndex + " at position " + buffer.position());
       componentWriters[componentIndex].accept(buffer, record);
     });
   }
