@@ -9,6 +9,7 @@ import java.nio.ByteOrder;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
@@ -20,25 +21,30 @@ import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
 /// Main coordinator for multiple record types using static analysis and callback delegation
 final class PicklerImpl<R> implements Pickler<R> {
   final List<Class<?>> userTypes;
-  /// FIXME I think this is duplicated between typeSignatureToPicklerMap and serdes
   final Map<Long, Pickler<?>> typeSignatureToPicklerMap;
-  final Map<Class<?>, Pickler<?>> serdes;
   final Map<Class<?>, Long> recordClassToTypeSignatureMap;
   final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap;
+  final Map<Class<?>, Long> altTypeSignatures;
+  final Map<Long, Pickler<?>> altTypeSignatureToPicklerMap;
+  final boolean compatibilityMode;
 
-
-  public PicklerImpl(List<Class<?>> recordClasses, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    Objects.requireNonNull(recordClasses);
-    Objects.requireNonNull(enumToTypeSignatureMap);
-
+  /// This constructor initializes the pickler with a list of record classes, a map of enum type signatures,
+  /// and a map of type signatures for backwards compatibility.
+  /// @param recordClasses List of record classes to be serialized.
+  /// @param enumToTypeSignatureMap Map of enum classes to their type signatures.
+  /// @param altTypeSignatures Map of class signatures to type signatures for backwards compatibility.
+  PicklerImpl(final List<Class<?>> recordClasses,
+              final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap,
+              final Map<Class<?>, Long> altTypeSignatures) {
+    this.compatibilityMode = CompatibilityMode.current() == CompatibilityMode.ENABLED;
     this.userTypes = List.copyOf(recordClasses);
     this.enumToTypeSignatureMap = Map.copyOf(enumToTypeSignatureMap);
-
+    this.altTypeSignatures = Map.copyOf(altTypeSignatures);
     // Compute type signatures using stream operations
     this.recordClassToTypeSignatureMap = computeRecordTypeSignatures(recordClasses);
 
     // Create record serdes with pre-built handlers using streams
-    serdes = recordClasses.stream()
+    final Map<Class<?>, Pickler<?>> serdes = recordClasses.stream()
         .collect(Collectors.toMap(
             clz -> clz,
             this::createRecordSerde
@@ -51,16 +57,26 @@ final class PicklerImpl<R> implements Pickler<R> {
             Map.Entry::getValue
         ));
 
+    this.altTypeSignatureToPicklerMap = serdes.entrySet().stream()
+        .filter(c -> altTypeSignatures.containsKey(c.getKey()))
+        .collect(Collectors.toMap(
+            entry -> altTypeSignatures.get(entry.getKey()),
+            Map.Entry::getValue
+        ));
+
     LOGGER.fine(() -> "PicklerImpl construction complete for " +
-        recordClasses.stream().map(Class::getSimpleName).collect(Collectors.joining(", ")));
+        recordClasses.stream().map(Class::getName).collect(Collectors.joining(", ")) +
+        " with compatibility mode " + compatibilityMode);
   }
 
+
   Pickler<?> createRecordSerde(Class<?> clz) {
+    final var altTypeSignature = Optional.ofNullable(altTypeSignatures.getOrDefault(clz, null));
     final var components = clz.getRecordComponents();
     if (components.length == 0) {
       return new EmptyRecordSerde<>(clz);
     } else {
-      return new RecordSerde<>(clz, this::resolveTypeSizer, this::resolveTypeWriter, this::resolveTypeReader);
+      return new RecordSerde<>(clz, this::resolveTypeSizer, this::resolveTypeWriter, this::resolveTypeReader, altTypeSignature);
     }
   }
 
@@ -76,14 +92,15 @@ final class PicklerImpl<R> implements Pickler<R> {
       /// FIXME i think this is junk all the picklers are in both typeSignatureToPicklerMap and serdes used by resolvePicker
       if (userTypes.contains(obj.getClass())) {
         // Self-recursion fast path
-        @SuppressWarnings("unchecked") final var serde = (RecordSerde<Object>) typeSignatureToPicklerMap.get(
+        final var serde = typeSignatureToPicklerMap.get(
             recordClassToTypeSignatureMap.get(obj.getClass()));
-        return Byte.BYTES + serde.maxSizeOf(obj);
+        if (serde instanceof RecordSerde<?> recordSerde) {
+          return Byte.BYTES + maxSizeOfWitness(obj, recordSerde);
+        } else if (serde instanceof EmptyRecordSerde<?> emptyRecordSerde) {
+          return Byte.BYTES + Long.BYTES; // marker + typeSignature
+        }
       }
-
-      // Delegate to other pickler
-      @SuppressWarnings("unchecked") final RecordSerde<Object> otherPickler = (RecordSerde<Object>) resolvePicker(obj.getClass());
-      return Byte.BYTES + otherPickler.maxSizeOf(obj);
+      throw new AssertionError("not found pickler for " + obj.getClass().getName());
     };
   }
 
@@ -102,22 +119,13 @@ final class PicklerImpl<R> implements Pickler<R> {
 
       if (userTypes.contains(obj.getClass())) {
         // Self-recursion fast path
-        final var serde = (RecordSerde<?>) typeSignatureToPicklerMap.get(
+        final var serde = typeSignatureToPicklerMap.get(
             recordClassToTypeSignatureMap.get(obj.getClass()));
         writeToWireWitness(serde, buffer, obj);
         return;
       }
-
-      // Delegate to other pickler
-      final var otherPickler = resolvePicker(obj.getClass());
-      writeToWireWitness(otherPickler, buffer, obj);
+      throw new AssertionError("not found pickler for " + obj.getClass().getName());
     };
-  }
-
-  /// FIXME I think this is duplicated between typeSignatureToPicklerMap and serdes
-  @SuppressWarnings("unchecked")
-  <X> Pickler<X> resolvePicker(Class<X> aClass) {
-    return (Pickler<X>) serdes.get(aClass);
   }
 
   /// Resolve reader for complex types by type signature
@@ -174,27 +182,37 @@ final class PicklerImpl<R> implements Pickler<R> {
     final var pickler = typeSignatureToPicklerMap.get(typeSignature);
 
     return switch (pickler) {
-      case EmptyRecordSerde<?> ers -> {
-        buffer.putLong(ers.typeSignature);
-        yield Long.BYTES;
-      }
+      case EmptyRecordSerde<?> ers -> writeToWireWitness(ers, buffer, record);
       case RecordSerde<?> rs -> writeToWireWitness(rs, buffer, record);
       default -> throw new AssertionError("Unexpected pickler type: " + pickler.getClass());
     };
   }
 
+  /// Deserialize a record from a ByteBuffer using the type signature map
+  /// @param buffer The ByteBuffer to read from
+  /// @return The deserialized record
+  /// @throws IllegalStateException if the type signature is unknown or not found in the maps
   @SuppressWarnings("unchecked")
   @Override
   public R deserialize(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
-
     final long typeSignature = buffer.getLong();
-    if (!typeSignatureToPicklerMap.containsKey(typeSignature)) {
-      throw new IllegalArgumentException("Unknown type signature: 0x" + Long.toHexString(typeSignature));
+    final Pickler<?> pickler;
+    if (typeSignatureToPicklerMap.containsKey(typeSignature)) {
+      pickler = typeSignatureToPicklerMap.get(typeSignature);
+    } else if (compatibilityMode && altTypeSignatureToPicklerMap.containsKey(typeSignature)) {
+      pickler = altTypeSignatureToPicklerMap.get(typeSignature);
+    } else {
+      throw new IllegalStateException("Unknown type signature: 0x" + Long.toHexString(typeSignature) + " as compatibility mode is " +
+          (compatibilityMode ? "enabled" : "disabled") + ". Known signatures: " +
+          typeSignatureToPicklerMap.keySet().stream()
+              .map(Long::toHexString).collect(Collectors.joining(", ")) +
+          (compatibilityMode ? ", alt signatures: " +
+              altTypeSignatureToPicklerMap.keySet().stream()
+                  .map(Long::toHexString).collect(Collectors.joining(", ")) : ""));
     }
 
-    final var pickler = typeSignatureToPicklerMap.get(typeSignature);
     return (R) switch (pickler) {
       case EmptyRecordSerde<?> ers -> ers.singleton;
       case RecordSerde<?> rs -> rs.readFromWire(buffer);
@@ -212,6 +230,22 @@ final class PicklerImpl<R> implements Pickler<R> {
     final var typeSignature = recordClassToTypeSignatureMap.get(record.getClass());
     final var pickler = typeSignatureToPicklerMap.get(typeSignature);
     return maxSizeOfWitness(record, pickler);
+  }
+
+  /// Get the type signature for a given record class that can be used for backwards compatibility
+  /// @param originalClass The original record class
+  /// @return The type signature for the record class
+  /// @throws IllegalArgumentException if the class is not in the user types
+  @Override
+  public long typeSignature(Class<?> originalClass) {
+    // throw an InvalidArgumentException if the class is not in the user types
+    Objects.requireNonNull(originalClass, "Original class must not be null");
+    if (!userTypes.contains(originalClass)) {
+      throw new IllegalArgumentException("Class " + originalClass.getSimpleName() +
+          " not in registered types: " + recordClassToTypeSignatureMap.keySet().stream()
+          .map(Class::getSimpleName).collect(Collectors.joining(", ")));
+    }
+    return recordClassToTypeSignatureMap.get(originalClass);
   }
 
   @SuppressWarnings("unchecked")

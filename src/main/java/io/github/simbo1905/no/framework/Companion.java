@@ -327,7 +327,6 @@ sealed interface Companion permits Companion.Nothing {
 
   String SHA_256 = "SHA-256";
   int SAMPLE_SIZE = 32;
-  int CLASS_SIG_BYTES = Long.BYTES;
   byte NULL_MARKER = (byte) -1;
   byte NOT_NULL_MARKER = (byte) 1;
 
@@ -532,12 +531,12 @@ sealed interface Companion permits Companion.Nothing {
         final int result = (int) object;
         final var position = buffer.position();
         if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
+          LOGGER.fine(() -> "Writing primitive INTEGER_VAR marker=" + INTEGER_VAR.marker() + " value=" + result + " at position: " + position);
           ZigZagEncoding.putInt(buffer, INTEGER_VAR.marker());
-          LOGGER.fine(() -> "Writing INTEGER_VAR value=" + result + " at position: " + position);
           ZigZagEncoding.putInt(buffer, result);
         } else {
+          LOGGER.fine(() -> "Writing primitive marker=" + INTEGER_VAR.marker() + "  INTEGER value=" + result + " at position: " + position);
           ZigZagEncoding.putInt(buffer, INTEGER.marker());
-          LOGGER.fine(() -> "Writing INTEGER value=" + result + " at position: " + position);
           buffer.putInt(result);
         }
       };
@@ -1058,16 +1057,13 @@ sealed interface Companion permits Companion.Nothing {
   static <X> int writeToWireWitness(Pickler<X> pickler, ByteBuffer buffer, Object record) {
     return switch (pickler) {
       case RecordSerde<X> rs -> rs.writeToWire(buffer, (X) record);
-      case EmptyRecordSerde<?> ers -> {
-        buffer.putLong(ers.typeSignature);
-        yield Long.BYTES;
-      }
+      case EmptyRecordSerde<X> ers -> ers.serialize(buffer, (X) record);
       default -> // Fallback for other pickler types
           pickler.serialize(buffer, (X) record);
     };
   }
 
-  /// Compute type signatures for all record classes using streams
+  /// Compute type signatures for all record classes using streams using the generic type information
   static Map<Class<?>, Long> computeRecordTypeSignatures(List<Class<?>> recordClasses) {
     return recordClasses.stream()
         .collect(Collectors.toMap(
@@ -1082,20 +1078,25 @@ sealed interface Companion permits Companion.Nothing {
         ));
   }
 
-  /// Compute a CLASS_SIG_BYTES signature from class name and component metadata
+  /// Compute a type signature from full class name, the component types, and component name
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
-    String input = Stream.concat(Stream.of(clazz.getSimpleName()), IntStream.range(0, components.length).boxed().flatMap(i -> Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName())))).collect(Collectors.joining("!"));
+    String input = Stream.concat(Stream.of(clazz.getSimpleName()),
+            IntStream.range(0, components.length).boxed().flatMap(i ->
+                Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName()))))
+        .collect(Collectors.joining("!"));
     return hashSignature(input);
   }
 
-  /// Compute a CLASS_SIG_BYTES signature from enum class and constant names
+  /// Compute a type signature from enum class full name and constant names
   static long hashEnumSignature(Class<?> enumClass) {
     Object[] enumConstants = enumClass.getEnumConstants();
     assert enumConstants != null : "Not an enum class: " + enumClass;
-    String input = Stream.concat(Stream.of(enumClass.getSimpleName()), Arrays.stream(enumConstants).map(e -> ((Enum<?>) e).name())).collect(Collectors.joining("!"));
+    String input = Stream.concat(Stream.of(enumClass.getName()), Arrays.stream(enumConstants).map(e -> ((Enum<?>) e).name())).collect(Collectors.joining("!"));
     return hashSignature(input);
   }
 
+  /// This method computes a 64 bit signature from a unique string representation by hashing it using SHA-256
+  /// then extracting the first `Long.BYTES` big endian bytes into a long.
   static long hashSignature(String uniqueNess) {
     long result;
     final MessageDigest digest;
@@ -1111,7 +1112,7 @@ sealed interface Companion permits Companion.Nothing {
     //      Byte Index:   0       1       2        3        4        5        6        7
     //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
     //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-    result = IntStream.range(0, CLASS_SIG_BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+    result = IntStream.range(0, Long.BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     return result;
   }
 }

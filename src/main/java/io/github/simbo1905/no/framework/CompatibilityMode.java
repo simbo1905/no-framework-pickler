@@ -4,9 +4,9 @@ import java.util.Arrays;
 
 /// Compatibility mode. Set via system property `no.framework.Pickler.Compatibility`. The default is DISABLED.
 /// **Record Types** If set to DISABLED (our default) the pickler will during deserialization of `records`:
-/// - verify 8-bytes of a sha256 hash of class simple nane as well as components full generic types and name.
-/// - verify the length of the `record` class matches the number of components. // TODO this is unnecessary due to the hash check.
+/// - verify 8-bytes long taken the first 8 bytes of sha256 packed into a long hash of class simple nane as well as components full generic types and name.
 /// If set to DEFAULTED (the opt-in), the pickler will:
+/// - accept an optional
 /// - defaults missing component fields to null for reference types and default values for primitives (e.g., 0 for int).
 /// - bypass the hash check
 /// This allows for renaming of fields but not reordering.
@@ -29,7 +29,7 @@ enum CompatibilityMode {
   /// More permissive than ENABLED but differs from JDK behavior by disallowing reordering.
   ENABLED;
 
-  public static CompatibilityMode current() {
+  static CompatibilityMode current() {
     final String mode = System.getProperty("no.framework.Pickler.Compatibility", "DISABLED").toUpperCase();
     try {
       return CompatibilityMode.valueOf(mode);

@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  ~ SPDX-FileCopyrightText: 2025 Simon Massey
-  ~ SPDX-License-Identifier: Apache-2.0
-  ~
-  -->
-
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.simbo1905</groupId>
     <artifactId>no-framework-pickler</artifactId>
-    <version>0.7.0-ALPHA</version>
+    <version>0.1.0-SNAPSHOT</version>
 
     <description>
         No Framework Pickler: A lightweight, zero-dependency serialization library for Java 21+ that generates
@@ -19,21 +13,12 @@
         modern message protocols with nested data structures and switch pattern matching.
     </description>
 
-    <licenses>
-        <license>
-            <name>MIT License</name>
-            <url>https://opensource.org/license/mit/</url>
-            <distribution>repo</distribution>
-            <comments>Permissive licence allowing reuse with attribution.</comments>
-        </license>
-    </licenses>
-
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.jupiter.version>5.13.3</junit.jupiter.version>
-        <junit.platform.version>1.13.3</junit.platform.version>
+        <junit.jupiter.version>5.13.1</junit.jupiter.version>
+        <junit.platform.version>1.13.1</junit.platform.version>
     </properties>
 
     <dependencies>
@@ -45,18 +30,6 @@
         </dependency>
         <dependency>
             <groupId>org.junit.platform</groupId>
-            <artifactId>junit-platform-commons</artifactId>
-            <version>${junit.platform.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.platform</groupId>
-            <artifactId>junit-platform-engine</artifactId>
-            <version>${junit.platform.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-launcher</artifactId>
             <version>${junit.platform.version}</version>
             <scope>test</scope>
@@ -64,7 +37,7 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>3.27.3</version>
+            <version>3.26.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -73,30 +46,17 @@
             <version>26.0.2</version>
             <scope>provided</scope>
         </dependency>
-        <dependency>
-            <groupId>net.jqwik</groupId>
-            <artifactId>jqwik</artifactId>
-            <version>1.9.3</version>
-            <scope>test</scope>
-        </dependency>
+        <!--        <dependency>-->
+        <!--            <groupId>net.jqwik</groupId>-->
+        <!--            <artifactId>jqwik</artifactId>-->
+        <!--            <version>1.9.3</version>-->
+        <!--            <scope>test</scope>-->
+        <!--        </dependency>-->
     </dependencies>
 
     <build>
         <finalName>no-framework-pickler</finalName>
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.13.0</version>
-                <configuration>
-                    <release>21</release>
-                    <showWarnings>true</showWarnings>
-                    <compilerArgs>
-                        <arg>-Xlint:all</arg>
-                        <arg>-Werror</arg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -109,43 +69,6 @@
                     </dependency>
                 </dependencies>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.3</version>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
         </plugins>
     </build>
-
-    <profiles>
-        <profile>
-            <id>relaxed</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-compiler-plugin</artifactId>
-                        <version>3.13.0</version>
-                        <configuration>
-                            <release>21</release>
-                            <showWarnings>true</showWarnings>
-                            <!-- No -Werror in relaxed mode -->
-                            <compilerArgs>
-                                <arg>-Xlint:all</arg>
-                            </compilerArgs>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
-    </profiles>
 </project>

@@ -70,7 +70,7 @@ public class RecordPicklerTests {
     LinkListEmptyEnd.Boxed original = new LinkListEmptyEnd.Boxed(42);
 
     // Serialize the original record to a ByteBuffer
-    ByteBuffer buffer = ByteBuffer.allocate(1024);
+    ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
     int size = pickler.serialize(buffer, original);
     buffer.flip(); // Prepare for reading
 
