@@ -68,7 +68,9 @@ final class RecordSerde<T> implements Pickler<T> {
         })
         .toArray(MethodHandle[]::new);
 
-    componentTypes = (Class<?>[]) new Class[componentAccessors.length];
+    //noinspection RedundantSuppression
+    @SuppressWarnings("rawtypes") final var raw = (Class<?>[]) new Class[componentAccessors.length];
+    componentTypes = raw;
     IntStream.range(0, componentAccessors.length).forEach(i -> {
       final RecordComponent rc = components[i];
       componentTypes[i] = rc.getType();
