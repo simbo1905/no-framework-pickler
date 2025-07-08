@@ -13,6 +13,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
+import java.time.LocalDate;
 import java.util.*;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -72,10 +73,11 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     );
 
     Arbitrary<TypeExpr> referenceTypes = Arbitraries.of(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, TestRecord.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TestEnum.class),
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class),
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.UUID, UUID.class),
-        new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, TestRecord.class),
-        new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TestEnum.class)
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LOCAL_DATE, LocalDate.class)
     );
 
     Arbitrary<TypeExpr> valueTypes = Arbitraries.oneOf(primitives, boxedTypes, referenceTypes);
@@ -155,6 +157,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         import static io.github.simbo1905.no.framework.ITExhaustiveTests.*;
         
         import java.util.*;
+        import java.time.*;
         import io.github.simbo1905.no.framework.ITExhaustiveTests.TestEnum;
         import io.github.simbo1905.no.framework.ITExhaustiveTests.TestRecord;
         import io.github.simbo1905.no.framework.TestableRecord;
@@ -236,6 +239,9 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         case DOUBLE -> "6.0d";
       };
       case TypeExpr.RefValueNode(var type, var ignored) -> switch (type) {
+        case ENUM -> "io.github.simbo1905.no.framework.ITExhaustiveTests.TestEnum.A";
+        case RECORD -> "new io.github.simbo1905.no.framework.ITExhaustiveTests.TestRecord(123)";
+        case INTERFACE -> "null"; // Cannot instantiate interface
         case BOOLEAN -> "Boolean.TRUE";
         case BYTE -> "Byte.valueOf((byte) 1)";
         case SHORT -> "Short.valueOf((short) 2)";
@@ -246,9 +252,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         case DOUBLE -> "Double.valueOf(6.0d)";
         case STRING -> "\"hello\"";
         case UUID -> "UUID.fromString(\"00000000-0000-0000-0000-000000000001\")";
-        case ENUM -> "io.github.simbo1905.no.framework.ITExhaustiveTests.TestEnum.A";
-        case RECORD -> "new io.github.simbo1905.no.framework.ITExhaustiveTests.TestRecord(123)";
-        case INTERFACE -> "null"; // Cannot instantiate interface
+        case LOCAL_DATE -> "LocalDate.of(2023, 12, 31)";
       };
       case TypeExpr.ArrayNode(var element) -> {
         if (element instanceof TypeExpr.ArrayNode(var innerElement)) {

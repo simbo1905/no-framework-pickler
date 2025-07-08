@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.IntStream;
 
@@ -1507,5 +1508,31 @@ public class RefactorTests {
         assertArrayEquals(original.nested3DDoubleArray()[i][j], deserialized.nested3DDoubleArray()[i][j]);
       }
     }
+  }
+
+  public record RecordLocalDate(LocalDate date) {
+  }
+
+  @Test
+  void testLocalDateSerialization() {
+    // Create a LocalDate instance
+    LocalDate originalDate = LocalDate.of(2023, 10, 1);
+    RecordLocalDate originalRecord = new RecordLocalDate(originalDate);
+
+    // Get a pickler for the record
+    Pickler<RecordLocalDate> pickler = Pickler.forClass(RecordLocalDate.class);
+
+    // Calculate size and allocate buffer
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(originalRecord));
+
+    // Serialize the record
+    pickler.serialize(buffer, originalRecord);
+    var buf = buffer.flip();
+
+    // Deserialize the record
+    RecordLocalDate deserializedRecord = pickler.deserialize(buf);
+
+    // Verify the date matches
+    assertEquals(originalRecord.date(), deserializedRecord.date());
   }
 }

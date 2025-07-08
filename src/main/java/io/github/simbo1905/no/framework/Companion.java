@@ -32,6 +32,9 @@ sealed interface Companion permits Companion.Nothing {
     LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName());
     final int expectedMarker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
+        case RECORD -> Constants.ARRAY_RECORD.marker();
+        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
+        case ENUM -> Constants.ARRAY_ENUM.marker();
         case BOOLEAN -> Constants.ARRAY_BOOLEAN.marker();
         case BYTE -> Constants.ARRAY_BYTE.marker();
         case SHORT -> Constants.ARRAY_SHORT.marker();
@@ -40,11 +43,9 @@ sealed interface Companion permits Companion.Nothing {
         case LONG -> Constants.ARRAY_LONG.marker();
         case FLOAT -> Constants.ARRAY_FLOAT.marker();
         case DOUBLE -> Constants.ARRAY_DOUBLE.marker();
-        case UUID -> Constants.ARRAY_UUID.marker();
-        case ENUM -> Constants.ARRAY_ENUM.marker();
         case STRING -> Constants.ARRAY_STRING.marker();
-        case RECORD -> Constants.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
+        case UUID -> Constants.ARRAY_UUID.marker();
+        case LOCAL_DATE -> Constants.ARRAY_LOCAL_DATE.marker();
       };
       case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
       case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
@@ -283,6 +284,9 @@ sealed interface Companion permits Companion.Nothing {
     LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
     final int marker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
+        case RECORD -> Constants.ARRAY_RECORD.marker();
+        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
+        case ENUM -> Constants.ARRAY_ENUM.marker();
         case BOOLEAN -> Constants.ARRAY_BOOLEAN.marker();
         case BYTE -> Constants.ARRAY_BYTE.marker();
         case SHORT -> Constants.ARRAY_SHORT.marker();
@@ -291,11 +295,9 @@ sealed interface Companion permits Companion.Nothing {
         case LONG -> Constants.ARRAY_LONG.marker();
         case FLOAT -> Constants.ARRAY_FLOAT.marker();
         case DOUBLE -> Constants.ARRAY_DOUBLE.marker();
-        case UUID -> Constants.ARRAY_UUID.marker();
-        case ENUM -> Constants.ARRAY_ENUM.marker();
         case STRING -> Constants.ARRAY_STRING.marker();
-        case RECORD -> Constants.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
+        case UUID -> Constants.ARRAY_UUID.marker();
+        case LOCAL_DATE -> Constants.ARRAY_LOCAL_DATE.marker();
       };
       case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
       case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
@@ -834,12 +836,13 @@ sealed interface Companion permits Companion.Nothing {
         case LONG -> obj -> obj == null ? Byte.BYTES : Byte.BYTES + Long.BYTES;
         case FLOAT -> obj -> obj == null ? Byte.BYTES : Byte.BYTES + Float.BYTES;
         case DOUBLE -> obj -> obj == null ? Byte.BYTES : Byte.BYTES + Double.BYTES;
-        case UUID -> obj -> obj == null ? Byte.BYTES : Byte.BYTES + 2 * Long.BYTES;
         case STRING -> obj -> {
           if (obj == null) return Byte.BYTES;
           final String str = (String) obj;
           return Byte.BYTES + (str.length() + 1) * Integer.BYTES;
         };
+        case UUID -> obj -> obj == null ? Byte.BYTES : Byte.BYTES + 2 * Long.BYTES;
+        case LOCAL_DATE -> obj -> obj == null ? Byte.BYTES : 3 * Integer.BYTES;
         default -> complexResolver.apply(cls); // Delegate RECORD, INTERFACE, ENUM to callback
       };
     }
@@ -927,6 +930,15 @@ sealed interface Companion permits Companion.Nothing {
           final var uuid = (java.util.UUID) obj;
           buffer.putLong(uuid.getMostSignificantBits());
           buffer.putLong(uuid.getLeastSignificantBits());
+        };
+        case LOCAL_DATE -> (buffer, obj) -> {
+          final var localDate = (java.time.LocalDate) obj;
+          final int year = localDate.getYear();
+          final int month = localDate.getMonthValue();
+          final int day = localDate.getDayOfMonth();
+          ZigZagEncoding.putInt(buffer, year);
+          ZigZagEncoding.putInt(buffer, month);
+          ZigZagEncoding.putInt(buffer, day);
         };
         case STRING -> (buffer, obj) -> {
           final String str = (String) obj;
@@ -1017,16 +1029,22 @@ sealed interface Companion permits Companion.Nothing {
       };
       case FLOAT -> ByteBuffer::getFloat;
       case DOUBLE -> ByteBuffer::getDouble;
-      case UUID -> buffer -> {
-        final long most = buffer.getLong();
-        final long least = buffer.getLong();
-        return new java.util.UUID(most, least);
-      };
       case STRING -> buffer -> {
         final int length = ZigZagEncoding.getInt(buffer);
         final byte[] bytes = new byte[length];
         buffer.get(bytes);
         return new String(bytes, StandardCharsets.UTF_8);
+      };
+      case UUID -> buffer -> {
+        final long most = buffer.getLong();
+        final long least = buffer.getLong();
+        return new java.util.UUID(most, least);
+      };
+      case LOCAL_DATE -> buffer -> {
+        final int year = ZigZagEncoding.getInt(buffer);
+        final int month = ZigZagEncoding.getInt(buffer);
+        final int day = ZigZagEncoding.getInt(buffer);
+        return java.time.LocalDate.of(year, month, day);
       };
       default -> buffer -> {
         final long typeSignature = buffer.getLong();

@@ -100,7 +100,7 @@ final class PicklerImpl<R> implements Pickler<R> {
           return Byte.BYTES + Long.BYTES; // marker + typeSignature
         }
       }
-      throw new AssertionError("not found pickler for " + obj.getClass().getName());
+      throw new AssertionError("not found sizer for " + obj.getClass().getName());
     };
   }
 
