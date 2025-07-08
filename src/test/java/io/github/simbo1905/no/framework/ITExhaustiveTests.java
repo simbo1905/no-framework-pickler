@@ -93,33 +93,39 @@ public class ITExhaustiveTests implements ArbitraryProvider {
   }
 
   private Arbitrary<TypeExpr> singleContainers(Arbitrary<TypeExpr> valueTypes) {
+    final var stringType = new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
     return Arbitraries.oneOf(
         valueTypes.map(TypeExpr.ArrayNode::new),
         valueTypes.map(TypeExpr.ListNode::new),
         valueTypes.map(TypeExpr.OptionalNode::new),
         // Map with String keys to avoid key type explosion
-        valueTypes.map(v -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), v))
+        valueTypes.map(v -> new TypeExpr.MapNode(stringType, v)),
+        valueTypes.map(k -> new TypeExpr.MapNode(k, stringType))
     );
   }
 
   private Arbitrary<TypeExpr> doubleContainers(Arbitrary<TypeExpr> valueTypes) {
     Arbitrary<TypeExpr> singleContainers = singleContainers(valueTypes);
+    final var stringType = new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
 
     return Arbitraries.oneOf(
         singleContainers.map(TypeExpr.ArrayNode::new),      // Array(Container(Value))
         singleContainers.map(TypeExpr.ListNode::new),
         singleContainers.map(TypeExpr.OptionalNode::new),
-        singleContainers.map(s -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), s))
+        singleContainers.map(s -> new TypeExpr.MapNode(stringType, s)),
+        singleContainers.map(s -> new TypeExpr.MapNode(s, stringType))
     );
   }
 
   private Arbitrary<TypeExpr> tripleContainers(Arbitrary<TypeExpr> valueTypes) {
     // Only essential patterns to avoid combinatorial explosion
+    final var stringType = new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
     Arbitrary<TypeExpr> essentialDouble = Arbitraries.oneOf(
         valueTypes.map(v -> new TypeExpr.ArrayNode(new TypeExpr.ListNode(v))),           // Array(List(Value))
         valueTypes.map(v -> new TypeExpr.ListNode(new TypeExpr.ArrayNode(v))),           // List(Array(Value))
         valueTypes.map(v -> new TypeExpr.OptionalNode(new TypeExpr.ArrayNode(v))),       // Optional(Array(Value))
-        valueTypes.map(v -> new TypeExpr.MapNode(new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class), v))
+        valueTypes.map(v -> new TypeExpr.MapNode(stringType, new TypeExpr.ListNode(v))), // Map<String, List<Value>>
+        valueTypes.map(v -> new TypeExpr.MapNode(new TypeExpr.ListNode(v), stringType))  // Map<List<Value>, String>
     );
 
     return essentialDouble.map(TypeExpr.ArrayNode::new);  // Array(essential double combinations)
@@ -291,8 +297,14 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         yield "List.of(" + elementInstance + ")";
       }
       case TypeExpr.OptionalNode(var wrapped) -> "Optional.of(" + generateInstanceValue(wrapped) + ")";
-      case TypeExpr.MapNode(var key, var value) ->
-          "Map.of(" + generateInstanceValue(key) + ", " + generateInstanceValue(value) + ")";
+      case TypeExpr.MapNode(var key, var value) -> {
+        String keyInstance = generateInstanceValue(key);
+        String valueInstance = generateInstanceValue(value);
+        if (key instanceof TypeExpr.ArrayNode) {
+          yield "createMap(" + keyInstance + ", " + valueInstance + ")";
+        }
+        yield "Map.of(" + keyInstance + ", " + valueInstance + ")";
+      }
     };
   }
 
@@ -331,7 +343,13 @@ public class ITExhaustiveTests implements ArbitraryProvider {
           @SuppressWarnings("PatternVariableCanBeUsed") Map<?, ?> actualMap = (Map<?, ?>) actualValue;
           assertEquals(expectedMap.size(), actualMap.size(), "Map size differs for component " + component.getName());
           for (Object key : expectedMap.keySet()) {
-            assertDeepEquals(expectedMap.get(key), actualMap.get(key));
+            if (key.getClass().isArray()) {
+              Object finalKey = key;
+              Object actualKey = actualMap.keySet().stream().filter(k -> k.getClass().isArray() && Arrays.deepEquals(new Object[]{finalKey}, new Object[]{k})).findFirst().orElse(null);
+              assertDeepEquals(expectedMap.get(key), actualMap.get(actualKey));
+            } else {
+              assertDeepEquals(expectedMap.get(key), actualMap.get(key));
+            }
           }
         } else if (component.getType().isRecord()) {
           assertDeepEquals(expectedValue, actualValue);
@@ -451,4 +469,10 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     return maps;
   }
 
+  @SuppressWarnings({"unused"}) // used by generated code do not delete
+  public static <K, V> Map<K, V> createMap(K key, V value) {
+    Map<K, V> map = new HashMap<>();
+    map.put(key, value);
+    return map;
+  }
 }
