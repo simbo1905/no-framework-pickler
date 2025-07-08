@@ -82,31 +82,24 @@ creating a binary payload that is 0.5x the size.
 resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary
 data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
 
-**No Framework Pickler is expressive** as it works out of the box with nested sealed interfaces of permitted record
-types or an outer array of such where the records may contain arbitrarily nested:
+**No Framework Pickler is expressive** as it supports serializing a rich grammar of arbitrarily nested types. At a high level, the library supports **value types** and **container types**.
 
-- boolean.class
-- byte.class
-- short.class
-- char.class
-- int.class
-- long.class
-- float.class
-- double.class
-- String.class
-- java.util.UUID
-- java.time.LocalDate
-- java.time.LocalDateTime
-- Optional.class
-- Record.class
-- Map.class
-- List.class
-- Enum.class
-- Arrays of the above
+**Value Types** are the basic building blocks and include:
+-   **Primitive Types:** `boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, `double`
+-   **Reference Types:** Boxed primitives (`Integer`, `Long`, etc.), `String`, `java.util.UUID`, `java.time.LocalDate`, `java.time.LocalDateTime`
+-   **User-Defined Types:** Any `record` or `enum` type.
 
-When handling sealed interfaces it is requires all permitted subclasses within the sealed hierarchy must be either
-records or sealed interfaces of records. This allows you to use record patterns with type safe exhaustive switch
-statements.
+**Container Types** can hold value types or other container types, allowing for complex, nested data structures:
+-   `Optional<T>`
+-   `List<T>`
+-   `Map<K, V>`
+-   Arrays (`T[]`)
+
+This allows for arbitrarily complex structures like `List<Map<String, Optional<Integer[]>>>`. The library performs a deep analysis of a record's components to understand these structures, building an Abstract Syntax Tree (AST) to generate efficient serialization and deserialization logic.
+
+For a detailed explanation of the formal grammar and the type analysis architecture, please see [ARCHITECTURE.md](ARCHITECTURE.md). The full grammar is rigorously tested in `ITExhaustiveTests.java`, which uses property-based testing to dynamically generate, compile, and verify serialization round-trips for every supported type combination up to a depth of three nested containers.
+
+When handling `sealed interface` hierarchies, all permitted subclasses must be either `record` types, `enum` types, or other `sealed interface`s that ultimately resolve to records or enums. This design allows you to work with modern Java's data-oriented features like record patterns and exhaustive `switch` statements.
 
 **No Framework Pickler backwards compatibility** supports opt-in binary compatibility for adding new components to the
 end of your `record` types. You simply provide alternative constructors in your newer code to match the default

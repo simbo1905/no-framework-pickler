@@ -13,11 +13,9 @@ enum Constants {
   SHORT,
   CHARACTER,
   INTEGER,
-  // FIXME spending a bit to save a byte seems not worth it. Make it configurable to turn on?
-  INTEGER_VAR,
+  INTEGER_VAR,// FIXME spending a bit to save a byte seems not worth it. Make it configurable to turn on?
   LONG,
-  // FIXME time in ms saves three bytes but we spend a byte and do work. Make it configurable to turn on?
-  LONG_VAR,
+  LONG_VAR, // FIXME time in ms saves three bytes but we spend a byte and do work. Make it configurable to turn on?
   FLOAT,
   DOUBLE,
   STRING,
@@ -41,7 +39,10 @@ enum Constants {
   ARRAY_UUID,
   ARRAY_LOCAL_DATE,
   ARRAY_LOCAL_DATE_TIME,
-  ARRAY_ARRAY, ARRAY_LIST, ARRAY_MAP, ARRAY_OPTIONAL;
+  ARRAY_ARRAY,
+  ARRAY_LIST,
+  ARRAY_MAP,
+  ARRAY_OPTIONAL;
 
   int marker() {
     // Use the Constants enum ordinal, not the tag ordinal!

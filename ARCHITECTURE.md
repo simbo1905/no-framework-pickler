@@ -80,7 +80,7 @@ PrimitiveType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER'
 
 ReferenceType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
                 | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
-                | 'STRING' | 'UUID' | 'ENUM' | 'RECORD' | 'INTERFACE'
+                | 'STRING' | 'UUID' | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'ENUM' | 'RECORD' | 'INTERFACE'
 
 Note: PrimitiveType and ReferenceType share some names but represent different runtime types
 ```
