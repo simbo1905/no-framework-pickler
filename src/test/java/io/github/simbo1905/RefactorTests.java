@@ -20,8 +20,6 @@ import static io.github.simbo1905.no.framework.Pickler.forClass;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RefactorTests {
-  public record Address(String street, String city, String zipCode) {
-  }
 
   public record ArrayExample(
       String[] stringArray,
@@ -52,9 +50,6 @@ public class RefactorTests {
   }
 
   public sealed interface Shape permits Circle, Rectangle, Triangle {
-  }
-
-  public record Simple(int value) {
   }
 
   // Simple enum for testing nested arrays

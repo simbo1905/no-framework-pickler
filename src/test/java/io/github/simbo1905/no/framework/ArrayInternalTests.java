@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Package-private tests for internal array handling mechanisms
  */
-class ArrayInternalTests {
+public class ArrayInternalTests {
 
   @BeforeAll
   static void setupLogging() {
@@ -74,5 +74,6 @@ class ArrayInternalTests {
   }
 
 
+  @SuppressWarnings("unused")
   enum Color {RED, GREEN, BLUE}
 }

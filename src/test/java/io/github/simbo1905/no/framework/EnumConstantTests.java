@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /// Tests for enum constants in sealed interfaces - reproduces Paxos benchmark bug
-class EnumConstantTests {
+public class EnumConstantTests {
 
   /// Simple enum to test serialization
   enum Operation {
@@ -57,5 +57,3 @@ class EnumConstantTests {
     }, "Enum in record serialization should work");
   }
 }
-
-

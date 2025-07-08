@@ -937,5 +937,4 @@ public class ArrayComprehensiveTests {
     };
     return new RecordArrayRecordComplex(complexRecords);
   }
-
 }

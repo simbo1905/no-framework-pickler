@@ -6,9 +6,6 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.UUID;
-import java.util.logging.ConsoleHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -18,29 +15,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /// This test verifies that UUIDs can be properly serialized and deserialized
 /// using the framework's public API.
 public class UuidSupportTests {
-
   @BeforeAll
   static void setupLogging() {
-    final var logLevel = System.getProperty("java.util.logging.ConsoleHandler.level", "WARNING");
-    final Level level = Level.parse(logLevel);
-
-    LOGGER.setLevel(level);
-    ConsoleHandler consoleHandler = new ConsoleHandler();
-    consoleHandler.setLevel(level);
-    LOGGER.addHandler(consoleHandler);
-
-    // Configure Pickler logger
-    Logger logger = Logger.getLogger(Pickler.class.getName());
-    logger.setLevel(level);
-    ConsoleHandler pickerHandler = new ConsoleHandler();
-    pickerHandler.setLevel(level);
-    logger.addHandler(pickerHandler);
-
-    // Optionally disable parent handlers if needed
-    LOGGER.setUseParentHandlers(false);
-    logger.setUseParentHandlers(false);
-
-    LOGGER.info("Logging initialized at level: " + level);
+    LoggingControl.setupCleanLogging();
   }
 
   /// Public record containing a UUID field for testing serialization.
@@ -105,15 +82,5 @@ public class UuidSupportTests {
         "Least significant bits should match");
 
     LOGGER.info("UUID round-trip serialization test completed successfully");
-  }
-
-  /// IntelliJ is not running tests when have a JQwik and maven-failsafe-plugin so this is a debugging workaround.
-  public static void main(String[] args) {
-    // Setup logging first
-    setupLogging();
-
-    // Create test instance and run the test
-    UuidSupportTests test = new UuidSupportTests();
-    test.testUuidRoundTripSerialization();
   }
 }

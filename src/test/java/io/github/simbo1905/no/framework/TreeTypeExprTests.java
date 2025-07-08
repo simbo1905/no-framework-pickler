@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 /// Test suite for the new tree-based TypeExpr structure
 /// Following TDD: RED phase - these tests define expected behavior
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-class TreeTypeExprTests {
+public class TreeTypeExprTests {
 
   @BeforeEach
   void setUp() {
@@ -686,5 +686,4 @@ class TreeTypeExprTests {
     @SuppressWarnings("unused")
     Map<String, Integer> stringIntMap;
   }
-
 }

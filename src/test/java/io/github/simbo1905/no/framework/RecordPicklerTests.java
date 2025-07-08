@@ -197,7 +197,6 @@ public class RecordPicklerTests {
     int maxSizeOf = pickler.maxSizeOf(linkedListEnumTwoNodes);
     assertThat(size).isLessThanOrEqualTo(maxSizeOf);
   }
-
 }
 
 

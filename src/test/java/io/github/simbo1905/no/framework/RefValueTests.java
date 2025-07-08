@@ -37,7 +37,6 @@ public class RefValueTests {
   @Test
   @DisplayName("Test references not null")
   void testReferencesNotNull() {
-    LOGGER.info(() -> "---------------\nTesting references not null testReferencesNotNull");
     final var pickler = Pickler.forClass(RefValueRecord.class);
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(pefValueRecordNotNull));
     pickler.serialize(buffer, pefValueRecordNotNull);
@@ -50,7 +49,6 @@ public class RefValueTests {
   @Test
   @DisplayName("Test references are null")
   void testReferencesAreNull() {
-    LOGGER.info(() -> "---------------\nTesting references are null testReferencesAreNull");
     final var pickler = Pickler.forClass(RefValueRecord.class);
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(refValueRecordNull));
     pickler.serialize(buffer, refValueRecordNull);
@@ -81,7 +79,6 @@ public class RefValueTests {
   @Test
   @DisplayName("Test 1D primitive array serialization")
   void test1DArrayPrimitive() {
-    LOGGER.info(() -> "---------------\nTesting 1D primitive test1DArrayPrimitive");
     final var original = new Record1DPrimitiveArray(new int[]{1, 2, 3});
     final var pickler = Pickler.forClass(Record1DPrimitiveArray.class);
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
@@ -94,7 +91,6 @@ public class RefValueTests {
   @Test
   @DisplayName("Test 1D ref array serialization")
   void test1DArrayRef() {
-    LOGGER.info(() -> "---------------\nTesting 1D ref test1DArrayRef");
     final var original = new Record1DRefArray(new String[]{"a", "b", "c"});
     final var pickler = Pickler.forClass(Record1DRefArray.class);
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));

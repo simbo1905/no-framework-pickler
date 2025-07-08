@@ -208,7 +208,6 @@ public class NestedMapTests {
     // test outer immutability
     assertThrows(UnsupportedOperationException.class, () -> deserialized.mapOfOptionals().remove("key1"));
   }
-
 }
 
 
