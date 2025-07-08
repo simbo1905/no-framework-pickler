@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /// Test class for UUID support in the Pickler framework.
 /// This test verifies that UUIDs can be properly serialized and deserialized
 /// using the framework's public API.
-public class UuidSupportTest {
+public class UuidSupportTests {
 
   @BeforeAll
   static void setupLogging() {
@@ -105,5 +105,15 @@ public class UuidSupportTest {
         "Least significant bits should match");
 
     LOGGER.info("UUID round-trip serialization test completed successfully");
+  }
+
+  /// IntelliJ is not running tests when have a JQwik and maven-failsafe-plugin so this is a debugging workaround.
+  public static void main(String[] args) {
+    // Setup logging first
+    setupLogging();
+
+    // Create test instance and run the test
+    UuidSupportTests test = new UuidSupportTests();
+    test.testUuidRoundTripSerialization();
   }
 }

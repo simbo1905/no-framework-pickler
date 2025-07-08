@@ -3,7 +3,10 @@
 //
 package io.github.simbo1905.no.framework;
 
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 
@@ -20,11 +23,6 @@ public class RefValueTests {
 
   public static RefValueRecord refValueRecordNull =
       new RefValueRecord(null, null, null, null, null, null, null, null);
-
-  @BeforeAll
-  static void setupLogging() {
-    io.github.simbo1905.LoggingControl.setupCleanLogging();
-  }
 
   @BeforeEach
   void setUp() {

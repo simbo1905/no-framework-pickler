@@ -57,3 +57,5 @@ class EnumConstantTests {
     }, "Enum in record serialization should work");
   }
 }
+
+

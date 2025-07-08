@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 /// to ensure data serialized with older schemas can be read by newer versions.
 /// The `ENABLED` system property must be set to allow this compatibility mode. It will then use the default values for
 /// new fields that are not read back in the serialized data.
-public class BackwardsCompatibilityTest {
+public class BackwardsCompatibilityTests {
 
   // Generation 0: Empty record
   static final String GENERATION_0 = """
@@ -146,7 +146,7 @@ public class BackwardsCompatibilityTest {
 
     byte[] classBytes = fileManager.getClassBytes(fullClassName);
     InMemoryClassLoader classLoader = new InMemoryClassLoader(
-        BackwardsCompatibilityTest.class.getClassLoader(),
+        BackwardsCompatibilityTests.class.getClassLoader(),
         Map.of(fullClassName, classBytes));
     return classLoader.loadClass(fullClassName);
   }

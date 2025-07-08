@@ -3,7 +3,6 @@
 //
 package io.github.simbo1905.no.framework;
 
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -17,11 +16,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /// Test nested Map support 
 public class NestedMapTests {
-
-  @BeforeAll
-  static void setupLogging() {
-    io.github.simbo1905.LoggingControl.setupCleanLogging();
-  }
 
   // Test records for various Map nesting
   public record SimpleNestedMap(Map<String, Map<Integer, Double>> nestedMap) {
@@ -216,3 +210,5 @@ public class NestedMapTests {
   }
 
 }
+
+

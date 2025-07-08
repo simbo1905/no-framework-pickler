@@ -18,7 +18,7 @@ import java.util.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class ExhaustiveTestIT implements ArbitraryProvider {
+public class ITExhaustiveTests implements ArbitraryProvider {
 
   @BeforeAll
   static void setupLogging() {
@@ -152,11 +152,11 @@ public class ExhaustiveTestIT implements ArbitraryProvider {
 
     return String.format("""
         package io.github.simbo1905.no.framework.generated;
-        import static io.github.simbo1905.no.framework.ExhaustiveTestIT.*;
+        import static io.github.simbo1905.no.framework.ITExhaustiveTests.*;
         
         import java.util.*;
-        import io.github.simbo1905.no.framework.ExhaustiveTestIT.TestEnum;
-        import io.github.simbo1905.no.framework.ExhaustiveTestIT.TestRecord;
+        import io.github.simbo1905.no.framework.ITExhaustiveTests.TestEnum;
+        import io.github.simbo1905.no.framework.ITExhaustiveTests.TestRecord;
         import io.github.simbo1905.no.framework.TestableRecord;
         
         public record %s(%s value) implements TestableRecord {
@@ -246,8 +246,8 @@ public class ExhaustiveTestIT implements ArbitraryProvider {
         case DOUBLE -> "Double.valueOf(6.0d)";
         case STRING -> "\"hello\"";
         case UUID -> "UUID.fromString(\"00000000-0000-0000-0000-000000000001\")";
-        case ENUM -> "io.github.simbo1905.no.framework.ExhaustiveTestIT.TestEnum.A";
-        case RECORD -> "new io.github.simbo1905.no.framework.ExhaustiveTestIT.TestRecord(123)";
+        case ENUM -> "io.github.simbo1905.no.framework.ITExhaustiveTests.TestEnum.A";
+        case RECORD -> "new io.github.simbo1905.no.framework.ITExhaustiveTests.TestRecord(123)";
         case INTERFACE -> "null"; // Cannot instantiate interface
       };
       case TypeExpr.ArrayNode(var element) -> {

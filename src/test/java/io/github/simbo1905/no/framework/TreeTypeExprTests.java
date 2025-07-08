@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 /// Test suite for the new tree-based TypeExpr structure
 /// Following TDD: RED phase - these tests define expected behavior
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-class TreeTypeExprTest {
+class TreeTypeExprTests {
 
   @BeforeEach
   void setUp() {
@@ -159,7 +159,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("List of String")
     void testListString() throws Exception {
-      Type listType = TreeTypeExprTest.class.getDeclaredField("stringList").getGenericType();
+      Type listType = TreeTypeExprTests.class.getDeclaredField("stringList").getGenericType();
       TypeExpr node = TypeExpr.analyzeType(listType);
 
       assertInstanceOf(TypeExpr.ListNode.class, node);
@@ -175,7 +175,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Optional of Integer")
     void testOptionalInteger() throws Exception {
-      Type optType = TreeTypeExprTest.class.getDeclaredField("optionalInt").getGenericType();
+      Type optType = TreeTypeExprTests.class.getDeclaredField("optionalInt").getGenericType();
       TypeExpr node = TypeExpr.analyzeType(optType);
 
       assertInstanceOf(TypeExpr.OptionalNode.class, node);
@@ -196,7 +196,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Map String to Integer")
     void testMapStringInteger() throws Exception {
-      Type mapType = TreeTypeExprTest.class.getDeclaredField("stringIntMap").getGenericType();
+      Type mapType = TreeTypeExprTests.class.getDeclaredField("stringIntMap").getGenericType();
       TypeExpr node = TypeExpr.analyzeType(mapType);
 
       assertInstanceOf(TypeExpr.MapNode.class, node);
@@ -223,7 +223,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("List of Optional String")
     void testListOptionalString() throws Exception {
-      Type type = TreeTypeExprTest.class.getDeclaredField("listOptionalString").getGenericType();
+      Type type = TreeTypeExprTests.class.getDeclaredField("listOptionalString").getGenericType();
       TypeExpr node = TypeExpr.analyzeType(type);
 
       assertInstanceOf(TypeExpr.ListNode.class, node);
@@ -242,7 +242,7 @@ class TreeTypeExprTest {
     @Test
     @DisplayName("Map with List values")
     void testMapStringListInteger() throws Exception {
-      Type type = TreeTypeExprTest.class.getDeclaredField("mapStringListInt").getGenericType();
+      Type type = TreeTypeExprTests.class.getDeclaredField("mapStringListInt").getGenericType();
       TypeExpr node = TypeExpr.analyzeType(type);
 
       assertInstanceOf(TypeExpr.MapNode.class, node);
@@ -265,7 +265,7 @@ class TreeTypeExprTest {
     @DisplayName("List of double[]")
     void testListArrayDouble() throws NoSuchFieldException {
       // listArrayPrimitiveDouble
-      Type type = TreeTypeExprTest.class.getDeclaredField("listArrayPrimitiveDouble").getGenericType();
+      Type type = TreeTypeExprTests.class.getDeclaredField("listArrayPrimitiveDouble").getGenericType();
       TypeExpr node = TypeExpr.analyzeType(type);
 
       assertInstanceOf(TypeExpr.ListNode.class, node);

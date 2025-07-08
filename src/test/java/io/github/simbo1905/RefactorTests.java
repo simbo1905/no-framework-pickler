@@ -4,10 +4,6 @@
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
-import io.github.simbo1905.no.framework.model.ArrayExample;
-import io.github.simbo1905.no.framework.model.NullableFieldsExample;
-import io.github.simbo1905.no.framework.model.Person;
-import io.github.simbo1905.no.framework.model.TestEnum;
 import io.github.simbo1905.no.framework.tree.InternalNode;
 import io.github.simbo1905.no.framework.tree.LeafNode;
 import io.github.simbo1905.no.framework.tree.TreeNode;
@@ -24,6 +20,50 @@ import static io.github.simbo1905.no.framework.Pickler.forClass;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class RefactorTests {
+  public record Address(String street, String city, String zipCode) {
+  }
+
+  public record ArrayExample(
+      String[] stringArray,
+      boolean[] booleanArray,
+      byte[] byteArray,
+      short[] shortArray,
+      char[] charArray,
+      int[] intArray,
+      long[] longArray,
+      float[] floatArray,
+      double[] doubleArray,
+      UUID[] uuidArray,
+      Person[] personArray
+  ) {
+  }
+
+  public record Circle(double radius) implements Shape {
+  }
+
+  public record NullableFieldsExample(String stringField, Integer integerField, Double doubleField,
+                                      RefactorTests.Animal objectField) {
+  }
+
+  public record Person(String name, int age) {
+  }
+
+  public record Rectangle(double width, double height) implements Shape {
+  }
+
+  public sealed interface Shape permits Circle, Rectangle, Triangle {
+  }
+
+  public record Simple(int value) {
+  }
+
+  // Simple enum for testing nested arrays
+  public enum TestEnum {
+    FIRST, SECOND, THIRD
+  }
+
+  public record Triangle(double a, double b, double c) implements Shape {
+  }
 
   public record AllPrimitives(
       boolean boolVal, byte byteVal, short shortVal, char charVal,
