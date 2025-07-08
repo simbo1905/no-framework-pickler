@@ -331,8 +331,8 @@ sealed interface Companion permits Companion.Nothing {
 
   String SHA_256 = "SHA-256";
   int SAMPLE_SIZE = 32;
-  byte NULL_MARKER = (byte) -1;
-  byte NOT_NULL_MARKER = (byte) 1;
+  byte NULL_MARKER = Byte.MIN_VALUE;
+  byte NOT_NULL_MARKER = Byte.MAX_VALUE;
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
   static Set<Class<?>> recordClassHierarchy(final Class<?> current) {

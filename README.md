@@ -94,6 +94,9 @@ types or an outer array of such where the records may contain arbitrarily nested
 - float.class
 - double.class
 - String.class
+- java.util.UUID
+- java.time.LocalDate
+- java.time.LocalDateTime
 - Optional.class
 - Record.class
 - Map.class
@@ -611,110 +614,68 @@ See [BACKWARDS_COMPATIBILITY.md](BACKWARDS_COMPATIBILITY.md) for details.
 
 # Wire Protocol
 
-The wire protocol uses ZigZag-encoded markers for types:
+The wire protocol is designed to be compact and efficient, with a focus on minimizing overhead. It does not use positive markers for user types; instead, it uses 64-bit hash-based signatures for identifying records and enums, ensuring type safety.
 
-### Built-in Type Markers
+### Null Safety
 
-Built-in types use negative markers based on their position in the Constants enum:
+For any non-primitive field, a single byte marker is written to indicate nullability:
+- `Byte.MIN_VALUE`: Indicates that the following value is `null`.
+- `Byte.MAX_VALUE`: Indicates that the following value is present and not `null`.
 
-| Type           | Wire Marker | Description                                |
-|----------------|-------------|--------------------------------------------|
-| NULL           | 0           | Null value (safe for uninitialized memory) |
-| BOOLEAN        | -1          | Boolean value                              |
-| BYTE           | -2          | Single byte                                |
-| SHORT          | -3          | Short integer                              |
-| CHARACTER      | -4          | Character                                  |
-| INTEGER        | -5          | Integer (fixed encoding)                   |
-| INTEGER_VAR    | -6          | Integer (varint encoding)                  |
-| LONG           | -7          | Long (fixed encoding)                      |
-| LONG_VAR       | -8          | Long (varint encoding)                     |
-| FLOAT          | -9          | Float                                      |
-| DOUBLE         | -10         | Double                                     |
-| STRING         | -11         | UTF-8 encoded string                       |
-| OPTIONAL_EMPTY | -12         | Empty Optional                             |
-| OPTIONAL_OF    | -13         | Optional with value                        |
-| ENUM           | -14         | Enum value                                 |
-| ARRAY          | -15         | Array                                      |
-| MAP            | -16         | Map                                        |
-| LIST           | -17         | List                                       |
-| RECORD         | -18         | Record                                     |
-| UUID           | -19         | UUID                                       |
+This applies to record components, collection elements, and map keys/values. Primitive fields are always written directly as they cannot be `null`.
 
-### User Type Markers
+### Value Types (Primitives, String, UUID, etc.)
 
-User-defined types (Records and Enums) use positive markers:
+Most value types are written directly to the `ByteBuffer` without a type marker to save space.
+- **Primitives (`boolean`, `byte`, `short`, `char`, `float`, `double`):** Written using their standard `ByteBuffer` `put` methods.
+- **`String`:** Encoded as UTF-8. The length of the byte array is written first as a ZigZag-encoded integer, followed by the bytes themselves.
+- **`UUID`:** Written as two `long` values (most significant and least significant bits).
+- **`LocalDate`:** Written as three ZigZag-encoded integers (year, month, day).
+- **`LocalDateTime`:** Written as seven ZigZag-encoded integers (year, month, day, hour, minute, second, nano).
 
-- Discovered types are sorted lexicographically by class name
-- Wire marker = array index + 1 (1-indexed to avoid 0)
-- This enables compact single-byte encoding for the first 127 user types
+An exception is made for `int` and `long` to optimize for space. They can be written in one of two ways:
+- **Fixed-width:** A marker (`-6` for `INTEGER`, `-8` for `LONG`) is written, followed by the standard 4- or 8-byte value.
+- **Variable-width (Varint):** A marker (`-7` for `INTEGER_VAR`, `-9` for `LONG_VAR`) is written, followed by a ZigZag-encoded value. This is used when the value is small enough to fit in fewer bytes than the standard fixed width. The pickler automatically chooses the most compact representation.
 
-The wire protocol is explained in this diagram:
+### User-Defined Types (`Record` and `Enum`)
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Pickler
-    participant ByteBuffer
-%% --- Initialization Phase ---
-    Note over Client, ByteBuffer: Pickler Creation
-    Client ->> Pickler: Pickler.forClass(rootClass)
-    Pickler ->> Pickler: Discover all reachable types
-    Pickler ->> Pickler: Sort types lexicographically
-    Pickler ->> Pickler: Build lookup tables & method handles
-    Pickler ->> Client: Return unified pickler
-%% --- Serialization Phase ---
-    Note over Client, ByteBuffer: Serialization Process
-%% 1. Value type serialization
-    Client ->> Pickler: serialize(buffer, value)
-    Pickler ->> Pickler: Determine runtime type
-    alt Built-in type
-        Pickler ->> ByteBuffer: Write negative marker
-        Pickler ->> ByteBuffer: Write value data
-    else User type (Record/Enum)
-        Pickler ->> ByteBuffer: Write positive marker (index + 1)
-        alt Record
-            Pickler ->> ByteBuffer: Write each component recursively
-        else Enum
-            Pickler ->> ByteBuffer: Write enum ordinal
-        end
-    end
+User-defined types are not identified by integer markers. Instead, a 64-bit type signature is used.
+- **`Record`:** A 64-bit SHA-256 hash of the record's canonical signature (class name + component names and types) is written first. This is followed by the serialized data for each component in declaration order.
+- **`Enum`:** A 64-bit SHA-256 hash of the enum's signature (class name + constant names) is written, followed by the ZigZag-encoded ordinal of the enum constant.
 
-%% 2. Container serialization
-    Note over Pickler, ByteBuffer: Container Types
-    alt Array
-        Pickler ->> ByteBuffer: Write ARRAY marker
-        Pickler ->> ByteBuffer: Write length
-        loop Each element
-            Pickler ->> ByteBuffer: Write element (recursive)
-        end
-    else List/Optional/Map
-        Pickler ->> ByteBuffer: Write container marker
-        Pickler ->> ByteBuffer: Write size (if applicable)
-        Pickler ->> ByteBuffer: Write elements recursively
-    end
+This approach ensures that the exact schema of the record or enum is respected during deserialization, preventing data corruption from schema mismatches unless compatibility mode is enabled.
 
-%% --- Deserialization Phase ---
-    Note over Client, ByteBuffer: Deserialization Process
-    Client ->> Pickler: deserialize(buffer)
-    Pickler ->> ByteBuffer: Read marker
-    alt Negative marker
-        Pickler ->> Pickler: Map to built-in type
-        Pickler ->> ByteBuffer: Read value data
-        Pickler ->> Client: Return value
-    else Positive marker
-        Pickler ->> Pickler: Map to user type (index - 1)
-        alt Record
-            loop Each component
-                Pickler ->> ByteBuffer: Read component recursively
-            end
-            Pickler ->> Pickler: Invoke constructor via MethodHandle
-        else Enum
-            Pickler ->> ByteBuffer: Read enum ordinal
-            Pickler ->> Pickler: Get enum constant by ordinal
-        end
-        Pickler ->> Client: Return instance
-    end
-```
+### Container Types
+
+Container types are preceded by a ZigZag-encoded integer marker to identify their type.
+
+| Container / Type | Wire Marker | Description |
+|---|---|---|
+| `OPTIONAL_EMPTY` | -13 | An empty `Optional` |
+| `OPTIONAL_OF` | -14 | An `Optional` with a value |
+| `MAP` | -16 | A `Map` |
+| `LIST` | -17 | A `List` |
+| `ARRAY_RECORD` | -18 | An array of `Record` types |
+| `ARRAY_INTERFACE` | -19 | An array of `sealed interface` types |
+| `ARRAY_ENUM` | -20 | An array of `Enum` types |
+| `ARRAY_BOOLEAN` | -21 | An array of `Boolean` objects |
+| `ARRAY_BYTE` | -22 | An array of `Byte` objects |
+| `ARRAY_SHORT` | -23 | An array of `Short` objects |
+| `ARRAY_CHAR` | -24 | An array of `Character` objects |
+| `ARRAY_INT` | -25 | An array of `Integer` objects |
+| `ARRAY_LONG` | -26 | An array of `Long` objects |
+| `ARRAY_FLOAT` | -27 | An array of `Float` objects |
+| `ARRAY_DOUBLE` | -28 | An array of `Double` objects |
+| `ARRAY_STRING` | -29 | An array of `String` objects |
+| `ARRAY_UUID` | -30 | An array of `UUID` objects |
+| `ARRAY_LOCAL_DATE` | -31 | An array of `LocalDate` objects |
+| `ARRAY_LOCAL_DATE_TIME` | -32 | An array of `LocalDateTime` objects |
+| `ARRAY_ARRAY` | -33 | An array of arrays (`Object[][]`) |
+| `ARRAY_LIST` | -34 | An array of `List`s |
+| `ARRAY_MAP` | -35 | An array of `Map`s |
+| `ARRAY_OPTIONAL` | -36 | An array of `Optional`s |
+
+**Note:** Primitive arrays (`int[]`, `long[]`, etc.) are handled separately with their own markers for optimized encoding (e.g., using `BitSet` for `boolean[]`).
 
 ## Acknowledgements
 
