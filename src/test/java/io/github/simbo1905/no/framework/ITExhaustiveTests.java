@@ -14,6 +14,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -77,7 +78,8 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TestEnum.class),
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class),
         new TypeExpr.RefValueNode(TypeExpr.RefValueType.UUID, UUID.class),
-        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LOCAL_DATE, LocalDate.class)
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LOCAL_DATE, LocalDate.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LOCAL_DATE_TIME, LocalDateTime.class)
     );
 
     Arbitrary<TypeExpr> valueTypes = Arbitraries.oneOf(primitives, boxedTypes, referenceTypes);
@@ -253,6 +255,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         case STRING -> "\"hello\"";
         case UUID -> "UUID.fromString(\"00000000-0000-0000-0000-000000000001\")";
         case LOCAL_DATE -> "LocalDate.of(2023, 12, 31)";
+        case LOCAL_DATE_TIME -> "LocalDateTime.of(2023, 12, 31, 10, 30, 55, 123456789)";
       };
       case TypeExpr.ArrayNode(var element) -> {
         if (element instanceof TypeExpr.ArrayNode(var innerElement)) {

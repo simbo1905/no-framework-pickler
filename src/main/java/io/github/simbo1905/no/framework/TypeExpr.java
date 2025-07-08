@@ -189,6 +189,9 @@ sealed interface TypeExpr permits
     if (clazz == java.time.LocalDate.class) {
       return RefValueType.LOCAL_DATE;
     }
+    if (clazz == java.time.LocalDateTime.class) {
+      return RefValueType.LOCAL_DATE_TIME;
+    }
 
     // Handle user-defined types
     if (clazz.isEnum()) {
@@ -320,7 +323,7 @@ sealed interface TypeExpr permits
     RECORD, INTERFACE, ENUM,
     BOOLEAN, BYTE, SHORT, CHARACTER,
     INTEGER, LONG, FLOAT, DOUBLE,
-    STRING, UUID, LOCAL_DATE
+    STRING, UUID, LOCAL_DATE, LOCAL_DATE_TIME
   }
 
   record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr {

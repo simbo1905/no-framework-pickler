@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.IntStream;
 
@@ -1534,5 +1535,31 @@ public class RefactorTests {
 
     // Verify the date matches
     assertEquals(originalRecord.date(), deserializedRecord.date());
+  }
+
+  public record RecordLocalDateTime(LocalDateTime dateTime) {
+  }
+
+  @Test
+  void testLocalDateTimeSerialization() {
+    // Create a LocalDateTime instance
+    LocalDateTime originalDateTime = LocalDateTime.of(2023, 10, 1, 14, 30, 15, 987654321);
+    RecordLocalDateTime originalRecord = new RecordLocalDateTime(originalDateTime);
+
+    // Get a pickler for the record
+    Pickler<RecordLocalDateTime> pickler = Pickler.forClass(RecordLocalDateTime.class);
+
+    // Calculate size and allocate buffer
+    final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(originalRecord));
+
+    // Serialize the record
+    pickler.serialize(buffer, originalRecord);
+    var buf = buffer.flip();
+
+    // Deserialize the record
+    RecordLocalDateTime deserializedRecord = pickler.deserialize(buf);
+
+    // Verify the date-time matches
+    assertEquals(originalRecord.dateTime(), deserializedRecord.dateTime());
   }
 }

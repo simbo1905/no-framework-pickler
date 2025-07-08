@@ -46,6 +46,7 @@ sealed interface Companion permits Companion.Nothing {
         case STRING -> Constants.ARRAY_STRING.marker();
         case UUID -> Constants.ARRAY_UUID.marker();
         case LOCAL_DATE -> Constants.ARRAY_LOCAL_DATE.marker();
+        case LOCAL_DATE_TIME -> Constants.ARRAY_LOCAL_DATE_TIME.marker();
       };
       case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
       case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
@@ -298,6 +299,7 @@ sealed interface Companion permits Companion.Nothing {
         case STRING -> Constants.ARRAY_STRING.marker();
         case UUID -> Constants.ARRAY_UUID.marker();
         case LOCAL_DATE -> Constants.ARRAY_LOCAL_DATE.marker();
+        case LOCAL_DATE_TIME -> Constants.ARRAY_LOCAL_DATE_TIME.marker();
       };
       case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
       case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
@@ -842,7 +844,8 @@ sealed interface Companion permits Companion.Nothing {
           return Byte.BYTES + (str.length() + 1) * Integer.BYTES;
         };
         case UUID -> obj -> obj == null ? Byte.BYTES : Byte.BYTES + 2 * Long.BYTES;
-        case LOCAL_DATE -> obj -> obj == null ? Byte.BYTES : 3 * Integer.BYTES;
+        case LOCAL_DATE -> obj -> obj == null ? Byte.BYTES : 4 * Integer.BYTES; // not null + 3
+        case LOCAL_DATE_TIME -> obj -> obj == null ? Byte.BYTES : 8 * Integer.BYTES; // not null + 7
         default -> complexResolver.apply(cls); // Delegate RECORD, INTERFACE, ENUM to callback
       };
     }
@@ -939,6 +942,16 @@ sealed interface Companion permits Companion.Nothing {
           ZigZagEncoding.putInt(buffer, year);
           ZigZagEncoding.putInt(buffer, month);
           ZigZagEncoding.putInt(buffer, day);
+        };
+        case LOCAL_DATE_TIME -> (buffer, obj) -> {
+          final var ldt = (java.time.LocalDateTime) obj;
+          ZigZagEncoding.putInt(buffer, ldt.getYear());
+          ZigZagEncoding.putInt(buffer, ldt.getMonthValue());
+          ZigZagEncoding.putInt(buffer, ldt.getDayOfMonth());
+          ZigZagEncoding.putInt(buffer, ldt.getHour());
+          ZigZagEncoding.putInt(buffer, ldt.getMinute());
+          ZigZagEncoding.putInt(buffer, ldt.getSecond());
+          ZigZagEncoding.putInt(buffer, ldt.getNano());
         };
         case STRING -> (buffer, obj) -> {
           final String str = (String) obj;
@@ -1045,6 +1058,16 @@ sealed interface Companion permits Companion.Nothing {
         final int month = ZigZagEncoding.getInt(buffer);
         final int day = ZigZagEncoding.getInt(buffer);
         return java.time.LocalDate.of(year, month, day);
+      };
+      case LOCAL_DATE_TIME -> buffer -> {
+        final int year = ZigZagEncoding.getInt(buffer);
+        final int month = ZigZagEncoding.getInt(buffer);
+        final int day = ZigZagEncoding.getInt(buffer);
+        final int hour = ZigZagEncoding.getInt(buffer);
+        final int minute = ZigZagEncoding.getInt(buffer);
+        final int second = ZigZagEncoding.getInt(buffer);
+        final int nano = ZigZagEncoding.getInt(buffer);
+        return java.time.LocalDateTime.of(year, month, day, hour, minute, second, nano);
       };
       default -> buffer -> {
         final long typeSignature = buffer.getLong();

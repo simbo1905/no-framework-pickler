@@ -6,6 +6,7 @@ package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -78,7 +79,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     final Map<Boolean, List<Class<?>>> legalAndIllegalClasses = recordClassHierarchy.stream()
         .collect(Collectors.partitioningBy(cls ->
             cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive()
-                || String.class.equals(cls) || UUID.class.isAssignableFrom(cls) || LocalDate.class.isAssignableFrom(cls)
+                || String.class.equals(cls) || UUID.class.isAssignableFrom(cls) || LocalDate.class.isAssignableFrom(cls) || LocalDateTime.class.isAssignableFrom(cls)
                 || List.class.isAssignableFrom(cls) || Optional.class.isAssignableFrom(cls)
                 || Map.class.isAssignableFrom(cls) || BOXED_PRIMITIVES.contains(cls)
         ));
