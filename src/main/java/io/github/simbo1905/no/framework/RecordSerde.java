@@ -224,6 +224,15 @@ final class RecordSerde<T> implements Pickler<T> {
   }
 
   @Override
+  public long typeSignature(Class<?> originalClass) {
+    Objects.requireNonNull(originalClass);
+    if (!userType.isAssignableFrom(originalClass)) {
+      throw new IllegalArgumentException("Expected " + userType + " but got " + originalClass);
+    }
+    return typeSignature;
+  }
+
+  @Override
   public String toString() {
     return "RecordSerde{userType=" + userType + ", typeSignature=0x" + Long.toHexString(typeSignature) + "}";
   }

@@ -118,7 +118,5 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
 
   /// In order to support optional backwards compatibility, we need to be able to tell the newer pickler what is the
   /// type signature of the original class.
-  default long typeSignature(Class<?> originalClass) {
-    throw new AssertionError("unreachable");
-  }
+  long typeSignature(Class<?> originalClass);
 }
