@@ -16,15 +16,15 @@ public class LinkedListNodeDemo {
   public static void main(String[] args) {
     // Test linked list serialization
     final var linkedList = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
-    Pickler<LinkedListNode> linkedListPickler = Pickler.forRecord(LinkedListNode.class);
+    Pickler<LinkedListNode> linkedListPickler = Pickler.forClass(LinkedListNode.class);
     final var buffer = ByteBuffer.allocate(1024);
-    linkedListPickler.serialize(linkedList, buffer);
+    linkedListPickler.serialize(buffer, linkedList);
     buffer.flip();
     LinkedListNode deserializedLinkedList = linkedListPickler.deserialize(buffer);
     assertEquals(linkedList, deserializedLinkedList,
         "Deserialized linked list should equal the original linked list");
     System.out.println("Linked list serialization and deserialization works as expected.");
-    System.out.println("written "+linkedList);
-    System.out.println("read    "+deserializedLinkedList);
+    System.out.println("written " + linkedList);
+    System.out.println("read    " + deserializedLinkedList);
   }
 }
