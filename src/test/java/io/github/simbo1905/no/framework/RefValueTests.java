@@ -110,7 +110,7 @@ public class RefValueTests {
   @Test
   @DisplayName("Test 2D primitive array")
   void test2DArrayPrimitive() {
-    LOGGER.info(() -> "---------------\nTesting 2D primitive array test2DArrayPrimitive");
+    LOGGER.fine(() -> "---------------\nTesting 2D primitive array test2DArrayPrimitive");
     final var original = new Record2DPrimitiveArray(new int[][]{{1, 2}, {3, 4}});
     final var pickler = Pickler.forClass(Record2DPrimitiveArray.class);
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
@@ -127,7 +127,7 @@ public class RefValueTests {
   @Test
   @DisplayName("Test 2D ref array ")
   void test2DArrayRef() {
-    LOGGER.info(() -> "---------------\nTesting 2D ref array test2DArrayRef");
+    LOGGER.fine(() -> "---------------\nTesting 2D ref array test2DArrayRef");
     final var original = new Record2DRefArray(new String[][]{{"a", "b"}, {"c", "d"}});
     final var pickler = Pickler.forClass(Record2DRefArray.class);
     final var buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
