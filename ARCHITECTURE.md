@@ -78,11 +78,18 @@ ValueType ::= PrimitiveType | ReferenceType
 PrimitiveType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
                 | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
 
-ReferenceType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
-                | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
-                | 'STRING' | 'UUID' | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'ENUM' | 'RECORD' | 'INTERFACE'
+ReferenceType ::= BoxedPrimitive | BuiltInValueBased | UserType | CustomValueBased
 
-Note: PrimitiveType and ReferenceType share some names but represent different runtime types
+BoxedPrimitive ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
+                 | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
+
+BuiltInValueBased ::= 'STRING' | 'LOCAL_DATE' | 'LOCAL_DATE_TIME'
+
+UserType ::= 'ENUM' | 'RECORD' | 'INTERFACE'
+
+CustomValueBased ::= <user-defined value-based types with custom handlers>
+
+Note: PrimitiveType and BoxedPrimitive share names but represent different runtime types (int vs Integer)
 ```
 
 Note that we capture the actual concrete type into the AST. This means that at runtime we can understand that whether
