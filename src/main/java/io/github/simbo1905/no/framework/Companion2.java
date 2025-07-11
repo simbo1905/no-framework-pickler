@@ -58,7 +58,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType, var marker) -> createPrimitiveWriter(type, getter);
+      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveWriter(type, getter);
 
       case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
@@ -91,7 +91,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       Function<Class<?>, Function<ByteBuffer, Object>> typeReaderResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType, var marker) -> createPrimitiveReader(type);
+      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveReader(type);
 
       case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
@@ -136,7 +136,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType, var marker) -> createPrimitiveSizer(type);
+      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveSizer(type);
 
       case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
@@ -180,14 +180,49 @@ sealed interface Companion2 permits Companion2.Nothing {
     return (buffer, obj) -> {
       try {
         switch (type) {
-          case BOOLEAN -> buffer.put((byte) ((boolean) getter.invoke(obj) ? 1 : 0));
-          case BYTE -> buffer.put((byte) getter.invoke(obj));
-          case SHORT -> buffer.putShort((short) getter.invoke(obj));
-          case CHARACTER -> buffer.putChar((char) getter.invoke(obj));
-          case INTEGER -> buffer.putInt((int) getter.invoke(obj));
-          case LONG -> buffer.putLong((long) getter.invoke(obj));
-          case FLOAT -> buffer.putFloat((float) getter.invoke(obj));
-          case DOUBLE -> buffer.putDouble((double) getter.invoke(obj));
+          case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
+            switch (name) {
+              case "BOOLEAN" -> buffer.put((byte) ((boolean) getter.invoke(obj) ? 1 : 0));
+              case "BYTE" -> buffer.put((byte) getter.invoke(obj));
+              case "SHORT" -> buffer.putShort((short) getter.invoke(obj));
+              case "CHARACTER" -> buffer.putChar((char) getter.invoke(obj));
+              case "FLOAT" -> buffer.putFloat((float) getter.invoke(obj));
+              case "DOUBLE" -> buffer.putDouble((double) getter.invoke(obj));
+              default -> throw new IllegalStateException("Unknown primitive type: " + name);
+            }
+          }
+          case TypeExpr2.PrimitiveValueType.IntegerType(var fixedMarker, var varMarker) -> {
+            int result = (int) getter.invoke(obj);
+            int position = buffer.position();
+            int zigzagSize = ZigZagEncoding.sizeOf(result);
+            LOGGER.fine(() -> "Writing primitive int value=" + result + " at position=" + position + " zigzagSize=" + zigzagSize + " vs Integer.BYTES=" + Integer.BYTES);
+            if (zigzagSize < Integer.BYTES) {
+              LOGGER.fine(() -> "Using INTEGER_VAR marker=" + varMarker);
+              ZigZagEncoding.putInt(buffer, varMarker);
+              ZigZagEncoding.putInt(buffer, result);
+            } else {
+              LOGGER.fine(() -> "Using INTEGER marker=" + fixedMarker);
+              ZigZagEncoding.putInt(buffer, fixedMarker);
+              buffer.putInt(result);
+            }
+            LOGGER.fine(() -> "Wrote " + (buffer.position() - position) + " bytes total");
+          }
+          case TypeExpr2.PrimitiveValueType.LongType(var fixedMarker, var varMarker) -> {
+            long result = (long) getter.invoke(obj);
+            int position = buffer.position();
+            int zigzagSize = ZigZagEncoding.sizeOf(result);
+            LOGGER.fine(() -> "Writing primitive long value=" + result + " at position=" + position + " zigzagSize=" + zigzagSize + " vs Long.BYTES=" + Long.BYTES);
+            if (zigzagSize < Long.BYTES) {
+              LOGGER.fine(() -> "Using LONG_VAR marker=" + varMarker);
+              ZigZagEncoding.putInt(buffer, varMarker);
+              ZigZagEncoding.putLong(buffer, result);
+            } else {
+              LOGGER.fine(() -> "Using LONG marker=" + fixedMarker);
+              ZigZagEncoding.putInt(buffer, fixedMarker);
+              buffer.putLong(result);
+            }
+            LOGGER.fine(() -> "Wrote " + (buffer.position() - position) + " bytes total");
+          }
         }
       } catch (Throwable e) {
         throw new IllegalStateException("Failed to write primitive", e);
@@ -198,27 +233,61 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Create reader for primitive types
   static Function<ByteBuffer, Object> createPrimitiveReader(TypeExpr2.PrimitiveValueType type) {
     return buffer -> switch (type) {
-      case BOOLEAN -> buffer.get() != 0;
-      case BYTE -> buffer.get();
-      case SHORT -> buffer.getShort();
-      case CHARACTER -> buffer.getChar();
-      case INTEGER -> ZigZagEncoding.getInt(buffer);
-      case LONG -> ZigZagEncoding.getLong(buffer);
-      case FLOAT -> buffer.getFloat();
-      case DOUBLE -> buffer.getDouble();
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
+        yield switch (name) {
+          case "BOOLEAN" -> buffer.get() != 0;
+          case "BYTE" -> buffer.get();
+          case "SHORT" -> buffer.getShort();
+          case "CHARACTER" -> buffer.getChar();
+          case "FLOAT" -> buffer.getFloat();
+          case "DOUBLE" -> buffer.getDouble();
+          default -> throw new IllegalStateException("Unknown primitive type: " + name);
+        };
+      }
+      case TypeExpr2.PrimitiveValueType.IntegerType(var fixedMarker, var varMarker) -> {
+        // Read the marker to determine encoding
+        int marker = ZigZagEncoding.getInt(buffer);
+        if (marker == fixedMarker) {
+          yield buffer.getInt();
+        } else if (marker == varMarker) {
+          yield ZigZagEncoding.getInt(buffer);
+        } else {
+          throw new IllegalStateException("Expected INTEGER marker " + fixedMarker + " or " + varMarker + ", got " + marker);
+        }
+      }
+      case TypeExpr2.PrimitiveValueType.LongType(var fixedMarker, var varMarker) -> {
+        // Read the marker to determine encoding
+        int marker = ZigZagEncoding.getInt(buffer);
+        if (marker == fixedMarker) {
+          yield buffer.getLong();
+        } else if (marker == varMarker) {
+          yield ZigZagEncoding.getLong(buffer);
+        } else {
+          throw new IllegalStateException("Expected LONG marker " + fixedMarker + " or " + varMarker + ", got " + marker);
+        }
+      }
     };
   }
 
   /// Create sizer for primitive types
   static ToIntFunction<Object> createPrimitiveSizer(TypeExpr2.PrimitiveValueType type) {
-    // Primitive types don't need the record object, just return fixed sizes
+    // Primitive types don't need the record object, just return worst-case sizes
     return obj -> switch (type) {
-      case BOOLEAN, BYTE -> Byte.BYTES;
-      case SHORT, CHARACTER -> Short.BYTES;
-      case INTEGER -> Integer.BYTES; // For primitive int, we know it's fixed size
-      case LONG -> Long.BYTES; // For primitive long, we know it's fixed size
-      case FLOAT -> Float.BYTES;
-      case DOUBLE -> Double.BYTES;
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
+        yield switch (name) {
+          case "BOOLEAN", "BYTE" -> Byte.BYTES;
+          case "SHORT", "CHARACTER" -> Short.BYTES;
+          case "FLOAT" -> Float.BYTES;
+          case "DOUBLE" -> Double.BYTES;
+          default -> throw new IllegalStateException("Unknown primitive type: " + name);
+        };
+      }
+      case TypeExpr2.PrimitiveValueType.IntegerType ignored -> 
+          // Worst case: 1 byte marker + 4 bytes data
+          ZigZagEncoding.sizeOf(-6) + Integer.BYTES;
+      case TypeExpr2.PrimitiveValueType.LongType ignored -> 
+          // Worst case: 1 byte marker + 8 bytes data
+          ZigZagEncoding.sizeOf(-8) + Long.BYTES;
     };
   }
 

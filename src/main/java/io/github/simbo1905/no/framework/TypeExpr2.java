@@ -124,8 +124,7 @@ sealed interface TypeExpr2 permits
       } else {
         if (clazz.isPrimitive()) {
           PrimitiveValueType primType = classifyPrimitiveClass(clazz);
-          int marker = primitiveToMarker(clazz);
-          return new PrimitiveValueNode(primType, clazz, marker);
+          return new PrimitiveValueNode(primType, clazz);
         } else {
           // Check if it's a custom type first
           for (SerdeHandler handler : customHandlers) {
@@ -204,7 +203,7 @@ sealed interface TypeExpr2 permits
     throw new IllegalArgumentException("Unsupported type: " + type + " of class " + type.getClass());
   }
 
-  /// Classifies a Java Class into the appropriate PrimitiveType
+  /// Classifies a Java Class into the appropriate PrimitiveValueType
   static PrimitiveValueType classifyPrimitiveClass(Class<?> clazz) {
     // Handle primitive types
     if (clazz == boolean.class) {
@@ -306,7 +305,7 @@ sealed interface TypeExpr2 permits
           yield className;
         }
       }
-      case PrimitiveValueNode(var ignored1, var javaType, var ignored2) -> ((Class<?>) javaType).getSimpleName();
+      case PrimitiveValueNode(var ignored1, var javaType) -> ((Class<?>) javaType).getSimpleName();
     };
   }
 
@@ -450,11 +449,16 @@ sealed interface TypeExpr2 permits
 
   }
 
-  /// Leaf node for primitive types with marker
-  record PrimitiveValueNode(PrimitiveValueType type, Type javaType, int marker) implements TypeExpr2 {
+  /// Leaf node for primitive types
+  record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr2 {
     public PrimitiveValueNode {
       Objects.requireNonNull(type, "Primitive type cannot be null");
       Objects.requireNonNull(javaType, "Java type cannot be null");
+    }
+
+    @Override
+    public int marker() {
+      return type.marker();
     }
 
     @Override
@@ -473,10 +477,57 @@ sealed interface TypeExpr2 permits
     }
   }
 
-  /// Enum for all primitive types
-  enum PrimitiveValueType {
-    BOOLEAN, BYTE, SHORT, CHARACTER,
-    INTEGER, LONG, FLOAT, DOUBLE
-
+  /// Sealed interface for primitive types supporting runtime encoding decisions
+  sealed interface PrimitiveValueType permits
+      PrimitiveValueType.SimplePrimitive,
+      PrimitiveValueType.IntegerType, 
+      PrimitiveValueType.LongType {
+    
+    /// Get the primary marker for this primitive type
+    int marker();
+    
+    /// Simple primitive types with fixed encoding
+    record SimplePrimitive(String name, int marker) implements PrimitiveValueType {
+      @Override
+      public String toString() {
+        return name;
+      }
+    }
+    
+    /// Integer type with runtime selection between fixed and variable encoding
+    record IntegerType(int fixedMarker, int varMarker) implements PrimitiveValueType {
+      @Override
+      public int marker() {
+        return fixedMarker; // Default to fixed marker
+      }
+      
+      @Override 
+      public String toString() {
+        return "INTEGER";
+      }
+    }
+    
+    /// Long type with runtime selection between fixed and variable encoding
+    record LongType(int fixedMarker, int varMarker) implements PrimitiveValueType {
+      @Override
+      public int marker() {
+        return fixedMarker; // Default to fixed marker
+      }
+      
+      @Override
+      public String toString() {
+        return "LONG";
+      }
+    }
+    
+    // Static instances for all primitive types
+    PrimitiveValueType BOOLEAN = new SimplePrimitive("BOOLEAN", -2);
+    PrimitiveValueType BYTE = new SimplePrimitive("BYTE", -3);
+    PrimitiveValueType SHORT = new SimplePrimitive("SHORT", -4);
+    PrimitiveValueType CHARACTER = new SimplePrimitive("CHARACTER", -5);
+    PrimitiveValueType INTEGER = new IntegerType(-6, -7); // INTEGER and INTEGER_VAR
+    PrimitiveValueType LONG = new LongType(-8, -9); // LONG and LONG_VAR
+    PrimitiveValueType FLOAT = new SimplePrimitive("FLOAT", -10);
+    PrimitiveValueType DOUBLE = new SimplePrimitive("DOUBLE", -11);
   }
 }

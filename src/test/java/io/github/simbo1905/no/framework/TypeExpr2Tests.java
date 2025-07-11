@@ -11,13 +11,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SuppressWarnings("auxiliaryclass")
-class TypeExpr2Test {
+class TypeExpr2Tests {
 
   @Test
   void testPrimitiveTypes() {
+    LOGGER.info(() -> "Testing primitive types...");
     // Test primitive types get negative markers
     var intExpr = TypeExpr2.analyzeType(int.class, List.of());
     assertThat(intExpr).isInstanceOf(TypeExpr2.PrimitiveValueNode.class);
@@ -202,13 +204,14 @@ class TypeExpr2Test {
   @Test
   void testSizerAlwaysGreaterThanOrEqualToWrittenBytes() {
     // Test that sizer always returns worst-case estimate >= actual bytes written
-    
+
     // Build ComponentSerde array using Companion2
     ComponentSerde[] serdes = Companion2.buildComponentSerdes(
         TestRecord.class,
         List.of(), // No custom handlers for this test
         clazz -> obj -> 0, // Simple sizer resolver
-        clazz -> (buffer, obj) -> {}, // Simple writer resolver
+        clazz -> (buffer, obj) -> {
+        }, // Simple writer resolver
         clazz -> buffer -> null // Simple reader resolver
     );
 
@@ -223,23 +226,23 @@ class TypeExpr2Test {
 
     for (TestRecord record : testCases) {
       ByteBuffer buffer = ByteBuffer.allocate(1024);
-      
+
       // Calculate sizes for each component
       for (int i = 0; i < serdes.length; i++) {
         ComponentSerde serde = serdes[i];
-        
+
         // Get estimated size
         int estimatedSize = serde.sizer().applyAsInt(record);
-        
+
         // Record position before writing
         int positionBefore = buffer.position();
-        
+
         // Write the component
         serde.writer().accept(buffer, record);
-        
+
         // Calculate actual bytes written
         int actualBytesWritten = buffer.position() - positionBefore;
-        
+
         // Verify sizer is conservative (worst-case)
         assertThat(estimatedSize)
             .as("Component %d: Sizer must return worst-case estimate >= actual bytes written", i)
@@ -314,8 +317,91 @@ class TypeExpr2Test {
     assertThat(readValueFromNull).isEqualTo(99);
   }
 
+  @Test
+  void testRuntimeEncodingDecisions() {
+    // Test that INTEGER and LONG use runtime encoding decisions
+
+    // Test with small values that should use variable encoding
+    ComponentSerde[] smallSerdes = Companion2.buildComponentSerdes(
+        SmallValues.class,
+        List.of(),
+        clazz -> obj -> 0,
+        clazz -> (buffer, obj) -> {
+        },
+        clazz -> buffer -> null
+    );
+
+    // Test small values (need values that ZigZag encode to < 128)
+    // For ZigZag: positive n becomes 2n, negative -n becomes 2n-1
+    // So for 1 byte encoding, we need ZigZag result < 128
+    // That means positive values 0-63, negative values -1 to -64
+    SmallValues small = new SmallValues(42, 50L);
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Write small int (should use INTEGER_VAR marker -7)
+    int positionBefore = buffer.position();
+    smallSerdes[0].writer().accept(buffer, small);
+    int bytesWritten = buffer.position() - positionBefore;
+
+    // For small values, we expect: 1 byte marker + 1 byte value = 2 bytes
+    assertThat(bytesWritten).isEqualTo(2);
+
+    // Write small long (should use LONG_VAR marker -9)
+    positionBefore = buffer.position();
+    final int posBefore = positionBefore;
+    LOGGER.fine(() -> "Before writing small long: position=" + posBefore + " value=" + small.smallLong());
+    smallSerdes[1].writer().accept(buffer, small);
+    bytesWritten = buffer.position() - positionBefore;
+
+    // Debug: log what was actually written
+    final int bytesWrittenFinal = bytesWritten;
+    LOGGER.fine(() -> {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Small long value=").append(small.smallLong()).append(" wrote ").append(bytesWrittenFinal).append(" bytes:");
+      buffer.position(posBefore);
+      for (int i = 0; i < bytesWrittenFinal; i++) {
+        sb.append(" byte[").append(i).append("]=").append(buffer.get());
+      }
+      return sb.toString();
+    });
+
+    // For small values, we expect: 1 byte marker + 1 byte value = 2 bytes
+    assertThat(bytesWritten).isEqualTo(2);
+
+    // Test with large values that should use fixed encoding
+    SmallValues large = new SmallValues(Integer.MAX_VALUE, Long.MAX_VALUE);
+    buffer.clear();
+
+    // Write large int (should use INTEGER marker -6)
+    positionBefore = buffer.position();
+    smallSerdes[0].writer().accept(buffer, large);
+    bytesWritten = buffer.position() - positionBefore;
+
+    // For large values, we expect: 1 byte marker + 4 bytes value = 5 bytes
+    assertThat(bytesWritten).isEqualTo(5);
+
+    // Write large long (should use LONG marker -8)
+    positionBefore = buffer.position();
+    smallSerdes[1].writer().accept(buffer, large);
+    bytesWritten = buffer.position() - positionBefore;
+
+    // For large values, we expect: 1 byte marker + 8 bytes value = 9 bytes
+    assertThat(bytesWritten).isEqualTo(9);
+
+    // Test that the sizer always returns worst-case estimate
+    int intSize = smallSerdes[0].sizer().applyAsInt(small);
+    int longSize = smallSerdes[1].sizer().applyAsInt(small);
+
+    // Sizer should return worst-case: 5 for int, 9 for long
+    assertThat(intSize).isEqualTo(5);
+    assertThat(longSize).isEqualTo(9);
+  }
+
   // Test types
   public record TestRecord(String name, int value) {
+  }
+
+  public record SmallValues(int smallInt, long smallLong) {
   }
 
   @SuppressWarnings("unused")
