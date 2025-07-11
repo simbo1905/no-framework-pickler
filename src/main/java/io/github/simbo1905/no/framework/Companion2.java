@@ -184,8 +184,8 @@ sealed interface Companion2 permits Companion2.Nothing {
           case BYTE -> buffer.put((byte) getter.invoke(obj));
           case SHORT -> buffer.putShort((short) getter.invoke(obj));
           case CHARACTER -> buffer.putChar((char) getter.invoke(obj));
-          case INTEGER -> ZigZagEncoding.putInt(buffer, (int) getter.invoke(obj));
-          case LONG -> ZigZagEncoding.putLong(buffer, (long) getter.invoke(obj));
+          case INTEGER -> buffer.putInt((int) getter.invoke(obj));
+          case LONG -> buffer.putLong((long) getter.invoke(obj));
           case FLOAT -> buffer.putFloat((float) getter.invoke(obj));
           case DOUBLE -> buffer.putDouble((double) getter.invoke(obj));
         }

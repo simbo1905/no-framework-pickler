@@ -200,6 +200,55 @@ class TypeExpr2Test {
   }
 
   @Test
+  void testSizerAlwaysGreaterThanOrEqualToWrittenBytes() {
+    // Test that sizer always returns worst-case estimate >= actual bytes written
+    
+    // Build ComponentSerde array using Companion2
+    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        TestRecord.class,
+        List.of(), // No custom handlers for this test
+        clazz -> obj -> 0, // Simple sizer resolver
+        clazz -> (buffer, obj) -> {}, // Simple writer resolver
+        clazz -> buffer -> null // Simple reader resolver
+    );
+
+    // Test various records
+    TestRecord[] testCases = {
+        new TestRecord("hello", 42),
+        new TestRecord("", 0),
+        new TestRecord("a very long string that should take more bytes", Integer.MAX_VALUE),
+        new TestRecord(null, Integer.MIN_VALUE),
+        new TestRecord("short", -1)
+    };
+
+    for (TestRecord record : testCases) {
+      ByteBuffer buffer = ByteBuffer.allocate(1024);
+      
+      // Calculate sizes for each component
+      for (int i = 0; i < serdes.length; i++) {
+        ComponentSerde serde = serdes[i];
+        
+        // Get estimated size
+        int estimatedSize = serde.sizer().applyAsInt(record);
+        
+        // Record position before writing
+        int positionBefore = buffer.position();
+        
+        // Write the component
+        serde.writer().accept(buffer, record);
+        
+        // Calculate actual bytes written
+        int actualBytesWritten = buffer.position() - positionBefore;
+        
+        // Verify sizer is conservative (worst-case)
+        assertThat(estimatedSize)
+            .as("Component %d: Sizer must return worst-case estimate >= actual bytes written", i)
+            .isGreaterThanOrEqualTo(actualBytesWritten);
+      }
+    }
+  }
+
+  @Test
   void testComponentSerdeWithNullValues() {
     // Test record with nullable String component
     // Using the existing public TestRecord(String name, int value)
