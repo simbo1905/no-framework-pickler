@@ -3,6 +3,9 @@
 //
 package io.github.simbo1905.no.framework;
 
+import io.github.simbo1905.LoggingControl;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -10,12 +13,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SuppressWarnings("auxiliaryclass")
 class TypeExpr2Tests {
+
+  @BeforeAll
+  static void setupLogging() {
+    LoggingControl.setupCleanLogging();
+  }
 
   @Test
   void testPrimitiveTypes() {
@@ -397,6 +407,114 @@ class TypeExpr2Tests {
     assertThat(longSize).isEqualTo(9);
   }
 
+  @Test
+  void testRecursiveRecordAST() {
+    // Analyze the 'value' component
+    var valueComp = LinkedListNode.class.getRecordComponents()[0];
+    var valueExpr = TypeExpr2.analyzeType(valueComp.getGenericType(), List.of());
+    assertThat(valueExpr).isInstanceOf(TypeExpr2.PrimitiveValueNode.class);
+    assertThat(valueExpr.toTreeString()).isEqualTo("int");
+
+    // Analyze the 'next' component
+    var nextComp = LinkedListNode.class.getRecordComponents()[1];
+    var nextExpr = TypeExpr2.analyzeType(nextComp.getGenericType(), List.of());
+    assertThat(nextExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
+    var nextNode = (TypeExpr2.RefValueNode) nextExpr;
+    assertThat(nextNode.type()).isEqualTo(TypeExpr2.RefValueType.RECORD);
+    assertThat(nextNode.javaType()).isEqualTo(LinkedListNode.class);
+    assertThat(nextNode.marker()).isEqualTo(0); // Marker 0 indicates delegation via typeSignature
+    assertThat(nextNode.toTreeString()).isEqualTo("LinkedListNode[sig]");
+  }
+
+  @Test
+  @DisplayName("Test recursive record (LinkedListNode) round trips")
+  void testRecursiveRecordRoundTrip() {
+    // 1. Create a "mini-pickler" simulation for LinkedListNode
+    final var recordClass = LinkedListNode.class;
+    final List<Class<?>> userTypes = List.of(recordClass);
+    final var recordClassToTypeSignatureMap = Companion2.computeRecordTypeSignatures(userTypes);
+    final var typeSignature = recordClassToTypeSignatureMap.get(recordClass);
+    LOGGER.info(() -> "Test: LinkedListNode typeSignature = " + Long.toHexString(typeSignature));
+
+    // 2. Build the ComponentSerdes using Companion2
+    final ComponentSerde[][] serdes = {null};
+    serdes[0] = Companion2.buildComponentSerdes(
+        recordClass,
+        List.of(), // No custom handlers
+        // Sizer Resolver: Delegates back to the main sizer
+        type -> (obj) -> {
+          if (obj == null) return Byte.BYTES; // Null marker
+          // For a LinkedListNode, it's: typeSignature + component data
+          return Long.BYTES + serdes[0][0].sizer().applyAsInt(obj) + serdes[0][1].sizer().applyAsInt(obj);
+        },
+        // Writer Resolver: Delegates back to the main writer
+        type -> (buffer, obj) -> {
+          if (obj == null) {
+            LOGGER.fine("WriterResolver: Writing null signature (0L)");
+            buffer.putLong(0L); // Special null signature
+            return;
+          }
+          // LOG THE HASHCODE AS REQUESTED
+          LOGGER.info(() -> "WriterResolver: Writing object with hashCode: " + obj.hashCode());
+          long sig = recordClassToTypeSignatureMap.get(obj.getClass());
+          LOGGER.fine("WriterResolver: Writing signature " + Long.toHexString(sig) + " for object: " + obj);
+          buffer.putLong(sig);
+          serdes[0][0].writer().accept(buffer, obj);
+          serdes[0][1].writer().accept(buffer, obj);
+        },
+        // Reader Resolver
+        type -> buffer -> {
+          var val = (int) serdes[0][0].reader().apply(buffer);
+          var next = (LinkedListNode) serdes[0][1].reader().apply(buffer);
+          return new LinkedListNode(val, next);
+        }
+    );
+
+    // Create an instance and LOG THE HASHCODES
+    LinkedListNode original = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
+    LOGGER.info(() -> "Test: original.hashCode() = " + original.hashCode());
+    LOGGER.info(() -> "Test: original.next.hashCode() = " + original.next().hashCode());
+    LOGGER.info(() -> "Test: original.next.next.hashCode() = " + original.next().next().hashCode());
+
+
+    // Manually serialize
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Get the writer for the LinkedListNode type from the resolver
+    var writerResolver = (Function<Class<?>, BiConsumer<ByteBuffer, Object>>) type -> (BiConsumer<ByteBuffer, Object>) (buf, obj) -> {
+        if (obj == null) {
+            LOGGER.fine("WriterResolver: Writing null signature (0L)");
+            buf.putLong(0L); // Special null signature
+            return;
+        }
+        // LOG THE HASHCODE AS REQUESTED
+        LOGGER.info(() -> "WriterResolver: Writing object with hashCode: " + obj.hashCode());
+        long sig = recordClassToTypeSignatureMap.get(obj.getClass());
+        LOGGER.fine("WriterResolver: Writing signature " + Long.toHexString(sig) + " for object: " + obj);
+        buf.putLong(sig);
+        serdes[0][0].writer().accept(buf, obj);
+        serdes[0][1].writer().accept(buf, obj);
+    };
+    
+    var nodeWriter = writerResolver.apply(recordClass);
+    nodeWriter.accept(buffer, original);
+
+    buffer.flip();
+
+    // Manually deserialize
+    var readerResolver = (Function<Long, Function<ByteBuffer, Object>>) type -> (Function<ByteBuffer, Object>) buf -> {
+        var val = (int) serdes[0][0].reader().apply(buf);
+        var next = (LinkedListNode) serdes[0][1].reader().apply(buf);
+        return new LinkedListNode(val, next);
+    };
+    
+    long signature = buffer.getLong();
+    var objectReader = readerResolver.apply(signature);
+    LinkedListNode deserialized = (LinkedListNode) objectReader.apply(buffer);
+
+    assertThat(deserialized).isEqualTo(original);
+  }
+
   // Test types
   public record TestRecord(String name, int value) {
   }
@@ -406,4 +524,10 @@ class TypeExpr2Tests {
 
   @SuppressWarnings("unused")
   public enum TestEnum {A, B, C}
+
+  public record LinkedListNode(int value, LinkedListNode next) {
+    public LinkedListNode(int value) {
+      this(value, null);
+    }
+  }
 }
