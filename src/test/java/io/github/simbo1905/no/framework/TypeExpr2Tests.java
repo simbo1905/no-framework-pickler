@@ -515,6 +515,50 @@ class TypeExpr2Tests {
     assertThat(deserialized).isEqualTo(original);
   }
 
+  @Test
+  void testSealedInterfaceAST() {
+    // Analyze the 'next' component of the LinkedRecord
+    var nextComp = LinkListEmptyEnd.LinkedRecord.class.getRecordComponents()[1];
+    var nextExpr = TypeExpr2.analyzeType(nextComp.getGenericType(), List.of());
+    assertThat(nextExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
+    var nextNode = (TypeExpr2.RefValueNode) nextExpr;
+    assertThat(nextNode.type()).isEqualTo(TypeExpr2.RefValueType.INTERFACE);
+    assertThat(nextNode.javaType()).isEqualTo(LinkListEmptyEnd.class);
+    assertThat(nextNode.marker()).isEqualTo(0); // Marker 0 indicates delegation via typeSignature
+    assertThat(nextNode.toTreeString()).isEqualTo("LinkListEmptyEnd[sig]");
+  }
+
+  @Test
+  @DisplayName("Test sealed interface (LinkListEmptyEnd) round trips")
+  void testSealedInterfaceRoundTrip() {
+    // 1. Define user types
+    final List<Class<?>> userTypes = List.of(
+        LinkListEmptyEnd.class,
+        LinkListEmptyEnd.LinkedRecord.class,
+        LinkListEmptyEnd.LinkEnd.class,
+        LinkListEmptyEnd.Boxed.class
+    );
+
+    // 2. Build the ComponentSerdes for the top-level record
+    // The main goal of this test is to ensure that building the serdes for a recursive
+    // and polymorphic sealed interface does not cause a StackOverflowError.
+    final ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        LinkListEmptyEnd.LinkedRecord.class,
+        List.of(), // No custom handlers
+        // Sizer Resolver: For this test, a simple resolver is sufficient.
+        type -> (obj) -> Long.BYTES,
+        // Writer Resolver: For this test, a simple resolver is sufficient.
+        type -> (buffer, obj) -> {
+        },
+        // Reader Resolver: For this test, a simple resolver is sufficient.
+        type -> buffer -> null
+    );
+
+    // 3. Verify that the serdes were created successfully.
+    assertThat(serdes).isNotNull();
+    assertThat(serdes).hasSize(2); // value, next
+  }
+
   // Test types
   public record TestRecord(String name, int value) {
   }
@@ -528,6 +572,22 @@ class TypeExpr2Tests {
   public record LinkedListNode(int value, LinkedListNode next) {
     public LinkedListNode(int value) {
       this(value, null);
+    }
+  }
+
+  // inner interface of nested records and empty record end
+  public sealed interface LinkListEmptyEnd permits LinkListEmptyEnd.LinkedRecord, LinkListEmptyEnd.LinkEnd {
+
+    // record implementing interface
+    record LinkedRecord(Boxed value, LinkListEmptyEnd next) implements LinkListEmptyEnd {
+    }
+
+    // enum implementing interface
+    record LinkEnd() implements LinkListEmptyEnd {
+    }
+
+    // inner record
+    record Boxed(int value) {
     }
   }
 }

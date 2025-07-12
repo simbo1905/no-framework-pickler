@@ -63,6 +63,10 @@ sealed interface TypeExpr2 permits
     };
   }
 
+  /// A special marker for user-defined types that are serialized using a type signature.
+  /// This marker should never be written to the wire due to static analysis knowing we are dealing with a user type.
+  int VOID_MARKER = 0;
+
   /// Container type markers
   static int containerToMarker(String containerType) {
     return switch (containerType) {
@@ -136,7 +140,7 @@ sealed interface TypeExpr2 permits
           RefValueType refType = classifyReferenceClass(clazz);
           int marker;
           if (refType == RefValueType.RECORD || refType == RefValueType.ENUM || refType == RefValueType.INTERFACE) {
-            marker = 0; // User types use type signature
+            marker = VOID_MARKER; // Due to static analysis we never write VOID_MARKER we write the user type signature
           } else {
             marker = referenceToMarker(clazz);
           }
@@ -299,7 +303,7 @@ sealed interface TypeExpr2 permits
         String className = ((Class<?>) javaType).getSimpleName();
         if (type == RefValueType.CUSTOM) {
           yield className + "[m=" + marker + "]";
-        } else if (marker == 0) {
+        } else if (marker == VOID_MARKER) {
           yield className + "[sig]";
         } else {
           yield className;
@@ -480,12 +484,12 @@ sealed interface TypeExpr2 permits
   /// Sealed interface for primitive types supporting runtime encoding decisions
   sealed interface PrimitiveValueType permits
       PrimitiveValueType.SimplePrimitive,
-      PrimitiveValueType.IntegerType, 
+      PrimitiveValueType.IntegerType,
       PrimitiveValueType.LongType {
-    
+
     /// Get the primary marker for this primitive type
     int marker();
-    
+
     /// Simple primitive types with fixed encoding
     record SimplePrimitive(String name, int marker) implements PrimitiveValueType {
       @Override
@@ -493,33 +497,33 @@ sealed interface TypeExpr2 permits
         return name;
       }
     }
-    
+
     /// Integer type with runtime selection between fixed and variable encoding
     record IntegerType(int fixedMarker, int varMarker) implements PrimitiveValueType {
       @Override
       public int marker() {
         return fixedMarker; // Default to fixed marker
       }
-      
-      @Override 
+
+      @Override
       public String toString() {
         return "INTEGER";
       }
     }
-    
+
     /// Long type with runtime selection between fixed and variable encoding
     record LongType(int fixedMarker, int varMarker) implements PrimitiveValueType {
       @Override
       public int marker() {
         return fixedMarker; // Default to fixed marker
       }
-      
+
       @Override
       public String toString() {
         return "LONG";
       }
     }
-    
+
     // Static instances for all primitive types
     PrimitiveValueType BOOLEAN = new SimplePrimitive("BOOLEAN", -2);
     PrimitiveValueType BYTE = new SimplePrimitive("BYTE", -3);
