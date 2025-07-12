@@ -470,7 +470,7 @@ class TypeExpr2Tests {
         }
     );
 
-    // Create an instance and LOG THE HASHCODES
+    // Create an instance and log the object hashCodes so that we can verify they are written to the wire logged by the writer
     LinkedListNode original = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
     LOGGER.info(() -> "Test: original.hashCode() = " + original.hashCode());
     LOGGER.info(() -> "Test: original.next.hashCode() = " + original.next().hashCode());
@@ -482,20 +482,20 @@ class TypeExpr2Tests {
 
     // Get the writer for the LinkedListNode type from the resolver
     var writerResolver = (Function<Class<?>, BiConsumer<ByteBuffer, Object>>) type -> (BiConsumer<ByteBuffer, Object>) (buf, obj) -> {
-        if (obj == null) {
-            LOGGER.fine("WriterResolver: Writing null signature (0L)");
-            buf.putLong(0L); // Special null signature
-            return;
-        }
-        // LOG THE HASHCODE AS REQUESTED
-        LOGGER.info(() -> "WriterResolver: Writing object with hashCode: " + obj.hashCode());
-        long sig = recordClassToTypeSignatureMap.get(obj.getClass());
-        LOGGER.fine("WriterResolver: Writing signature " + Long.toHexString(sig) + " for object: " + obj);
-        buf.putLong(sig);
-        serdes[0][0].writer().accept(buf, obj);
-        serdes[0][1].writer().accept(buf, obj);
+      if (obj == null) {
+        LOGGER.fine("WriterResolver: Writing null signature (0L)");
+        buf.putLong(0L); // Special null signature
+        return;
+      }
+      // LOG THE HASHCODE AS REQUESTED
+      LOGGER.info(() -> "WriterResolver: Writing object with hashCode: " + obj.hashCode());
+      long sig = recordClassToTypeSignatureMap.get(obj.getClass());
+      LOGGER.fine("WriterResolver: Writing signature " + Long.toHexString(sig) + " for object: " + obj);
+      buf.putLong(sig);
+      serdes[0][0].writer().accept(buf, obj);
+      serdes[0][1].writer().accept(buf, obj);
     };
-    
+
     var nodeWriter = writerResolver.apply(recordClass);
     nodeWriter.accept(buffer, original);
 
@@ -503,11 +503,11 @@ class TypeExpr2Tests {
 
     // Manually deserialize
     var readerResolver = (Function<Long, Function<ByteBuffer, Object>>) type -> (Function<ByteBuffer, Object>) buf -> {
-        var val = (int) serdes[0][0].reader().apply(buf);
-        var next = (LinkedListNode) serdes[0][1].reader().apply(buf);
-        return new LinkedListNode(val, next);
+      var val = (int) serdes[0][0].reader().apply(buf);
+      var next = (LinkedListNode) serdes[0][1].reader().apply(buf);
+      return new LinkedListNode(val, next);
     };
-    
+
     long signature = buffer.getLong();
     var objectReader = readerResolver.apply(signature);
     LinkedListNode deserialized = (LinkedListNode) objectReader.apply(buffer);
@@ -531,32 +531,181 @@ class TypeExpr2Tests {
   @Test
   @DisplayName("Test sealed interface (LinkListEmptyEnd) round trips")
   void testSealedInterfaceRoundTrip() {
-    // 1. Define user types
-    final List<Class<?>> userTypes = List.of(
-        LinkListEmptyEnd.class,
+    // 1. Define user types (both records and the sealed interface)
+    final List<Class<?>> recordTypes = List.of(
         LinkListEmptyEnd.LinkedRecord.class,
         LinkListEmptyEnd.LinkEnd.class,
         LinkListEmptyEnd.Boxed.class
     );
+    final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(recordTypes);
 
-    // 2. Build the ComponentSerdes for the top-level record
-    // The main goal of this test is to ensure that building the serdes for a recursive
-    // and polymorphic sealed interface does not cause a StackOverflowError.
-    final ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    // Log the signatures for debugging
+    recordTypeSignatureMap.forEach((type, sig) ->
+        LOGGER.info(() -> "Test: " + type.getSimpleName() + " typeSignature = " + Long.toHexString(sig)));
+
+    // 2. Build the ComponentSerdes for the top-level LinkedRecord
+    final ComponentSerde[][] serdes = {null}; // Array wrapper for closure
+    serdes[0] = Companion2.buildComponentSerdes(
         LinkListEmptyEnd.LinkedRecord.class,
         List.of(), // No custom handlers
-        // Sizer Resolver: For this test, a simple resolver is sufficient.
-        type -> (obj) -> Long.BYTES,
-        // Writer Resolver: For this test, a simple resolver is sufficient.
-        type -> (buffer, obj) -> {
+        // Sizer Resolver: Handles all user types
+        type -> (obj) -> {
+          if (obj == null) return Long.BYTES; // Null signature
+          if (type == LinkListEmptyEnd.Boxed.class) {
+            // Boxed record: signature + int component
+            return Long.BYTES + Integer.BYTES;
+          } else if (type == LinkListEmptyEnd.LinkedRecord.class) {
+            // LinkedRecord: signature + component sizes
+            return Long.BYTES + serdes[0][0].sizer().applyAsInt(obj) + serdes[0][1].sizer().applyAsInt(obj);
+          } else if (type == LinkListEmptyEnd.LinkEnd.class) {
+            // LinkEnd (empty record): just signature
+            return Long.BYTES;
+          } else {
+            throw new IllegalArgumentException("Unknown type: " + type);
+          }
         },
-        // Reader Resolver: For this test, a simple resolver is sufficient.
-        type -> buffer -> null
+        // Writer Resolver: Handles all user types
+        type -> (buffer, obj) -> {
+          if (obj == null) {
+            LOGGER.fine("WriterResolver: Writing null signature (0L)");
+            buffer.putLong(0L);
+            return;
+          }
+
+          LOGGER.info(() -> "WriterResolver: Writing object with hashCode: " + obj.hashCode() + " type: " + obj.getClass().getSimpleName());
+          long sig = recordTypeSignatureMap.get(obj.getClass());
+          LOGGER.fine("WriterResolver: Writing signature " + Long.toHexString(sig) + " for object: " + obj);
+          buffer.putLong(sig);
+
+          switch (obj) {
+            case LinkListEmptyEnd.Boxed(int value) -> buffer.putInt(value);
+            case LinkListEmptyEnd.LinkedRecord linked -> {
+              serdes[0][0].writer().accept(buffer, linked);
+              serdes[0][1].writer().accept(buffer, linked);
+            }
+            case LinkListEmptyEnd.LinkEnd ignored -> // LinkEnd is empty - nothing to write after signature
+                LOGGER.fine(() -> "WriterResolver: Writing LinkEnd, nothing to write after signature");
+            default -> throw new IllegalArgumentException("Unknown object type: " + obj.getClass());
+          }
+        },
+        // Reader Resolver: Handles all user types by signature
+        signature -> buffer -> {
+          if (signature == 0L) {
+            return null; // Null object
+          }
+
+          // Find the type by signature
+          Class<?> targetType = recordTypeSignatureMap.entrySet().stream()
+              .filter(entry -> entry.getValue().equals(signature))
+              .map(Map.Entry::getKey)
+              .findFirst()
+              .orElseThrow(() -> new IllegalArgumentException("Unknown signature: " + Long.toHexString(signature)));
+
+          LOGGER.fine("ReaderResolver: Reading type " + targetType.getSimpleName() + " from signature " + Long.toHexString(signature));
+
+          if (targetType == LinkListEmptyEnd.Boxed.class) {
+            int value = buffer.getInt();
+            return new LinkListEmptyEnd.Boxed(value);
+          } else if (targetType == LinkListEmptyEnd.LinkedRecord.class) {
+            var value = (LinkListEmptyEnd.Boxed) serdes[0][0].reader().apply(buffer);
+            var next = (LinkListEmptyEnd) serdes[0][1].reader().apply(buffer);
+            return new LinkListEmptyEnd.LinkedRecord(value, next);
+          } else if (targetType == LinkListEmptyEnd.LinkEnd.class) {
+            return new LinkListEmptyEnd.LinkEnd();
+          } else {
+            throw new IllegalArgumentException("Unknown target type: " + targetType);
+          }
+        }
     );
 
-    // 3. Verify that the serdes were created successfully.
-    assertThat(serdes).isNotNull();
-    assertThat(serdes).hasSize(2); // value, next
+    // 3. Create test data with sealed interface hierarchy
+    LinkListEmptyEnd.Boxed value1 = new LinkListEmptyEnd.Boxed(42);
+    LinkListEmptyEnd.Boxed value2 = new LinkListEmptyEnd.Boxed(99);
+    LinkListEmptyEnd.LinkEnd end = new LinkListEmptyEnd.LinkEnd();
+    LinkListEmptyEnd.LinkedRecord middle = new LinkListEmptyEnd.LinkedRecord(value2, end);
+    LinkListEmptyEnd.LinkedRecord original = new LinkListEmptyEnd.LinkedRecord(value1, middle);
+
+    LOGGER.info(() -> "Test: original structure created with hashCodes - " +
+        "original: " + original.hashCode() +
+        ", value1: " + value1.hashCode() +
+        ", middle: " + middle.hashCode() +
+        ", value2: " + value2.hashCode() +
+        ", end: " + end.hashCode());
+
+    // 4. Manually serialize using the writer resolver
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    var writerResolver = (Function<Class<?>, BiConsumer<ByteBuffer, Object>>) type -> (buffer1, obj) -> {
+      if (obj == null) {
+        LOGGER.fine("WriterResolver: Writing null signature (0L)");
+        buffer1.putLong(0L);
+        return;
+      }
+
+      LOGGER.info(() -> "WriterResolver: Writing object with hashCode: " + obj.hashCode() + " type: " + obj.getClass().getSimpleName());
+      long sig = recordTypeSignatureMap.get(obj.getClass());
+      LOGGER.fine("WriterResolver: Writing signature " + Long.toHexString(sig) + " for object: " + obj);
+      buffer1.putLong(sig);
+
+      switch (obj) {
+        case LinkListEmptyEnd.Boxed(int value) -> buffer1.putInt(value);
+        case LinkListEmptyEnd.LinkedRecord linked -> {
+          serdes[0][0].writer().accept(buffer1, linked);
+          serdes[0][1].writer().accept(buffer1, linked);
+        }
+        case LinkListEmptyEnd.LinkEnd linkEnd ->
+          // LinkEnd is empty - nothing to write after signature
+            LOGGER.fine(() -> "WriterResolver: Writing LinkEnd, nothing to write after signature");
+        default -> throw new IllegalArgumentException("Unknown object type: " + obj.getClass());
+      }
+    };
+
+    var recordWriter = writerResolver.apply(LinkListEmptyEnd.LinkedRecord.class);
+    recordWriter.accept(buffer, original);
+
+    buffer.flip();
+
+    // 5. Manually deserialize using the reader resolver
+    var readerResolver = (Function<Long, Function<ByteBuffer, Object>>) signature -> buffer1 -> {
+      if (signature == 0L) {
+        return null; // Null object
+      }
+
+      // Find the type by signature
+      Class<?> targetType = recordTypeSignatureMap.entrySet().stream()
+          .filter(entry -> entry.getValue().equals(signature))
+          .map(Map.Entry::getKey)
+          .findFirst()
+          .orElseThrow(() -> new IllegalArgumentException("Unknown signature: " + Long.toHexString(signature)));
+
+      LOGGER.fine("ReaderResolver: Reading type " + targetType.getSimpleName() + " from signature " + Long.toHexString(signature));
+
+      if (targetType == LinkListEmptyEnd.Boxed.class) {
+        int value = buffer1.getInt();
+        return new LinkListEmptyEnd.Boxed(value);
+      } else if (targetType == LinkListEmptyEnd.LinkedRecord.class) {
+        var value = (LinkListEmptyEnd.Boxed) serdes[0][0].reader().apply(buffer1);
+        var next = (LinkListEmptyEnd) serdes[0][1].reader().apply(buffer1);
+        return new LinkListEmptyEnd.LinkedRecord(value, next);
+      } else if (targetType == LinkListEmptyEnd.LinkEnd.class) {
+        return new LinkListEmptyEnd.LinkEnd();
+      } else {
+        throw new IllegalArgumentException("Unknown target type: " + targetType);
+      }
+    };
+
+    long signature = buffer.getLong();
+    var objectReader = readerResolver.apply(signature);
+    LinkListEmptyEnd.LinkedRecord deserialized = (LinkListEmptyEnd.LinkedRecord) objectReader.apply(buffer);
+
+    // 6. Verify the round trip worked
+    assertThat(deserialized).isEqualTo(original);
+    assertThat(deserialized.value()).isEqualTo(original.value());
+    assertThat(deserialized.next()).isInstanceOf(LinkListEmptyEnd.LinkedRecord.class);
+
+    LinkListEmptyEnd.LinkedRecord deserializedMiddle = (LinkListEmptyEnd.LinkedRecord) deserialized.next();
+    assertThat(deserializedMiddle.value()).isEqualTo(value2);
+    assertThat(deserializedMiddle.next()).isInstanceOf(LinkListEmptyEnd.LinkEnd.class);
   }
 
   // Test types
