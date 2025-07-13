@@ -5,6 +5,7 @@ package io.github.simbo1905.no.framework;
 
 import io.github.simbo1905.LoggingControl;
 import io.github.simbo1905.RefactorTests;
+import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +17,7 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SuppressWarnings("auxiliaryclass")
-class DebugHeterogeneousTests {
+class TypeExpr2ListTests {
 
   @BeforeAll
   static void setupLogging() {
@@ -25,9 +26,9 @@ class DebugHeterogeneousTests {
 
   /// Test data records
   public sealed interface HeterogeneousItem permits
-      DebugHeterogeneousTests.ItemString, DebugHeterogeneousTests.ItemInt, DebugHeterogeneousTests.ItemLong,
-      DebugHeterogeneousTests.ItemBoolean, DebugHeterogeneousTests.ItemNull, DebugHeterogeneousTests.ItemTestRecord,
-      DebugHeterogeneousTests.ItemTestEnum, DebugHeterogeneousTests.ItemOptional, DebugHeterogeneousTests.ItemList {
+      TypeExpr2ListTests.ItemString, TypeExpr2ListTests.ItemInt, TypeExpr2ListTests.ItemLong,
+      TypeExpr2ListTests.ItemBoolean, TypeExpr2ListTests.ItemNull, TypeExpr2ListTests.ItemTestRecord,
+      TypeExpr2ListTests.ItemTestEnum, TypeExpr2ListTests.ItemOptional, TypeExpr2ListTests.ItemList {
   }
 
   public record ItemString(String value) implements HeterogeneousItem {
@@ -79,7 +80,6 @@ class DebugHeterogeneousTests {
     allRecordTypes.add(RefactorTests.Person.class);
     allRecordTypes.add(ComplexListRecord.class);
     final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(allRecordTypes);
-    final long testEnumSignature = Companion2.hashEnumSignature(TypeExpr2Tests.TestEnum.class);
     final Map<Class<?>, ComponentSerde[]> serdeMap = new HashMap<>();
 
     ComponentSerde[] serdes = Companion2.buildComponentSerdes(
@@ -97,23 +97,23 @@ class DebugHeterogeneousTests {
                 Companion2.buildComponentSerdes(t, List.of(),
                     type2 -> (o) -> 256,
                     type2 -> (buf, o) -> {
-                      if (o instanceof ItemString str) {
+                      if (o instanceof ItemString(String value)) {
                         ZigZagEncoding.putInt(buf, TypeExpr2.referenceToMarker(String.class));
-                        byte[] bytes = str.value().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                         ZigZagEncoding.putInt(buf, bytes.length);
                         buf.put(bytes);
-                      } else if (o instanceof ItemInt intVal) {
+                      } else if (o instanceof ItemInt(Integer value)) {
                         ZigZagEncoding.putInt(buf, TypeExpr2.referenceToMarker(Integer.class));
-                        buf.putInt(intVal.value());
-                      } else if (o instanceof ItemLong longVal) {
+                        buf.putInt(value);
+                      } else if (o instanceof ItemLong(Long value)) {
                         ZigZagEncoding.putInt(buf, TypeExpr2.referenceToMarker(Long.class));
-                        buf.putLong(longVal.value());
+                        buf.putLong(value);
                       }
                     },
                     sig2 -> buf -> null));
 
             // Only write component if the record has components
-            if (componentSerdes != null && componentSerdes.length > 0) {
+            if (componentSerdes.length > 0) {
               componentSerdes[0].writer().accept(buffer, obj);
             } else {
               LOGGER.fine(() -> "No component serdes for type: " + concreteType.getSimpleName());
@@ -133,17 +133,17 @@ class DebugHeterogeneousTests {
                 Companion2.buildComponentSerdes(t, List.of(),
                     type -> (obj) -> 256,
                     type2 -> (buf, o) -> {
-                      if (o instanceof ItemString str) {
+                      if (o instanceof ItemString(String value)) {
                         ZigZagEncoding.putInt(buf, TypeExpr2.referenceToMarker(String.class));
-                        byte[] bytes = str.value().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                         ZigZagEncoding.putInt(buf, bytes.length);
                         buf.put(bytes);
-                      } else if (o instanceof ItemInt intVal) {
+                      } else if (o instanceof ItemInt(Integer value)) {
                         ZigZagEncoding.putInt(buf, TypeExpr2.referenceToMarker(Integer.class));
-                        buf.putInt(intVal.value());
-                      } else if (o instanceof ItemLong longVal) {
+                        buf.putInt(value);
+                      } else if (o instanceof ItemLong(Long value)) {
                         ZigZagEncoding.putInt(buf, TypeExpr2.referenceToMarker(Long.class));
-                        buf.putLong(longVal.value());
+                        buf.putLong(value);
                       }
                     },
                     sig2 -> buf -> {
@@ -155,8 +155,7 @@ class DebugHeterogeneousTests {
                         int length = ZigZagEncoding.getInt(buf);
                         byte[] bytes = new byte[length];
                         buf.get(bytes);
-                        String value = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-                        return value;
+                        return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
                       } else if (targetType == ItemInt.class) {
                         int marker = ZigZagEncoding.getInt(buf);
                         if (marker != TypeExpr2.referenceToMarker(Integer.class)) {
@@ -218,10 +217,10 @@ class DebugHeterogeneousTests {
             long sig = 1L; // Fixed signature for testing
             LOGGER.fine(() -> "WriterResolver: Writing " + concreteType.getSimpleName() + " signature " + Long.toHexString(sig));
             buffer.putLong(sig);
-            if (obj instanceof ItemString str) {
-              LOGGER.fine(() -> "WriterResolver: Writing ItemString value: " + str.value());
+            if (obj instanceof ItemString(String value)) {
+              LOGGER.fine(() -> "WriterResolver: Writing ItemString value: " + value);
               ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(String.class));
-              byte[] bytes = str.value().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+              byte[] bytes = value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
               ZigZagEncoding.putInt(buffer, bytes.length);
               buffer.put(bytes);
             }
@@ -258,23 +257,13 @@ class DebugHeterogeneousTests {
 
     // Assert
     assertThat(deserializedList).hasSize(1);
-    assertThat(deserializedList.get(0)).isEqualTo(simpleList.get(0));
+    assertThat(deserializedList.getFirst()).isEqualTo(simpleList.getFirst());
   }
 
 
   @Test
   void testComplexHeterogeneousListWithPickler() {
-    // Create a complex list using the sealed interface wrappers
-    final List<TypeExpr2Tests.HeterogeneousItem> complexList = new ArrayList<>();
-    complexList.add(new TypeExpr2Tests.ItemString("a string"));
-    complexList.add(new TypeExpr2Tests.ItemInt(123));
-    complexList.add(new TypeExpr2Tests.ItemLong(456L));
-    complexList.add(new TypeExpr2Tests.ItemBoolean(true));
-    complexList.add(new TypeExpr2Tests.ItemNull()); // Representing null
-    complexList.add(new TypeExpr2Tests.ItemTestRecord(new RefactorTests.Person("rec1", 99)));
-    complexList.add(new TypeExpr2Tests.ItemTestEnum(TypeExpr2Tests.TestEnum.SECOND));
-    complexList.add(new TypeExpr2Tests.ItemOptional(Optional.empty()));
-    complexList.add(new TypeExpr2Tests.ItemList(Arrays.asList("nested", "list", null))); // List with nulls included
+    final List<TypeExpr2Tests.HeterogeneousItem> complexList = buildListForTest();
     final var originalRecord = new TypeExpr2Tests.ComplexListRecord(complexList);
 
     // Log hashCodes for debugging as requested
@@ -405,6 +394,10 @@ class DebugHeterogeneousTests {
                     type2 -> (o) -> 256,
                     type2 -> (buf, o) -> {
                       if (type2 == RefactorTests.Person.class) {
+                        // Write Person type signature first
+                        long sig2 = recordTypeSignatureMap.get(RefactorTests.Person.class);
+                        buf.putLong(sig2);
+
                         RefactorTests.Person person = (RefactorTests.Person) o;
                         // Write name (nullable String)
                         buf.put(Companion2.NOT_NULL_MARKER);
@@ -416,6 +409,9 @@ class DebugHeterogeneousTests {
                         ZigZagEncoding.putInt(buf, TypeExpr2.primitiveToMarker(int.class));
                         buf.putInt(person.age());
                       } else if (type2 == TypeExpr2Tests.TestEnum.class) {
+                        // Write TestEnum type signature first
+                        buf.putLong(testEnumSignature);
+
                         TypeExpr2Tests.TestEnum enumValue = (TypeExpr2Tests.TestEnum) o;
                         ZigZagEncoding.putInt(buf, enumValue.ordinal());
                       }
@@ -574,13 +570,15 @@ class DebugHeterogeneousTests {
 
             // Handle zero-component records like ItemNull
             if (componentSerdes.length == 0) {
+              LOGGER.fine(() -> "Handling zero-component record: " + targetType.getSimpleName());
               if (targetType == TypeExpr2Tests.ItemNull.class) {
+                LOGGER.fine(() -> "Instantiating ItemNull");
                 return new TypeExpr2Tests.ItemNull();
               }
-              // Add other zero-component record constructors here if any
               throw new IllegalStateException("Unhandled zero-component record: " + targetType);
             }
-            
+            LOGGER.fine(() -> "Reading component value for " + targetType.getSimpleName());
+
             Object componentValue = componentSerdes[0].reader().apply(buffer);
 
             // Construct the appropriate sealed type
@@ -631,6 +629,20 @@ class DebugHeterogeneousTests {
     IntStream.range(0, complexList.size()).forEach(i ->
         assertThat(deserializedList.get(i)).isEqualTo(complexList.get(i))
     );
+  }
+
+  private static @NotNull List<TypeExpr2Tests.HeterogeneousItem> buildListForTest() {
+    final List<TypeExpr2Tests.HeterogeneousItem> complexList = new ArrayList<>();
+    complexList.add(new TypeExpr2Tests.ItemString("a string"));
+    complexList.add(new TypeExpr2Tests.ItemInt(123));
+    complexList.add(new TypeExpr2Tests.ItemLong(456L));
+    complexList.add(new TypeExpr2Tests.ItemBoolean(true));
+    complexList.add(new TypeExpr2Tests.ItemNull()); // Representing null
+    complexList.add(new TypeExpr2Tests.ItemTestRecord(new RefactorTests.Person("rec1", 99)));
+    complexList.add(new TypeExpr2Tests.ItemTestEnum(TypeExpr2Tests.TestEnum.SECOND));
+    complexList.add(new TypeExpr2Tests.ItemOptional(Optional.empty()));
+    complexList.add(new TypeExpr2Tests.ItemList(Arrays.asList("nested", "list", null))); // List with nulls included
+    return complexList;
   }
 
 }
