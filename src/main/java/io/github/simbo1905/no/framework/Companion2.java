@@ -87,8 +87,8 @@ sealed interface Companion2 permits Companion2.Nothing {
           createListWriter(elementNode, getter, customHandlers, typeWriterResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
           createOptionalWriter(wrappedType, getter, customHandlers, typeWriterResolver);
-      case TypeExpr2.MapNode ignored ->
-          throw new UnsupportedOperationException("Map component writers not yet implemented");
+      case TypeExpr2.MapNode(var keyNode, var valueNode) ->
+          createMapWriter(keyNode, valueNode, getter, customHandlers, typeWriterResolver);
     };
   }
 
@@ -122,8 +122,8 @@ sealed interface Companion2 permits Companion2.Nothing {
       case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
           createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
-      case TypeExpr2.MapNode ignored ->
-          throw new UnsupportedOperationException("Map value readers not yet implemented");
+      case TypeExpr2.MapNode(var keyNode, var valueNode) ->
+          createMapReader(keyNode, valueNode, customHandlers, typeReaderResolver);
     };
   }
 
@@ -165,8 +165,8 @@ sealed interface Companion2 permits Companion2.Nothing {
       case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
           createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
-      case TypeExpr2.MapNode ignored ->
-          throw new UnsupportedOperationException("Map component readers not yet implemented");
+      case TypeExpr2.MapNode(var keyNode, var valueNode) ->
+          createMapReader(keyNode, valueNode, customHandlers, typeReaderResolver);
     };
   }
 
@@ -198,8 +198,8 @@ sealed interface Companion2 permits Companion2.Nothing {
           createListSizer(elementNode, getter, customHandlers, typeSizerResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
           createOptionalSizer(wrappedType, getter, customHandlers, typeSizerResolver);
-      case TypeExpr2.MapNode ignored ->
-          throw new UnsupportedOperationException("Map component sizers not yet implemented");
+      case TypeExpr2.MapNode(var keyNode, var valueNode) ->
+          createMapSizer(keyNode, valueNode, getter, customHandlers, typeSizerResolver);
     };
   }
 
@@ -831,6 +831,127 @@ sealed interface Companion2 permits Companion2.Nothing {
         list.add(elementReader.apply(buffer));
       }
       return list;
+    };
+  }
+
+  /// Create writer for Map types
+  static BiConsumer<ByteBuffer, Object> createMapWriter(
+      TypeExpr2 keyType,
+      TypeExpr2 valueType,
+      MethodHandle getter,
+      Collection<SerdeHandler> customHandlers,
+      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+  ) {
+    return (buffer, record) -> {
+      try {
+        @SuppressWarnings("unchecked")
+        java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) getter.invoke(record);
+
+        if (map == null) {
+          LOGGER.fine(() -> "Writing null map marker");
+          ZigZagEncoding.putInt(buffer, -1); // Null map marker
+          return;
+        }
+
+        LOGGER.fine(() -> "Writing map size: " + map.size());
+        ZigZagEncoding.putInt(buffer, map.size());
+        for (Map.Entry<Object, Object> entry : map.entrySet()) {
+          Object key = entry.getKey();
+          Object value = entry.getValue();
+          LOGGER.fine(() -> "Writing map entry: K=" + key + ", V=" + value);
+
+          // Write key with null handling
+          if (key == null) {
+            LOGGER.finer(() -> "Writing NULL_MARKER for key");
+            buffer.put(NULL_MARKER);
+          } else {
+            LOGGER.finer(() -> "Writing NOT_NULL_MARKER for key");
+            buffer.put(NOT_NULL_MARKER);
+            writeValue(buffer, key, keyType, customHandlers, typeWriterResolver);
+          }
+
+          // Write value with null handling
+          if (value == null) {
+            LOGGER.finer(() -> "Writing NULL_MARKER for value");
+            buffer.put(NULL_MARKER);
+          } else {
+            LOGGER.finer(() -> "Writing NOT_NULL_MARKER for value");
+            buffer.put(NOT_NULL_MARKER);
+            writeValue(buffer, value, valueType, customHandlers, typeWriterResolver);
+          }
+        }
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to write Map", e);
+      }
+    };
+  }
+
+  /// Create reader for Map types
+  static Function<ByteBuffer, Object> createMapReader(
+      TypeExpr2 keyType,
+      TypeExpr2 valueType,
+      Collection<SerdeHandler> customHandlers,
+      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+  ) {
+    final Function<ByteBuffer, Object> keyReader = createComponentReader(keyType, customHandlers, typeReaderResolver);
+    final Function<ByteBuffer, Object> valueReader = createComponentReader(valueType, customHandlers, typeReaderResolver);
+
+    return buffer -> {
+      final int size = ZigZagEncoding.getInt(buffer);
+      LOGGER.fine(() -> "Reading map size: " + size);
+      if (size == -1) {
+        LOGGER.fine(() -> "Read null map marker, returning null");
+        return null;
+      }
+
+      final var map = new java.util.HashMap<>(size);
+      for (int i = 0; i < size; i++) {
+        final int entryIndex = i;
+        LOGGER.fine(() -> "Reading map entry " + entryIndex);
+        Object key = keyReader.apply(buffer);
+        LOGGER.fine(() -> "Read map key: " + key);
+        Object value = valueReader.apply(buffer);
+        LOGGER.fine(() -> "Read map value: " + value);
+        map.put(key, value);
+      }
+      return map;
+    };
+  }
+
+  /// Create sizer for Map types
+  static ToIntFunction<Object> createMapSizer(
+      TypeExpr2 keyType,
+      TypeExpr2 valueType,
+      MethodHandle getter,
+      Collection<SerdeHandler> customHandlers,
+      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+  ) {
+    return record -> {
+      try {
+        @SuppressWarnings("unchecked")
+        java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) getter.invoke(record);
+        if (map == null) {
+          return ZigZagEncoding.sizeOf(-1);
+        }
+
+        int totalSize = ZigZagEncoding.sizeOf(map.size());
+        for (Map.Entry<Object, Object> entry : map.entrySet()) {
+          // Key size
+          totalSize += Byte.BYTES; // null marker
+          if (entry.getKey() != null) {
+            totalSize += sizeValue(entry.getKey(), keyType, customHandlers, typeSizerResolver);
+          }
+
+          // Value size
+          totalSize += Byte.BYTES; // null marker
+          if (entry.getValue() != null) {
+            totalSize += sizeValue(entry.getValue(), valueType, customHandlers, typeSizerResolver);
+          }
+        }
+        return totalSize;
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size Map", e);
+      }
     };
   }
 
