@@ -449,22 +449,22 @@ sealed interface Companion2 permits Companion2.Nothing {
             }
             case INTEGER -> {
               int intValue = (Integer) value;
-              if (intValue >= -1 && intValue <= 125) { // Tiny int optimization
-                ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(Integer.class));
-                buffer.put((byte) intValue);
-              } else {
+              if (ZigZagEncoding.sizeOf(intValue) < Integer.BYTES) { // Tiny int optimization
                 ZigZagEncoding.putInt(buffer, ((TypeExpr2.PrimitiveValueType.IntegerType) TypeExpr2.PrimitiveValueType.INTEGER).varMarker()); // Varint marker
                 ZigZagEncoding.putInt(buffer, intValue);
+              } else {
+                ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(Integer.class));
+                buffer.putInt(intValue);
               }
             }
             case LONG -> {
               long longValue = (Long) value;
-              if (longValue >= -1 && longValue <= 125) { // Tiny long optimization
-                ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(Long.class));
-                buffer.put((byte) longValue);
-              } else {
+              if (ZigZagEncoding.sizeOf(longValue) < Long.BYTES) { // Tiny long optimization
                 ZigZagEncoding.putInt(buffer, ((TypeExpr2.PrimitiveValueType.LongType) TypeExpr2.PrimitiveValueType.LONG).varMarker()); // Varlong marker
                 ZigZagEncoding.putLong(buffer, longValue);
+              } else {
+                ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(Long.class));
+                buffer.putLong(longValue);
               }
             }
             case FLOAT -> {
@@ -799,9 +799,13 @@ sealed interface Companion2 permits Companion2.Nothing {
         } else {
           ZigZagEncoding.putInt(buffer, list.size());
           for (Object item : list) {
-            // Unlike Optional, list elements can be null, so we need the full null-checking writer
-            final var itemWriter = createComponentWriter(elementType, MethodHandles.identity(Object.class), customHandlers, typeWriterResolver);
-            itemWriter.accept(buffer, item);
+            // Write list item with null handling - item is the value, not a record to extract from
+            if (item == null) {
+              buffer.put(NULL_MARKER);
+            } else {
+              buffer.put(NOT_NULL_MARKER);
+              writeValue(buffer, item, elementType, customHandlers, typeWriterResolver);
+            }
           }
         }
       } catch (Throwable e) {
@@ -837,7 +841,6 @@ sealed interface Companion2 permits Companion2.Nothing {
       Collection<SerdeHandler> customHandlers,
       Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
   ) {
-    final var elementSizer = createComponentSizer(elementType, MethodHandles.identity(Object.class), customHandlers, typeSizerResolver);
     return record -> {
       try {
         @SuppressWarnings("unchecked")
@@ -847,7 +850,10 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
         int totalSize = ZigZagEncoding.sizeOf(list.size());
         for (Object item : list) {
-          totalSize += elementSizer.applyAsInt(item);
+          totalSize += Byte.BYTES; // For the null marker
+          if (item != null) {
+            totalSize += sizeValue(item, elementType, customHandlers, typeSizerResolver);
+          }
         }
         return totalSize;
       } catch (Throwable e) {
@@ -953,11 +959,11 @@ sealed interface Companion2 permits Companion2.Nothing {
         yield (buffer, value) -> {
           final var intValue = (Integer) value;
           if (ZigZagEncoding.sizeOf(intValue) < Integer.BYTES) {
-            ZigZagEncoding.putInt(buffer, fixedMarker);
-            buffer.putInt(intValue);
-          } else {
             ZigZagEncoding.putInt(buffer, varMarker);
             ZigZagEncoding.putInt(buffer, intValue);
+          } else {
+            ZigZagEncoding.putInt(buffer, fixedMarker);
+            buffer.putInt(intValue);
           }
         };
       }
@@ -967,11 +973,11 @@ sealed interface Companion2 permits Companion2.Nothing {
         yield (buffer, value) -> {
           final var longValue = (Long) value;
           if (ZigZagEncoding.sizeOf(longValue) < Long.BYTES) {
-            ZigZagEncoding.putInt(buffer, fixedMarker);
-            buffer.putLong(longValue);
-          } else {
             ZigZagEncoding.putInt(buffer, varMarker);
             ZigZagEncoding.putLong(buffer, longValue);
+          } else {
+            ZigZagEncoding.putInt(buffer, fixedMarker);
+            buffer.putLong(longValue);
           }
         };
       }
