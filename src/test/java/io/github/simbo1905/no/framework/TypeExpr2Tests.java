@@ -895,7 +895,7 @@ class TypeExpr2Tests {
   }
 
   @SuppressWarnings("unused")
-  public enum TestEnum {A, B, SECOND, C}
+  public enum TestEnum {A, B, SECOND, THIRD}
 
   public record LinkedListNode(int value, LinkedListNode next) {
     public LinkedListNode(int value) {
