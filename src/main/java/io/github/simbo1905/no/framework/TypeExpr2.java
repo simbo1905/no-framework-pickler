@@ -68,15 +68,22 @@ sealed interface TypeExpr2 permits
   int VOID_MARKER = 0;
 
   /// Container type markers
-  static int containerToMarker(String containerType) {
-    return switch (containerType) {
-      case "OPTIONAL_EMPTY" -> -16;
-      case "OPTIONAL_OF" -> -17;
-      case "ARRAY" -> -18;
-      case "MAP" -> -19;
-      case "LIST" -> -20;
-      default -> throw new IllegalArgumentException("Not a container type: " + containerType);
-    };
+  enum ContainerType {
+    OPTIONAL_EMPTY(-16),
+    OPTIONAL_OF(-17),
+    ARRAY(-18),
+    MAP(-19),
+    LIST(-20);
+
+    private final int marker;
+
+    ContainerType(int marker) {
+      this.marker = marker;
+    }
+
+    int marker() {
+      return marker;
+    }
   }
 
   /// Array element type to specific array marker
@@ -329,7 +336,7 @@ sealed interface TypeExpr2 permits
     @Override
     public int marker() {
       // Array has its own marker
-      return containerToMarker("ARRAY");
+      return ContainerType.ARRAY.marker();
     }
 
     @Override
@@ -351,7 +358,7 @@ sealed interface TypeExpr2 permits
 
     @Override
     public int marker() {
-      return containerToMarker("LIST");
+      return ContainerType.LIST.marker();
     }
 
     @Override
@@ -375,7 +382,7 @@ sealed interface TypeExpr2 permits
     public int marker() {
       // Optional has two markers: EMPTY and OF
       // This is the container marker, actual wire format uses OPTIONAL_EMPTY/OPTIONAL_OF
-      return containerToMarker("OPTIONAL_OF");
+      return ContainerType.OPTIONAL_OF.marker();
     }
 
     @Override
@@ -398,7 +405,7 @@ sealed interface TypeExpr2 permits
 
     @Override
     public int marker() {
-      return containerToMarker("MAP");
+      return ContainerType.MAP.marker();
     }
 
     @Override

@@ -7,9 +7,10 @@ compact and fast, serializers for records containing value-like types as well as
 value-like types such as `UUID`, `String`, `enum` was well as container-like such as optionals, arrays, lists, and maps
 of value-like types.
 
-The library avoids deep reflection on the Object-stage (Runtime) "hot path"  for performance.
 All reflective operations are done during Meta-stage (Construction Time) in `Pickler.forClass(Class<?>)` on the public
-API of records.
+API of records. The library avoids deep reflection on the Object-stage (Runtime) "hot path"  for performance. It should
+also not do map lookups or other switch statements that can be made final variable to use at the Object-stage.
+
 This construction resolves public method handles and "unreflects" them to get direct method handles. It then creates
 functions that are delegation chains that are used at runtime without further reflection. This is done by constructing
 type specific serializers using:
@@ -315,7 +316,7 @@ graph TD
     classDef container fill: #4a5568, stroke: #2d3748, stroke-width: 2px, color: #e2e8f0
     classDef primitive fill: #718096, stroke: #4a5568, stroke-width: 2px, color: #e2e8f0
 class A, B, D, E, F container
-class C,G primitive
+class C, G primitive
 ```
 
 ### Buffer Allocation and maxSizeOf Strategy

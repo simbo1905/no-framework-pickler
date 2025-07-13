@@ -173,6 +173,178 @@ class TypeExpr2Tests {
   }
 
   @Test
+  void testOptionalStringRoundTrip() {
+    // Test Optional<String> serialization round-trip  
+    // Record must be public for reflection access
+
+    // Build ComponentSerde array
+    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        OptionalStringRecord.class,
+        List.of(), // No custom handlers
+        clazz -> obj -> 100, // Simple sizer resolver
+        clazz -> (buffer, obj) -> {
+        }, // Simple writer resolver
+        clazz -> buffer -> null // Simple reader resolver
+    );
+
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Test Optional.empty()
+    OptionalStringRecord emptyRecord = new OptionalStringRecord(Optional.empty());
+    serdes[0].writer().accept(buffer, emptyRecord);
+    buffer.flip();
+
+    // Read back and verify
+    @SuppressWarnings("unchecked") Optional<String> readEmpty = (Optional<String>) serdes[0].reader().apply(buffer);
+    assertThat(readEmpty).isEmpty();
+
+    // Test Optional.of(value)
+    buffer.clear();
+    OptionalStringRecord valueRecord = new OptionalStringRecord(Optional.of("hello"));
+    serdes[0].writer().accept(buffer, valueRecord);
+    buffer.flip();
+
+    // Read back and verify
+    @SuppressWarnings("unchecked") Optional<String> readValue = (Optional<String>) serdes[0].reader().apply(buffer);
+    assertThat(readValue).isPresent();
+    assertThat(readValue.get()).isEqualTo("hello");
+  }
+
+  public record OptionalIntRecord(Optional<Integer> optInt) {
+  }
+
+  @Test
+  void testOptionalIntegerRoundTrip() {
+    // Test Optional<Integer> serialization round-trip
+
+    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        OptionalIntRecord.class,
+        List.of(),
+        clazz -> obj -> 100,
+        clazz -> (buffer, obj) -> {
+        },
+        clazz -> buffer -> null
+    );
+
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Test Optional.empty()
+    OptionalIntRecord emptyRecord = new OptionalIntRecord(Optional.empty());
+    serdes[0].writer().accept(buffer, emptyRecord);
+    buffer.flip();
+
+    @SuppressWarnings("unchecked") Optional<Integer> readEmpty = (Optional<Integer>) serdes[0].reader().apply(buffer);
+    assertThat(readEmpty).isEmpty();
+
+    // Test Optional.of(42)
+    buffer.clear();
+    OptionalIntRecord valueRecord = new OptionalIntRecord(Optional.of(42));
+    serdes[0].writer().accept(buffer, valueRecord);
+    buffer.flip();
+
+    @SuppressWarnings("unchecked") Optional<Integer> readValue = (Optional<Integer>) serdes[0].reader().apply(buffer);
+    assertThat(readValue).isPresent();
+    assertThat(readValue.get()).isEqualTo(42);
+  }
+
+  @Test
+  void testOptionalRecordRoundTrip() {
+    final List<Class<?>> recordTypes = List.of(TestRecord.class);
+    final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(recordTypes);
+
+    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        OptionalRecordHolder.class,
+        List.of(),
+        // Sizer resolver for user types
+        type -> (obj) -> {
+          if (type == TestRecord.class) {
+            return Long.BYTES + 50; // signature + estimated component size
+          }
+          return 100;
+        },
+        // Writer resolver for user types
+        type -> (buffer, obj) -> {
+          if (type == TestRecord.class) {
+            TestRecord record = (TestRecord) obj;
+            long sig = recordTypeSignatureMap.get(TestRecord.class);
+            buffer.putLong(sig);
+            // Write components manually for test
+            byte[] nameBytes = record.name() != null ? record.name().getBytes(java.nio.charset.StandardCharsets.UTF_8) : new byte[0];
+            ZigZagEncoding.putInt(buffer, nameBytes.length);
+            buffer.put(nameBytes);
+            buffer.putInt(record.value());
+          }
+        },
+        // Reader resolver for user types
+        signature -> buffer -> {
+          if (signature.equals(recordTypeSignatureMap.get(TestRecord.class))) {
+            int nameLength = ZigZagEncoding.getInt(buffer);
+            byte[] nameBytes = new byte[nameLength];
+            buffer.get(nameBytes);
+            String name = nameLength > 0 ? new String(nameBytes, java.nio.charset.StandardCharsets.UTF_8) : null;
+            int value = buffer.getInt();
+            return new TestRecord(name, value);
+          }
+          return null;
+        }
+    );
+
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Test Optional.empty()
+    OptionalRecordHolder emptyRecord = new OptionalRecordHolder(Optional.empty());
+    serdes[0].writer().accept(buffer, emptyRecord);
+    buffer.flip();
+
+    @SuppressWarnings("unchecked") Optional<TestRecord> readEmpty = (Optional<TestRecord>) serdes[0].reader().apply(buffer);
+    assertThat(readEmpty).isEmpty();
+
+    // Test Optional.of(record)
+    buffer.clear();
+    TestRecord testRecord = new TestRecord("test", 123);
+    OptionalRecordHolder valueRecord = new OptionalRecordHolder(Optional.of(testRecord));
+    serdes[0].writer().accept(buffer, valueRecord);
+    buffer.flip();
+
+    @SuppressWarnings("unchecked") Optional<TestRecord> readValue = (Optional<TestRecord>) serdes[0].reader().apply(buffer);
+    assertThat(readValue).isPresent();
+    assertThat(readValue.get()).isEqualTo(testRecord);
+  }
+
+  @Test
+  void testOptionalMarkers() {
+    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        OptionalHolder.class,
+        List.of(),
+        clazz -> obj -> 100,
+        clazz -> (buffer, obj) -> {
+        },
+        clazz -> buffer -> null
+    );
+
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Test Optional.empty() writes OPTIONAL_EMPTY marker
+    OptionalHolder emptyRecord = new OptionalHolder(Optional.empty());
+    serdes[0].writer().accept(buffer, emptyRecord);
+
+    buffer.flip();
+    int emptyMarker = ZigZagEncoding.getInt(buffer);
+    assertThat(emptyMarker).isEqualTo(TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
+    assertThat(emptyMarker).isEqualTo(-16);
+
+    // Test Optional.of(value) writes OPTIONAL_OF marker
+    buffer.clear();
+    OptionalHolder valueRecord = new OptionalHolder(Optional.of("test"));
+    serdes[0].writer().accept(buffer, valueRecord);
+
+    buffer.flip();
+    int valueMarker = ZigZagEncoding.getInt(buffer);
+    assertThat(valueMarker).isEqualTo(TypeExpr2.ContainerType.OPTIONAL_OF.marker());
+    assertThat(valueMarker).isEqualTo(-17);
+  }
+
+  @Test
   void testComponentSerdeBuilding() {
     // Test record with String and int components - must be public for reflection
     // Using the existing public TestRecord(String name, int value)
@@ -653,7 +825,7 @@ class TypeExpr2Tests {
           serdes[0][0].writer().accept(buffer1, linked);
           serdes[0][1].writer().accept(buffer1, linked);
         }
-        case LinkListEmptyEnd.LinkEnd linkEnd ->
+        case LinkListEmptyEnd.LinkEnd ignored ->
           // LinkEnd is empty - nothing to write after signature
             LOGGER.fine(() -> "WriterResolver: Writing LinkEnd, nothing to write after signature");
         default -> throw new IllegalArgumentException("Unknown object type: " + obj.getClass());
@@ -715,6 +887,15 @@ class TypeExpr2Tests {
   public record SmallValues(int smallInt, long smallLong) {
   }
 
+  public record OptionalStringRecord(Optional<String> optString) {
+  }
+
+  public record OptionalRecordHolder(Optional<TestRecord> optRecord) {
+  }
+
+  public record OptionalHolder(Optional<String> value) {
+  }
+
   @SuppressWarnings("unused")
   public enum TestEnum {A, B, C}
 
@@ -722,6 +903,47 @@ class TypeExpr2Tests {
     public LinkedListNode(int value) {
       this(value, null);
     }
+  }
+
+  public record ListStringRecord(List<String> list) {
+  }
+
+  public record ComplexListRecord(List<Object> list) {
+  }
+
+  @Test
+  void testListStringRoundTrip() {
+    // Test List<String> serialization round-trip
+    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+        ListStringRecord.class,
+        List.of(), // No custom handlers
+        clazz -> obj -> 100, // Simple sizer resolver
+        clazz -> (buffer, obj) -> {
+        }, // Simple writer resolver
+        clazz -> buffer -> null // Simple reader resolver
+    );
+
+    ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+    // Test with a list of strings
+    ListStringRecord record = new ListStringRecord(java.util.Arrays.asList("hello", "world", null, "again"));
+    serdes[0].writer().accept(buffer, record);
+    buffer.flip();
+
+    // Read back and verify
+    @SuppressWarnings("unchecked")
+    List<String> readList = (List<String>) serdes[0].reader().apply(buffer);
+    assertThat(readList).containsExactly("hello", "world", null, "again");
+
+    // Test with a null list
+    buffer.clear();
+    ListStringRecord nullListRecord = new ListStringRecord(null);
+    serdes[0].writer().accept(buffer, nullListRecord);
+    buffer.flip();
+
+    @SuppressWarnings("unchecked")
+    List<String> readNullList = (List<String>) serdes[0].reader().apply(buffer);
+    assertThat(readNullList).isNull();
   }
 
   // inner interface of nested records and empty record end
