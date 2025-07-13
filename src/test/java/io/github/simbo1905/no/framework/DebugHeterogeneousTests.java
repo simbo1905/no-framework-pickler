@@ -111,8 +111,12 @@ class DebugHeterogeneousTests {
                       }
                     },
                     sig2 -> buf -> null));
-            if (componentSerdes.length > 0) {
+
+            // Only write component if the record has components
+            if (componentSerdes != null && componentSerdes.length > 0) {
               componentSerdes[0].writer().accept(buffer, obj);
+            } else {
+              LOGGER.fine(() -> "No component serdes for type: " + concreteType.getSimpleName());
             }
             return;
           }
@@ -509,6 +513,8 @@ class DebugHeterogeneousTests {
 
           // For sealed interface implementations
           if (sealedTypes.contains(targetType)) {
+
+
             // Read the single component
             var componentSerdes = serdeMap.computeIfAbsent(targetType, t ->
                 Companion2.buildComponentSerdes(t, List.of(),
@@ -565,6 +571,16 @@ class DebugHeterogeneousTests {
                       }
                       return null;
                     }));
+
+            // Handle zero-component records like ItemNull
+            if (componentSerdes.length == 0) {
+              if (targetType == TypeExpr2Tests.ItemNull.class) {
+                return new TypeExpr2Tests.ItemNull();
+              }
+              // Add other zero-component record constructors here if any
+              throw new IllegalStateException("Unhandled zero-component record: " + targetType);
+            }
+            
             Object componentValue = componentSerdes[0].reader().apply(buffer);
 
             // Construct the appropriate sealed type
