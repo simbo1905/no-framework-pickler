@@ -10,10 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,58 +24,52 @@ class TypeExpr2MapTests {
   }
 
   public sealed interface HeterogeneousItem permits
-      TypeExpr2MapTests.ItemString, TypeExpr2MapTests.ItemInt, TypeExpr2MapTests.ItemLong,
-      TypeExpr2MapTests.ItemBoolean, TypeExpr2MapTests.ItemNull, TypeExpr2MapTests.ItemTestRecord,
-      TypeExpr2MapTests.ItemTestEnum, TypeExpr2MapTests.ItemOptional, TypeExpr2MapTests.ItemList {
+      ItemString, ItemInt, ItemLong,
+      ItemBoolean, ItemNull, ItemTestRecord,
+      ItemTestEnum, ItemOptional, ItemList {
   }
 
-  public record ItemString(String value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemString(String value) implements HeterogeneousItem {
   }
 
-  public record ItemInt(Integer value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemInt(Integer value) implements HeterogeneousItem {
   }
 
-  public record ItemLong(Long value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemLong(Long value) implements HeterogeneousItem {
   }
 
-  public record ItemBoolean(Boolean value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemBoolean(Boolean value) implements HeterogeneousItem {
   }
 
-  public record ItemNull() implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemNull() implements HeterogeneousItem {
   }
 
-  public record ItemTestRecord(RefactorTests.Person person) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemTestRecord(RefactorTests.Person person) implements HeterogeneousItem {
   }
 
-  public record ItemTestEnum(TypeExpr2Tests.TestEnum value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemTestEnum(TypeExpr2Tests.TestEnum value) implements HeterogeneousItem {
   }
 
-  public record ItemOptional(Optional<String> value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemOptional(Optional<String> value) implements HeterogeneousItem {
   }
 
-  public record ItemList(List<String> value) implements TypeExpr2MapTests.HeterogeneousItem {
+  public record ItemList(List<String> value) implements HeterogeneousItem {
   }
 
   // Test data record holding a map.
-  // Note: The value type is Object to allow for heterogeneous content.
-  public record ComplexMapRecord(
-      Map<TypeExpr2MapTests.HeterogeneousItem, TypeExpr2MapTests.HeterogeneousItem> items) {
-  }
-
-  // A sample enum for testing purposes.
-  enum TestEnum {
-    FIRST, SECOND, THIRD
+  public record ComplexMapRecord(Map<HeterogeneousItem, HeterogeneousItem> items) {
   }
 
   // Same resolver setup as main test
   final List<Class<?>> sealedTypes = List.of(
-      TypeExpr2MapTests.ItemString.class, TypeExpr2MapTests.ItemInt.class, TypeExpr2MapTests.ItemLong.class, TypeExpr2MapTests.ItemBoolean.class, TypeExpr2MapTests.ItemNull.class,
-      TypeExpr2MapTests.ItemTestRecord.class, TypeExpr2MapTests.ItemTestEnum.class, TypeExpr2MapTests.ItemOptional.class, TypeExpr2MapTests.ItemList.class
+      ItemString.class, ItemInt.class, ItemLong.class, ItemBoolean.class, ItemNull.class,
+      ItemTestRecord.class, ItemTestEnum.class, ItemOptional.class, ItemList.class
   );
 
+  @SuppressWarnings("unchecked")
   @Test
   void testComplexHeterogeneousMapManually() {
-    final Map<TypeExpr2MapTests.HeterogeneousItem, TypeExpr2MapTests.HeterogeneousItem> complexMap = buildMapForTest();
+    final Map<HeterogeneousItem, HeterogeneousItem> complexMap = buildMapForTest();
     final var originalRecord = new ComplexMapRecord(complexMap);
 
     LOGGER.info(() -> "Test: originalRecord.hashCode() = " + originalRecord.hashCode());
@@ -88,19 +79,10 @@ class TypeExpr2MapTests {
     );
 
     // 1. Define all record and enum types that need explicit signature handling.
-    final List<Class<?>> allRecordTypes = List.of(
-        ComplexMapRecord.class,
-        RefactorTests.Person.class,
-        ItemString.class,
-        ItemInt.class,
-        ItemLong.class,
-        ItemBoolean.class,
-        ItemNull.class,
-        ItemTestRecord.class,
-        ItemTestEnum.class,
-        ItemOptional.class,
-        ItemList.class
-    );
+    final List<Class<?>> allRecordTypes = new ArrayList<>(sealedTypes);
+    allRecordTypes.add(ComplexMapRecord.class);
+    allRecordTypes.add(RefactorTests.Person.class);
+
     final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(allRecordTypes);
     final long testEnumSignature = Companion2.hashEnumSignature(TypeExpr2Tests.TestEnum.class);
 
@@ -109,65 +91,163 @@ class TypeExpr2MapTests {
         LOGGER.info(() -> "Test: " + type.getSimpleName() + " typeSignature = " + Long.toHexString(sig)));
     LOGGER.info(() -> "Test: TestEnum typeSignature = " + Long.toHexString(testEnumSignature));
 
-    final long personSignature = recordTypeSignatureMap.get(RefactorTests.Person.class);
     final Map<Class<?>, ComponentSerde[]> serdeMap = new HashMap<>();
 
-    SizerResolver typeSizerResolver = null;
-    WriterResolver typeWriterResolver = null;
-    ReaderResolver typeReaderResolver = null;
+    // Create placeholders for the resolvers to avoid circular dependencies.
+    final SizerResolver[] sizerResolverHolder = new SizerResolver[1];
+    final WriterResolver[] writerResolverHolder = new WriterResolver[1];
+    final ReaderResolver[] readerResolverHolder = new ReaderResolver[1];
+
+    SizerResolver sizerResolver = type -> (obj) -> {
+      if (obj == null) return Long.BYTES; // Null signature
+
+      if (type == RefactorTests.Person.class) {
+        RefactorTests.Person person = (RefactorTests.Person) obj;
+        return Long.BYTES + // signature
+            Byte.BYTES + ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(String.class)) +
+            ZigZagEncoding.sizeOf(person.name().length()) + person.name().getBytes(java.nio.charset.StandardCharsets.UTF_8).length + // name
+            ZigZagEncoding.sizeOf(TypeExpr2.primitiveToMarker(int.class)) + Integer.BYTES; // age
+      }
+
+      if (type == TypeExpr2Tests.TestEnum.class) {
+        return Long.BYTES + ZigZagEncoding.sizeOf(((Enum<?>) obj).ordinal());
+      }
+
+      if (sealedTypes.contains(type)) {
+        var componentSerdes = serdeMap.computeIfAbsent(type, t ->
+            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+        if (componentSerdes.length == 0) return Long.BYTES;
+        return Long.BYTES + componentSerdes[0].sizer().applyAsInt(obj);
+      }
+      return 256;
+    };
+    sizerResolverHolder[0] = sizerResolver;
+
+    WriterResolver writerResolver = type -> (buffer, obj) -> {
+      if (obj == null) {
+        buffer.putLong(0L);
+        return;
+      }
+
+      Class<?> concreteType = obj.getClass();
+
+      if (concreteType == RefactorTests.Person.class) {
+        RefactorTests.Person person = (RefactorTests.Person) obj;
+        buffer.putLong(recordTypeSignatureMap.get(RefactorTests.Person.class));
+        // Write components of Person
+        var personSerdes = serdeMap.computeIfAbsent(RefactorTests.Person.class, t ->
+            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+        personSerdes[0].writer().accept(buffer, person); // name
+        personSerdes[1].writer().accept(buffer, person); // age
+        return;
+      }
+
+      if (concreteType == TypeExpr2Tests.TestEnum.class) {
+        buffer.putLong(testEnumSignature);
+        ZigZagEncoding.putInt(buffer, ((TypeExpr2Tests.TestEnum) obj).ordinal());
+        return;
+      }
+
+      if (sealedTypes.contains(concreteType)) {
+        buffer.putLong(recordTypeSignatureMap.get(concreteType));
+        var componentSerdes = serdeMap.computeIfAbsent(concreteType, t ->
+            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+        if (componentSerdes.length > 0) {
+          componentSerdes[0].writer().accept(buffer, obj);
+        }
+        return;
+      }
+
+      if (type == HeterogeneousItem.class) {
+        writerResolverHolder[0].resolveWriter(concreteType).accept(buffer, obj);
+        return;
+      }
+
+      throw new IllegalArgumentException("Unknown type for writer: " + type);
+    };
+    writerResolverHolder[0] = writerResolver;
+
+    ReaderResolver readerResolver = signature -> buffer -> {
+      if (signature == 0L) return null;
+
+      if (signature == testEnumSignature) {
+        int ordinal = ZigZagEncoding.getInt(buffer);
+        return TypeExpr2Tests.TestEnum.values()[ordinal];
+      }
+
+      Class<?> targetType = recordTypeSignatureMap.entrySet().stream()
+          .filter(entry -> entry.getValue().equals(signature))
+          .map(Map.Entry::getKey)
+          .findFirst()
+          .orElseThrow(() -> new IllegalArgumentException("Unknown signature: " + Long.toHexString(signature)));
+
+      if (targetType == RefactorTests.Person.class) {
+        var personSerdes = serdeMap.computeIfAbsent(RefactorTests.Person.class, t ->
+            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+        String name = (String) personSerdes[0].reader().apply(buffer);
+        int age = (int) personSerdes[1].reader().apply(buffer);
+        return new RefactorTests.Person(name, age);
+      }
+
+      if (sealedTypes.contains(targetType)) {
+        var componentSerdes = serdeMap.computeIfAbsent(targetType, t ->
+            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+
+        if (componentSerdes.length == 0) {
+          if (targetType == ItemNull.class) return new ItemNull();
+          throw new IllegalStateException("Unhandled zero-component record: " + targetType);
+        }
+
+        Object componentValue = componentSerdes[0].reader().apply(buffer);
+
+        // Construct the appropriate sealed type
+        if (targetType == ItemString.class) return new ItemString((String) componentValue);
+        if (targetType == ItemInt.class) return new ItemInt((Integer) componentValue);
+        if (targetType == ItemLong.class) return new ItemLong((Long) componentValue);
+        if (targetType == ItemBoolean.class) return new ItemBoolean((Boolean) componentValue);
+        if (targetType == ItemTestRecord.class) return new ItemTestRecord((RefactorTests.Person) componentValue);
+        if (targetType == ItemTestEnum.class) return new ItemTestEnum((TypeExpr2Tests.TestEnum) componentValue);
+        if (targetType == ItemOptional.class) return new ItemOptional((Optional<String>) componentValue);
+        if (targetType == ItemList.class) return new ItemList((List<String>) componentValue);
+      }
+
+      throw new IllegalArgumentException("Unknown target type for construction: " + targetType);
+    };
+    readerResolverHolder[0] = readerResolver;
 
     // 2. Build component serdes for the ComplexMapRecord
     ComponentSerde[] serdes = Companion2.buildComponentSerdes(
         ComplexMapRecord.class,
         List.of(),
-        typeSizerResolver,
-        typeWriterResolver,
-        typeReaderResolver
+        sizerResolver,
+        writerResolver,
+        readerResolver
     );
 
     // 3. Perform manual Serialization and Deserialization.
-    final ByteBuffer buffer2 = ByteBuffer.allocate(4096);
+    final ByteBuffer buffer = ByteBuffer.allocate(4096);
+    serdes[0].writer().accept(buffer, originalRecord);
+    buffer.flip();
 
-    // The writer for the first component ('items' map) takes the whole record
-    // and internally extracts the map to serialize it.
-    serdes[0].writer().accept(buffer2, originalRecord);
-    buffer2.flip();
-
-    // The reader for the first component returns the deserialized component (the map).
     @SuppressWarnings("unchecked")
-    Map<TypeExpr2MapTests.HeterogeneousItem, TypeExpr2MapTests.HeterogeneousItem> deserializedMap = (Map<TypeExpr2MapTests.HeterogeneousItem, TypeExpr2MapTests.HeterogeneousItem>) serdes[0].reader().apply(buffer2);
+    Map<HeterogeneousItem, HeterogeneousItem> deserializedMap = (Map<HeterogeneousItem, HeterogeneousItem>) serdes[0].reader().apply(buffer);
 
-    // Reconstruct the record from the deserialized component.
     final var deserializedRecord = new ComplexMapRecord(deserializedMap);
-
-    // Deep equality check on the original and deserialized maps.
-    // HashMap's equals method correctly handles null keys and values.
-    assertThat(deserializedMap).isEqualTo(complexMap);
+    assertThat(deserializedRecord).isEqualTo(originalRecord);
   }
 
   /**
    * Builds a heterogeneous map for testing.
-   * Critically, it includes a null key and a null value to test handling of these cases,
-   * which is supported by java.util.HashMap.
    */
-  static @NotNull Map<TypeExpr2MapTests.HeterogeneousItem, TypeExpr2MapTests.HeterogeneousItem> buildMapForTest() {
-    final Map<TypeExpr2MapTests.HeterogeneousItem, TypeExpr2MapTests.HeterogeneousItem> map = new HashMap<>();
-
-    // Populate with a variety of heterogeneous key-value pairs
-    map.put(new TypeExpr2MapTests.ItemString("stringKey"), new TypeExpr2MapTests.ItemInt(12345));
-    map.put(new TypeExpr2MapTests.ItemInt(54321), new TypeExpr2MapTests.ItemString("value for int key"));
-    map.put(new TypeExpr2MapTests.ItemLong(98765L), new TypeExpr2MapTests.ItemBoolean(true));
-    map.put(new TypeExpr2MapTests.ItemTestRecord(new RefactorTests.Person("keyPerson", 99)), new TypeExpr2MapTests.ItemString("value for record key"));
-    map.put(new TypeExpr2MapTests.ItemString("key for enum value"), new TypeExpr2MapTests.ItemTestEnum(TypeExpr2Tests.TestEnum.THIRD));
-
-    // Critical test cases for null handling.
-    // A key mapped to an explicit null representation (ItemNull).
-    map.put(new TypeExpr2MapTests.ItemString("keyToNullItem"), new TypeExpr2MapTests.ItemNull());
-
-    // An explicit null representation (ItemNull) used as a key.
-    map.put(new TypeExpr2MapTests.ItemNull(), new TypeExpr2MapTests.ItemString("valueForItemNullKey"));
-
+  static @NotNull Map<HeterogeneousItem, HeterogeneousItem> buildMapForTest() {
+    final Map<HeterogeneousItem, HeterogeneousItem> map = new HashMap<>();
+    map.put(new ItemString("stringKey"), new ItemInt(12345));
+    map.put(new ItemInt(54321), new ItemString("value for int key"));
+    map.put(new ItemLong(98765L), new ItemBoolean(true));
+    map.put(new ItemTestRecord(new RefactorTests.Person("keyPerson", 99)), new ItemString("value for record key"));
+    map.put(new ItemString("key for enum value"), new ItemTestEnum(TypeExpr2Tests.TestEnum.THIRD));
+    map.put(new ItemString("keyToNullItem"), new ItemNull());
+    map.put(new ItemNull(), new ItemString("valueForItemNullKey"));
     return map;
   }
-
 }
