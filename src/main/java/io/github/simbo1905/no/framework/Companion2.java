@@ -23,6 +23,49 @@ import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
+interface Sizer extends ToIntFunction<Object> {
+  /// Get the size of an object of the given class
+  default int sizeOf(Object obj) {
+    return applyAsInt(obj);
+  }
+}
+
+interface SizerResolver extends
+    Function<Class<?>, Sizer> {
+}
+
+interface Writer extends
+    BiConsumer<ByteBuffer, Object> {
+
+  /// Write an object to the ByteBuffer
+  default void write(ByteBuffer buffer, Object obj) {
+    accept(buffer, obj);
+  }
+}
+
+interface WriterResolver extends
+    Function<Class<?>, Writer> {
+  default Writer resolveWriter(Class<?> type) {
+    return apply(type);
+  }
+}
+
+interface Reader extends
+    Function<ByteBuffer, Object> {
+
+  /// Read an object from the ByteBuffer
+  default Object read(ByteBuffer buffer) {
+    return apply(buffer);
+  }
+}
+
+interface ReaderResolver extends
+    Function<Long, Reader> {
+  default Reader resolveReader(long typeSignature, ByteBuffer buffer) {
+    return apply(typeSignature);
+  }
+}
+
 /// Companion for TypeExpr2-based component serde building
 @SuppressWarnings("auxiliaryclass")
 sealed interface Companion2 permits Companion2.Nothing {
@@ -32,9 +75,9 @@ sealed interface Companion2 permits Companion2.Nothing {
   static ComponentSerde[] buildComponentSerdes(
       Class<?> recordClass,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      SizerResolver typeSizerResolver,
+      WriterResolver typeWriterResolver,
+      ReaderResolver typeReaderResolver
   ) {
     LOGGER.fine(() -> "Building ComponentSerde[] for record: " + recordClass.getName());
 
@@ -49,9 +92,9 @@ sealed interface Companion2 permits Companion2.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          BiConsumer<ByteBuffer, Object> writer = createComponentWriter(typeExpr, getter, customHandlers, typeWriterResolver);
-          Function<ByteBuffer, Object> reader = createComponentReader(typeExpr, customHandlers, typeReaderResolver);
-          ToIntFunction<Object> sizer = createComponentSizer(typeExpr, getter, customHandlers, typeSizerResolver);
+          Writer writer = createComponentWriter(typeExpr, getter, customHandlers, typeWriterResolver);
+          Reader reader = createComponentReader(typeExpr, customHandlers, typeReaderResolver);
+          Sizer sizer = createComponentSizer(typeExpr, getter, customHandlers, typeSizerResolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
@@ -59,11 +102,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for a component based on its TypeExpr2
-  static BiConsumer<ByteBuffer, Object> createComponentWriter(
+  static Writer createComponentWriter(
       TypeExpr2 typeExpr,
       MethodHandle getter,
       @SuppressWarnings("auxiliaryclass") Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+      WriterResolver typeWriterResolver
   ) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveWriter(type, getter);
@@ -93,10 +136,10 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create value reader without null checking (for Optional and other containers)
-  static Function<ByteBuffer, Object> createValueReaderWithoutNullCheck(
+  static Reader createValueReaderWithoutNullCheck(
       TypeExpr2 typeExpr,
       Collection<SerdeHandler> customHandlers,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      ReaderResolver typeReaderResolver
   ) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(final var type, final var javaType) -> createPrimitiveReader(type);
@@ -128,16 +171,14 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create reader for a component based on its TypeExpr2
-  static Function<ByteBuffer, Object> createComponentReader(
+  static Reader createComponentReader(
       TypeExpr2 typeExpr,
       @SuppressWarnings("auxiliaryclass") Collection<SerdeHandler> customHandlers,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      ReaderResolver typeReaderResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode ignored -> {
-        // Primitives cannot be null, so no null check needed
-        yield createValueReaderWithoutNullCheck(typeExpr, customHandlers, typeReaderResolver);
-      }
+      case TypeExpr2.PrimitiveValueNode ignored -> // Primitives cannot be null, so no null check needed
+          createValueReaderWithoutNullCheck(typeExpr, customHandlers, typeReaderResolver);
 
       case TypeExpr2.RefValueNode(final var refType, final var javaType, final var marker) -> {
         // Get the value reader without null checking
@@ -171,11 +212,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for a component based on its TypeExpr2
-  static ToIntFunction<Object> createComponentSizer(
+  static Sizer createComponentSizer(
       TypeExpr2 typeExpr,
       MethodHandle getter,
       @SuppressWarnings("auxiliaryclass") Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+      SizerResolver typeSizerResolver
   ) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveSizer(type);
@@ -218,7 +259,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for primitive types
-  static BiConsumer<ByteBuffer, Object> createPrimitiveWriter(TypeExpr2.PrimitiveValueType type, MethodHandle getter) {
+  static Writer createPrimitiveWriter(TypeExpr2.PrimitiveValueType type, MethodHandle getter) {
     return (buffer, obj) -> {
       try {
         switch (type) {
@@ -273,7 +314,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create reader for primitive types
-  static Function<ByteBuffer, Object> createPrimitiveReader(TypeExpr2.PrimitiveValueType type) {
+  static Reader createPrimitiveReader(TypeExpr2.PrimitiveValueType type) {
     return buffer -> switch (type) {
       case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
         yield switch (name) {
@@ -311,34 +352,34 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
+  Sizer byteSizer = (o) -> Byte.BYTES;
+
   /// Create sizer for primitive types
-  static ToIntFunction<Object> createPrimitiveSizer(TypeExpr2.PrimitiveValueType type) {
+  static Sizer createPrimitiveSizer(TypeExpr2.PrimitiveValueType type) {
     // Primitive types don't need the record object, just return worst-case sizes
-    return obj -> switch (type) {
-      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
-        yield switch (name) {
-          case "BOOLEAN", "BYTE" -> Byte.BYTES;
-          case "SHORT", "CHARACTER" -> Short.BYTES;
-          case "FLOAT" -> Float.BYTES;
-          case "DOUBLE" -> Double.BYTES;
-          default -> throw new IllegalStateException("Unknown primitive type: " + name);
-        };
-      }
-      case TypeExpr2.PrimitiveValueType.IntegerType ignored ->
-        // Worst case: 1 byte marker + 4 bytes data
+    return switch (type) {
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> switch (name) {
+        case "BOOLEAN", "BYTE" -> (o) -> Byte.BYTES;
+        case "SHORT", "CHARACTER" -> (o) -> Short.BYTES;
+        case "FLOAT" -> (o) -> Float.BYTES;
+        case "DOUBLE" -> (o) -> Double.BYTES;
+        default -> throw new IllegalStateException("Unknown primitive type: " + name);
+      };
+      case TypeExpr2.PrimitiveValueType.IntegerType ignored -> (o) ->
+          // Worst case: 1 byte marker + 4 bytes data
           ZigZagEncoding.sizeOf(-6) + Integer.BYTES;
-      case TypeExpr2.PrimitiveValueType.LongType ignored ->
-        // Worst case: 1 byte marker + 8 bytes data
+      case TypeExpr2.PrimitiveValueType.LongType ignored -> (o) ->
+          // Worst case: 1 byte marker + 8 bytes data
           ZigZagEncoding.sizeOf(-8) + Long.BYTES;
     };
   }
 
   /// Constants for null markers
-  static final byte NULL_MARKER = Byte.MIN_VALUE;
-  static final byte NOT_NULL_MARKER = Byte.MAX_VALUE;
+  byte NULL_MARKER = Byte.MIN_VALUE;
+  byte NOT_NULL_MARKER = Byte.MAX_VALUE;
 
   /// Extract value from record using getter and delegate to writer with null handling
-  static BiConsumer<ByteBuffer, Object> extractAndDelegate(BiConsumer<ByteBuffer, Object> delegate, MethodHandle accessor) {
+  static Writer extractAndDelegate(Writer delegate, MethodHandle accessor) {
     final Class<?> type = accessor.type().returnType();
     if (type.isPrimitive()) {
       return (buffer, record) -> {
@@ -375,7 +416,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Extract value from record using getter and delegate to sizer with null handling
-  static ToIntFunction<Object> extractAndDelegate(ToIntFunction<Object> delegate, MethodHandle accessor) {
+  static Sizer extractAndDelegate(Sizer delegate, MethodHandle accessor) {
     return (Object record) -> {
       final Object value;
       try {
@@ -394,7 +435,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for custom value types
-  static BiConsumer<ByteBuffer, Object> createCustomWriter(MethodHandle getter, SerdeHandler handler) {
+  static Writer createCustomWriter(MethodHandle getter, SerdeHandler handler) {
     final var marker = handler.marker();
     final var writer = handler.writer();
     // Use extractAndDelegate for null handling
@@ -405,7 +446,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for custom value types
-  static ToIntFunction<Object> createCustomSizer(MethodHandle getter, @SuppressWarnings("auxiliaryclass") SerdeHandler handler) {
+  static Sizer createCustomSizer(MethodHandle getter, @SuppressWarnings("auxiliaryclass") SerdeHandler handler) {
     // Use extractAndDelegate for null handling
     return extractAndDelegate((value) ->
             ZigZagEncoding.sizeOf(handler.marker()) + handler.sizer().applyAsInt(value),
@@ -413,11 +454,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for reference value types (boxed primitives, String, etc.)
-  static BiConsumer<ByteBuffer, Object> createRefValueWriter(
+  static Writer createRefValueWriter(
       TypeExpr2.RefValueType refType,
       MethodHandle getter,
       Class<?> javaType,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+      WriterResolver typeWriterResolver
   ) {
     // Use extractAndDelegate for null handling. The returned delegate handles the non-null value.
     return extractAndDelegate((buffer, value) -> {
@@ -425,8 +466,7 @@ sealed interface Companion2 permits Companion2.Nothing {
         case RECORD, ENUM, INTERFACE -> {
           // For user types, we don't write a marker. We delegate to the resolver,
           // which is responsible for writing the 'long' signature.
-          BiConsumer<ByteBuffer, Object> writer = typeWriterResolver.apply(javaType);
-          writer.accept(buffer, value);
+          typeWriterResolver.resolveWriter(javaType).accept(buffer, value);
         }
         default -> {
           // For built-in ref types, write the 'int' marker first, then the data.
@@ -490,16 +530,16 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create reader for reference value types
-  static Function<ByteBuffer, Object> createRefValueReader(
+  static Reader createRefValueReader(
       TypeExpr2.RefValueType refType,
       Class<?> javaType,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      ReaderResolver typeReaderResolver
   ) {
     // Meta-programming time decision - return focused functions with no runtime switches
     return switch (refType) {
       case RECORD, ENUM, INTERFACE -> buffer -> {
         final var typeSignature = buffer.getLong();
-        return typeReaderResolver.apply(typeSignature).apply(buffer);
+        return typeReaderResolver.resolveReader(typeSignature, buffer);
       };
 
       case BOOLEAN -> {
@@ -604,11 +644,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for reference value types
-  static ToIntFunction<Object> createRefValueSizer(
+  static Sizer createRefValueSizer(
       TypeExpr2.RefValueType refType,
       MethodHandle getter,
       Class<?> javaType,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+      SizerResolver typeSizerResolver
   ) {
     // Use extractAndDelegate for null handling
     return extractAndDelegate((value) -> {
@@ -643,7 +683,7 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
         case RECORD, ENUM, INTERFACE -> {
           // Delegate to the main pickler's sizer resolver
-          ToIntFunction<Object> sizer = typeSizerResolver.apply(javaType);
+          Sizer sizer = typeSizerResolver.apply(javaType);
           yield sizer.applyAsInt(value); // The extractAndDelegate wrapper will handle nulls
         }
         case LOCAL_DATE, LOCAL_DATE_TIME, CUSTOM ->
@@ -706,11 +746,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for Optional types
-  static BiConsumer<ByteBuffer, Object> createOptionalWriter(
+  static Writer createOptionalWriter(
       TypeExpr2 wrappedType,
       MethodHandle getter,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+      WriterResolver typeWriterResolver
   ) {
     return (buffer, record) -> {
       try {
@@ -732,13 +772,13 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create reader for Optional types
-  static Function<ByteBuffer, Object> createOptionalReader(
+  static Reader createOptionalReader(
       TypeExpr2 wrappedType,
       Collection<SerdeHandler> customHandlers,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      ReaderResolver typeReaderResolver
   ) {
     // Create reader for the wrapped value WITHOUT null checking (Optional handles null at container level)
-    Function<ByteBuffer, Object> wrappedReader = createValueReaderWithoutNullCheck(wrappedType, customHandlers, typeReaderResolver);
+    Reader wrappedReader = createValueReaderWithoutNullCheck(wrappedType, customHandlers, typeReaderResolver);
 
     return buffer -> {
       final var positionBefore = buffer.position();
@@ -759,11 +799,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for Optional types
-  static ToIntFunction<Object> createOptionalSizer(
+  static Sizer createOptionalSizer(
       TypeExpr2 wrappedType,
       MethodHandle getter,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+      SizerResolver typeSizerResolver
   ) {
     return record -> {
       try {
@@ -784,11 +824,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for List types
-  static BiConsumer<ByteBuffer, Object> createListWriter(
+  static Writer createListWriter(
       TypeExpr2 elementType,
       MethodHandle getter,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+      WriterResolver typeWriterResolver
   ) {
     return (buffer, record) -> {
       try {
@@ -815,10 +855,10 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create reader for List types
-  static Function<ByteBuffer, Object> createListReader(
+  static Reader createListReader(
       TypeExpr2 elementType,
       Collection<SerdeHandler> customHandlers,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      ReaderResolver typeReaderResolver
   ) {
     final var elementReader = createComponentReader(elementType, customHandlers, typeReaderResolver);
     return buffer -> {
@@ -835,12 +875,12 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for Map types
-  static BiConsumer<ByteBuffer, Object> createMapWriter(
+  static Writer createMapWriter(
       TypeExpr2 keyType,
       TypeExpr2 valueType,
       MethodHandle getter,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+      WriterResolver typeWriterResolver
   ) {
     return (buffer, record) -> {
       try {
@@ -887,11 +927,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create reader for Map types
-  static Function<ByteBuffer, Object> createMapReader(
+  static Reader createMapReader(
       TypeExpr2 keyType,
       TypeExpr2 valueType,
       Collection<SerdeHandler> customHandlers,
-      Function<Long, Function<ByteBuffer, Object>> typeReaderResolver
+      ReaderResolver typeReaderResolver
   ) {
     final Function<ByteBuffer, Object> keyReader = createComponentReader(keyType, customHandlers, typeReaderResolver);
     final Function<ByteBuffer, Object> valueReader = createComponentReader(valueType, customHandlers, typeReaderResolver);
@@ -919,12 +959,12 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for Map types
-  static ToIntFunction<Object> createMapSizer(
+  static Sizer createMapSizer(
       TypeExpr2 keyType,
       TypeExpr2 valueType,
       MethodHandle getter,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+      SizerResolver typeSizerResolver
   ) {
     return record -> {
       try {
@@ -956,11 +996,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for List types
-  static ToIntFunction<Object> createListSizer(
+  static Sizer createListSizer(
       TypeExpr2 elementType,
       MethodHandle getter,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+      SizerResolver typeSizerResolver
   ) {
     return record -> {
       try {
@@ -989,7 +1029,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       Object value,
       TypeExpr2 typeExpr,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, BiConsumer<ByteBuffer, Object>> typeWriterResolver
+      WriterResolver typeWriterResolver
   ) {
     final var positionBefore = buffer.position();
     LOGGER.fine(() -> "writeValue: Starting at position " + positionBefore + " for value=" + value + " typeExpr=" + typeExpr.toTreeString());
@@ -1008,8 +1048,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           handler.writer().accept(buffer, value);
         } else if (refType == TypeExpr2.RefValueType.RECORD || refType == TypeExpr2.RefValueType.ENUM || refType == TypeExpr2.RefValueType.INTERFACE) {
           // User types delegate to typeWriterResolver
-          BiConsumer<ByteBuffer, Object> writer = typeWriterResolver.apply((Class<?>) javaType);
-          writer.accept(buffer, value);
+          typeWriterResolver.resolveWriter((Class<?>) javaType).accept(buffer, value);
         } else {
           // Built-in reference types - create focused writer during construction time
           final var writer = createBuiltInRefWriter(refType);
@@ -1135,7 +1174,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       Object value,
       TypeExpr2 typeExpr,
       Collection<SerdeHandler> customHandlers,
-      Function<Class<?>, ToIntFunction<Object>> typeSizerResolver
+      SizerResolver typeSizerResolver
   ) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> {
@@ -1149,8 +1188,8 @@ sealed interface Companion2 permits Companion2.Nothing {
               .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType));
           yield ZigZagEncoding.sizeOf(handler.marker()) + handler.sizer().applyAsInt(value);
         } else if (refType == TypeExpr2.RefValueType.RECORD || refType == TypeExpr2.RefValueType.ENUM || refType == TypeExpr2.RefValueType.INTERFACE) {
-          ToIntFunction<Object> sizer = typeSizerResolver.apply((Class<?>) javaType);
-          yield sizer.applyAsInt(value);
+          Sizer sizer = typeSizerResolver.apply((Class<?>) javaType);
+          yield sizer.sizeOf(value);
         } else {
           yield sizeBuiltInRefValue(value, refType);
         }
