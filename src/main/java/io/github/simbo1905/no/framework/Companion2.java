@@ -996,6 +996,99 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
+  /// Create writer for Array types
+  static Writer createArrayWriter(
+      TypeExpr2 elementNode,
+      MethodHandle getter,
+      Collection<SerdeHandler> customHandlers,
+      WriterResolver typeWriterResolver
+  ) {
+    return (buffer, record) -> {
+      try {
+        Object[] array = (Object[]) getter.invoke(record);
+        if (array == null) {
+          LOGGER.fine(() -> "Writing null array marker at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, -1); // Use -1 to indicate a null array
+        } else {
+          LOGGER.fine(() -> "Writing array of size: " + array.length + " at position " + buffer.position());
+          ZigZagEncoding.putInt(buffer, array.length);
+          for (int i = 0; i < array.length; i++) {
+            Object item = array[i];
+            final int index = i;
+            // Write array item with null handling
+            if (item == null) {
+              LOGGER.finer(() -> "Writing NULL_MARKER for array item " + index + " at position " + buffer.position());
+              buffer.put(NULL_MARKER);
+            } else {
+              LOGGER.finer(() -> "Writing NOT_NULL_MARKER for array item " + index + " (" + item + ") at position " + buffer.position());
+              buffer.put(NOT_NULL_MARKER);
+              writeValue(buffer, item, elementNode, customHandlers, typeWriterResolver);
+            }
+          }
+        }
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to write Array", e);
+      }
+    };
+  }
+
+  /// Create reader for Array types
+  static Reader createArrayReader(
+      TypeExpr2 elementNode,
+      Class<?> componentType,
+      Collection<SerdeHandler> customHandlers,
+      ReaderResolver typeReaderResolver
+  ) {
+    final var elementReader = createComponentReader(elementNode, customHandlers, typeReaderResolver);
+    return buffer -> {
+      final int positionBefore = buffer.position();
+      final int size = ZigZagEncoding.getInt(buffer);
+      LOGGER.fine(() -> "Reading array size: " + size + " at position " + positionBefore);
+      if (size == -1) {
+        LOGGER.fine(() -> "Read null array marker, returning null");
+        return null;
+      }
+      Object[] array = (Object[]) java.lang.reflect.Array.newInstance(componentType, size);
+      LOGGER.fine(() -> "Reading " + size + " elements of type " + componentType.getSimpleName());
+      for (int i = 0; i < size; i++) {
+        final int index = i;
+        LOGGER.finer(() -> "Reading array element " + index + " at position " + buffer.position());
+        array[i] = elementReader.apply(buffer);
+        LOGGER.finer(() -> "Read array element " + index + ": " + array[index]);
+      }
+      return array;
+    };
+  }
+
+  /// Create sizer for Array types
+  static Sizer createArraySizer(
+      TypeExpr2 elementNode,
+      MethodHandle getter,
+      Collection<SerdeHandler> customHandlers,
+      SizerResolver typeSizerResolver
+  ) {
+    return record -> {
+      try {
+        Object[] array = (Object[]) getter.invoke(record);
+        if (array == null) {
+          return ZigZagEncoding.sizeOf(-1);
+        }
+        int totalSize = ZigZagEncoding.sizeOf(array.length);
+        for (Object item : array) {
+          totalSize += Byte.BYTES; // For the null marker
+          if (item != null) {
+            totalSize += sizeValue(item, elementNode, customHandlers, typeSizerResolver);
+          }
+        }
+        int finalTotalSize = totalSize;
+        LOGGER.fine(() -> "Sizing array of length " + array.length + ", total size: " + finalTotalSize);
+        return totalSize;
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size Array", e);
+      }
+    };
+  }
+
   /// Create sizer for List types
   static Sizer createListSizer(
       TypeExpr2 elementType,
@@ -1227,25 +1320,29 @@ sealed interface Companion2 permits Companion2.Nothing {
         if (array == null) {
           yield ZigZagEncoding.sizeOf(-1);
         }
-        int totalSize = ZigZagEncoding.sizeOf(array.length);
-        for (Object item : array) {
-          totalSize += Byte.BYTES; // For the null marker
-          if (item != null) {
-            totalSize += sizeValue(item, elementNode, customHandlers, typeSizerResolver);
-          }
-        }
-        yield totalSize;
+        int itemsSize = Arrays.stream(array)
+            .mapToInt(item -> {
+              int itemSize = Byte.BYTES; // For the null marker
+              if (item != null) {
+                itemSize += sizeValue(item, elementNode, customHandlers, typeSizerResolver);
+              }
+              return itemSize;
+            })
+            .sum();
+        yield ZigZagEncoding.sizeOf(array.length) + itemsSize;
       }
       case TypeExpr2.ListNode(var elementType) -> {
         if (value instanceof java.util.List<?> list) {
-          int totalSize = ZigZagEncoding.sizeOf(list.size());
-          for (Object item : list) {
-            totalSize += Byte.BYTES; // For the null marker
-            if (item != null) {
-              totalSize += sizeValue(item, elementType, customHandlers, typeSizerResolver);
-            }
-          }
-          yield totalSize;
+          int itemsSize = list.stream()
+              .mapToInt(item -> {
+                int itemSize = Byte.BYTES; // For the null marker
+                if (item != null) {
+                  itemSize += sizeValue(item, elementType, customHandlers, typeSizerResolver);
+                }
+                return itemSize;
+              })
+              .sum();
+          yield ZigZagEncoding.sizeOf(list.size()) + itemsSize;
         } else {
           throw new IllegalStateException("Expected List but got: " + value.getClass());
         }

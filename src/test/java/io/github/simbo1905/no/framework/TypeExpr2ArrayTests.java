@@ -57,10 +57,44 @@ class TypeExpr2ArrayTests {
   }
 
   public record ItemArray(String[] value) implements HeterogeneousItem {
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      ItemArray itemArray = (ItemArray) o;
+      return Arrays.equals(value, itemArray.value);
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(value);
+    }
+
+    @Override
+    public String toString() {
+      return "ItemArray[value=" + Arrays.toString(value) + "]";
+    }
   }
 
   // Test data record holding a map.
   public record ComplexArrayRecord(HeterogeneousItem[] items) {
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+      ComplexArrayRecord that = (ComplexArrayRecord) o;
+      return Arrays.equals(items, that.items);
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(items);
+    }
+
+    @Override
+    public String toString() {
+      return "ComplexArrayRecord[items=" + Arrays.toString(items) + "]";
+    }
   }
 
   // Same resolver setup as main test
@@ -238,7 +272,8 @@ class TypeExpr2ArrayTests {
     HeterogeneousItem[] deserializedArray = (HeterogeneousItem[]) serdes[0].reader().apply(buffer);
 
     final var deserializedRecord = new ComplexArrayRecord(deserializedArray);
-    assertThat(deserializedRecord).isEqualTo(originalRecord);
+    // assertThat(deserializedRecord).isEqualTo(originalRecord);
+    assertThat(deserializedRecord.items).isEqualTo(originalRecord.items);
   }
 
   /**
