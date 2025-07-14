@@ -276,6 +276,15 @@ class TypeExpr2ArrayTests {
     assertThat(deserializedRecord.items).isEqualTo(originalRecord.items);
   }
 
+  @Test
+  void testArrayOfLists() {
+    record ListArrayHolder(List<String>[] value) {
+    }
+    var comp = ListArrayHolder.class.getRecordComponents()[0];
+    var expr = TypeExpr2.analyzeType(comp.getGenericType(), List.of());
+    assertThat(expr.toTreeString()).isEqualTo("ARRAY(LIST(String))");
+  }
+
   /**
    * Builds a heterogeneous map for testing.
    */

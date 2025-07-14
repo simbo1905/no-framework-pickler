@@ -44,6 +44,8 @@ sealed interface TypeExpr2 permits
       case Class<?> c when c == Float.class -> -10;
       case Class<?> c when c == Double.class -> -11;
       case Class<?> c when c == String.class -> -12;
+      case Class<?> c when c == java.time.LocalDate.class -> -13;
+      case Class<?> c when c == java.time.LocalDateTime.class -> -14;
       default -> throw new IllegalArgumentException("Not a built-in reference type: " + refClass);
     };
   }
@@ -115,8 +117,14 @@ sealed interface TypeExpr2 permits
 
     // Handle generic array types (e.g., T[] where T is a type parameter)
     if (type instanceof GenericArrayType genericArrayType) {
+      LOGGER.finer(() -> "Processing generic array type: " + genericArrayType);
       TypeExpr2 elementTypeExpr = analyzeType(genericArrayType.getGenericComponentType(), customHandlers);
-      return new ArrayNode(elementTypeExpr, (Class<?>) genericArrayType.getGenericComponentType());
+      Type componentType = genericArrayType.getGenericComponentType();
+      LOGGER.finer(() -> "Generic array component type: " + componentType + " of class " + componentType.getClass().getName());
+
+      Class<?> rawComponentType = getRawClass(componentType);
+      LOGGER.finer(() -> "Determined raw component type for generic array: " + rawComponentType.getName());
+      return new ArrayNode(elementTypeExpr, rawComponentType);
     }
 
     // Handle parameterized types (List<T>, Map<K,V>, Optional<T>)
@@ -169,6 +177,22 @@ sealed interface TypeExpr2 permits
     }
 
     throw new IllegalArgumentException("Unsupported type: " + type + " of class " + type.getClass());
+  }
+
+  private static Class<?> getRawClass(Type type) {
+    if (type instanceof Class<?> cls) {
+      return cls;
+    }
+    if (type instanceof ParameterizedType pt) {
+      return (Class<?>) pt.getRawType();
+    }
+    if (type instanceof GenericArrayType gat) {
+      Class<?> componentRawClass = getRawClass(gat.getGenericComponentType());
+      // This creates an array class of the component's raw class.
+      // e.g., if component is List<String>, this returns List[].class
+      return java.lang.reflect.Array.newInstance(componentRawClass, 0).getClass();
+    }
+    throw new IllegalArgumentException("Cannot determine raw class for type: " + type);
   }
 
   /// Classifies a Java Class into the appropriate PrimitiveValueType

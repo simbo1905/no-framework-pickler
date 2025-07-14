@@ -10,6 +10,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -40,6 +42,58 @@ class TypeExpr2Tests {
     var boolNode = (TypeExpr2.PrimitiveValueNode) boolExpr;
     assertThat(boolNode.marker()).isLessThan(0);
     assertThat(boolNode.toTreeString()).isEqualTo("boolean");
+  }
+
+  @Test
+  void testAllPrimitiveAndBoxedTypes() {
+    Map<Class<?>, TypeExpr2.PrimitiveValueType> primitiveMap = Map.of(
+        byte.class, TypeExpr2.PrimitiveValueType.BYTE,
+        short.class, TypeExpr2.PrimitiveValueType.SHORT,
+        char.class, TypeExpr2.PrimitiveValueType.CHARACTER,
+        long.class, TypeExpr2.PrimitiveValueType.LONG,
+        float.class, TypeExpr2.PrimitiveValueType.FLOAT,
+        double.class, TypeExpr2.PrimitiveValueType.DOUBLE
+    );
+
+    for (var entry : primitiveMap.entrySet()) {
+      var expr = TypeExpr2.analyzeType(entry.getKey(), List.of());
+      assertThat(expr).isInstanceOf(TypeExpr2.PrimitiveValueNode.class);
+      var node = (TypeExpr2.PrimitiveValueNode) expr;
+      assertThat(node.type()).isEqualTo(entry.getValue());
+      assertThat(node.toTreeString()).isEqualTo(entry.getKey().getSimpleName());
+    }
+
+    Map<Class<?>, TypeExpr2.RefValueType> boxedMap = Map.of(
+        Byte.class, TypeExpr2.RefValueType.BYTE,
+        Short.class, TypeExpr2.RefValueType.SHORT,
+        Character.class, TypeExpr2.RefValueType.CHARACTER,
+        Long.class, TypeExpr2.RefValueType.LONG,
+        Float.class, TypeExpr2.RefValueType.FLOAT,
+        Double.class, TypeExpr2.RefValueType.DOUBLE
+    );
+
+    for (var entry : boxedMap.entrySet()) {
+      var expr = TypeExpr2.analyzeType(entry.getKey(), List.of());
+      assertThat(expr).isInstanceOf(TypeExpr2.RefValueNode.class);
+      var node = (TypeExpr2.RefValueNode) expr;
+      assertThat(node.type()).isEqualTo(entry.getValue());
+      assertThat(node.toTreeString()).isEqualTo(entry.getKey().getSimpleName());
+    }
+  }
+
+  @Test
+  void testDateTimeTypes() {
+    var localDateExpr = TypeExpr2.analyzeType(LocalDate.class, List.of());
+    assertThat(localDateExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
+    var localDateNode = (TypeExpr2.RefValueNode) localDateExpr;
+    assertThat(localDateNode.type()).isEqualTo(TypeExpr2.RefValueType.LOCAL_DATE);
+    assertThat(localDateNode.toTreeString()).isEqualTo("LocalDate");
+
+    var localDateTimeExpr = TypeExpr2.analyzeType(LocalDateTime.class, List.of());
+    assertThat(localDateTimeExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
+    var localDateTimeNode = (TypeExpr2.RefValueNode) localDateTimeExpr;
+    assertThat(localDateTimeNode.type()).isEqualTo(TypeExpr2.RefValueType.LOCAL_DATE_TIME);
+    assertThat(localDateTimeNode.toTreeString()).isEqualTo("LocalDateTime");
   }
 
   @Test
