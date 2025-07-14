@@ -124,8 +124,8 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
       }
 
-      case TypeExpr2.ArrayNode ignored ->
-          throw new UnsupportedOperationException("Array component writers not yet implemented");
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
+          createArrayWriter(elementNode, getter, customHandlers, typeWriterResolver);
       case TypeExpr2.ListNode(var elementNode) ->
           createListWriter(elementNode, getter, customHandlers, typeWriterResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
@@ -160,8 +160,8 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
       }
 
-      case TypeExpr2.ArrayNode ignored ->
-          throw new UnsupportedOperationException("Array value readers not yet implemented");
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
+          createArrayReader(elementNode, componentType, customHandlers, typeReaderResolver);
       case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
           createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
@@ -201,8 +201,8 @@ sealed interface Companion2 permits Companion2.Nothing {
         };
       }
 
-      case TypeExpr2.ArrayNode ignored ->
-          throw new UnsupportedOperationException("Array component readers not yet implemented");
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
+          createArrayReader(elementNode, componentType, customHandlers, typeReaderResolver);
       case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
           createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
@@ -233,8 +233,8 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
       }
 
-      case TypeExpr2.ArrayNode ignored ->
-          throw new UnsupportedOperationException("Array component sizers not yet implemented");
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
+          createArraySizer(elementNode, getter, customHandlers, typeSizerResolver);
       case TypeExpr2.ListNode(var elementNode) ->
           createListSizer(elementNode, getter, customHandlers, typeSizerResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
@@ -1071,8 +1071,23 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Expected Optional but got: " + value.getClass());
         }
       }
-      case TypeExpr2.ArrayNode arrayNode ->
-          throw new UnsupportedOperationException("Array not yet implemented in writeValue");
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) -> {
+        Object[] array = (Object[]) value;
+        if (array == null) {
+          ZigZagEncoding.putInt(buffer, -1); // Use -1 to indicate a null array
+        } else {
+          LOGGER.fine(() -> "Writing array of size: " + array.length + " at position: " + buffer.position());
+          ZigZagEncoding.putInt(buffer, array.length);
+          for (Object item : array) {
+            if (item == null) {
+              buffer.put(NULL_MARKER);
+            } else {
+              buffer.put(NOT_NULL_MARKER);
+              writeValue(buffer, item, elementNode, customHandlers, typeWriterResolver);
+            }
+          }
+        }
+      }
       case TypeExpr2.ListNode listNode ->
           throw new UnsupportedOperationException("List not yet implemented in writeValue");
       case TypeExpr2.MapNode mapNode ->
@@ -1207,8 +1222,20 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Expected Optional but got: " + value.getClass());
         }
       }
-      case TypeExpr2.ArrayNode arrayNode ->
-          throw new UnsupportedOperationException("Array not yet implemented in sizeValue");
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) -> {
+        Object[] array = (Object[]) value;
+        if (array == null) {
+          yield ZigZagEncoding.sizeOf(-1);
+        }
+        int totalSize = ZigZagEncoding.sizeOf(array.length);
+        for (Object item : array) {
+          totalSize += Byte.BYTES; // For the null marker
+          if (item != null) {
+            totalSize += sizeValue(item, elementNode, customHandlers, typeSizerResolver);
+          }
+        }
+        yield totalSize;
+      }
       case TypeExpr2.ListNode(var elementType) -> {
         if (value instanceof java.util.List<?> list) {
           int totalSize = ZigZagEncoding.sizeOf(list.size());

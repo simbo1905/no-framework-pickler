@@ -32,21 +32,6 @@ sealed interface TypeExpr2 permits
     };
   }
 
-  /// Get primitive type from marker
-  static Class<?> markerToPrimitive(int marker) {
-    return switch (marker) {
-      case -2 -> boolean.class;
-      case -3 -> byte.class;
-      case -4 -> short.class;
-      case -5 -> char.class;
-      case -6, -7 -> int.class; // INTEGER and INTEGER_VAR
-      case -8, -9 -> long.class; // LONG and LONG_VAR
-      case -10 -> float.class;
-      case -11 -> double.class;
-      default -> throw new IllegalArgumentException("Not a primitive marker: " + marker);
-    };
-  }
-
   /// Get marker for built-in reference types
   static int referenceToMarker(Class<?> refClass) {
     return switch (refClass) {
@@ -86,34 +71,6 @@ sealed interface TypeExpr2 permits
     }
   }
 
-  /// Array element type to specific array marker
-  static int arrayElementToMarker(TypeExpr2 element) {
-    return switch (element) {
-      case RefValueNode(RefValueType refType, var ignored1, var ignored2) -> switch (refType) {
-        case RECORD -> -21;
-        case INTERFACE -> -22;
-        case ENUM -> -23;
-        case BOOLEAN -> -24;
-        case BYTE -> -25;
-        case SHORT -> -26;
-        case CHARACTER -> -27;
-        case INTEGER -> -28;
-        case LONG -> -29;
-        case FLOAT -> -30;
-        case DOUBLE -> -31;
-        case STRING -> -32;
-        case LOCAL_DATE -> -34;
-        case LOCAL_DATE_TIME -> -35;
-        case CUSTOM -> throw new IllegalArgumentException("Array of custom types not yet supported");
-      };
-      case ArrayNode(var ignored) -> -36;
-      case ListNode(var ignored) -> -37;
-      case MapNode ignored -> -38;
-      case OptionalNode ignored -> -39;
-      case PrimitiveValueNode ignored -> throw new IllegalArgumentException("Primitive arrays have dedicated markers");
-    };
-  }
-
   /// Recursive descent parser for Java types - builds tree bottom-up with markers
   static TypeExpr2 analyzeType(Type type, Collection<SerdeHandler> customHandlers) {
     final var result = analyzeTypeInner(type, customHandlers);
@@ -131,7 +88,7 @@ sealed interface TypeExpr2 permits
         LOGGER.finer(() -> "Processing array type: " + clazz);
         TypeExpr2 elementTypeExpr = analyzeType(clazz.getComponentType(), customHandlers);
         LOGGER.finer(() -> "Created array node for: " + clazz + " with element type: " + elementTypeExpr.toTreeString());
-        return new ArrayNode(elementTypeExpr);
+        return new ArrayNode(elementTypeExpr, clazz.getComponentType());
       } else {
         if (clazz.isPrimitive()) {
           PrimitiveValueType primType = classifyPrimitiveClass(clazz);
@@ -159,7 +116,7 @@ sealed interface TypeExpr2 permits
     // Handle generic array types (e.g., T[] where T is a type parameter)
     if (type instanceof GenericArrayType genericArrayType) {
       TypeExpr2 elementTypeExpr = analyzeType(genericArrayType.getGenericComponentType(), customHandlers);
-      return new ArrayNode(elementTypeExpr);
+      return new ArrayNode(elementTypeExpr, (Class<?>) genericArrayType.getGenericComponentType());
     }
 
     // Handle parameterized types (List<T>, Map<K,V>, Optional<T>)
@@ -302,7 +259,7 @@ sealed interface TypeExpr2 permits
   /// Example: LIST(STRING) or MAP(STRING, INTEGER)
   default String toTreeString() {
     return switch (this) {
-      case ArrayNode(var element) -> "ARRAY(" + element.toTreeString() + ")";
+      case ArrayNode(var element, var ignored) -> "ARRAY(" + element.toTreeString() + ")";
       case ListNode(var element) -> "LIST(" + element.toTreeString() + ")";
       case OptionalNode(var wrapped) -> "OPTIONAL(" + wrapped.toTreeString() + ")";
       case MapNode(var key, var value) -> "MAP(" + key.toTreeString() + "," + value.toTreeString() + ")";
@@ -328,7 +285,7 @@ sealed interface TypeExpr2 permits
   boolean isRecord();
 
   /// Container node for arrays - has one child (element type)
-  record ArrayNode(TypeExpr2 element) implements TypeExpr2 {
+  record ArrayNode(TypeExpr2 element, Class<?> componentType) implements TypeExpr2 {
     public ArrayNode {
       java.util.Objects.requireNonNull(element, "Array element type cannot be null");
     }
