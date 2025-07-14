@@ -539,7 +539,8 @@ sealed interface Companion2 permits Companion2.Nothing {
     return switch (refType) {
       case RECORD, ENUM, INTERFACE -> buffer -> {
         final var typeSignature = buffer.getLong();
-        return typeReaderResolver.resolveReader(typeSignature, buffer);
+        // The resolver returns a Reader for the specific type, which we must then apply to the buffer.
+        return typeReaderResolver.apply(typeSignature).apply(buffer);
       };
 
       case BOOLEAN -> {
