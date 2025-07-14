@@ -3,6 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
+import org.jetbrains.annotations.NotNull;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.RecordComponent;
@@ -23,24 +25,8 @@ import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
-interface Sizer extends ToIntFunction<Object> {
-  /// Get the size of an object of the given class
-  default int sizeOf(Object obj) {
-    return applyAsInt(obj);
-  }
-}
-
 interface SizerResolver extends
     Function<Class<?>, Sizer> {
-}
-
-interface Writer extends
-    BiConsumer<ByteBuffer, Object> {
-
-  /// Write an object to the ByteBuffer
-  default void write(ByteBuffer buffer, Object obj) {
-    accept(buffer, obj);
-  }
 }
 
 interface WriterResolver extends
@@ -50,20 +36,8 @@ interface WriterResolver extends
   }
 }
 
-interface Reader extends
-    Function<ByteBuffer, Object> {
-
-  /// Read an object from the ByteBuffer
-  default Object read(ByteBuffer buffer) {
-    return apply(buffer);
-  }
-}
-
 interface ReaderResolver extends
     Function<Long, Reader> {
-  default Reader resolveReader(long typeSignature, ByteBuffer buffer) {
-    return apply(typeSignature);
-  }
 }
 
 /// Companion for TypeExpr2-based component serde building
@@ -109,9 +83,9 @@ sealed interface Companion2 permits Companion2.Nothing {
       WriterResolver typeWriterResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveWriter(type, getter);
+      case TypeExpr2.PrimitiveValueNode(var type, var ignored1) -> createPrimitiveWriter(type, getter);
 
-      case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
+      case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
           // Find the custom handler
           SerdeHandler handler = customHandlers.stream()
@@ -124,8 +98,10 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
       }
 
-      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
+      case TypeExpr2.ArrayNode(var elementNode, var ignored1) ->
           createArrayWriter(elementNode, getter, customHandlers, typeWriterResolver);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
+          createPrimitiveArrayWriter(primitiveType, getter);
       case TypeExpr2.ListNode(var elementNode) ->
           createListWriter(elementNode, getter, customHandlers, typeWriterResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
@@ -142,9 +118,9 @@ sealed interface Companion2 permits Companion2.Nothing {
       ReaderResolver typeReaderResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(final var type, final var javaType) -> createPrimitiveReader(type);
+      case TypeExpr2.PrimitiveValueNode(final var type, final var ignored) -> createPrimitiveReader(type);
 
-      case TypeExpr2.RefValueNode(final var refType, final var javaType, final var marker) -> {
+      case TypeExpr2.RefValueNode(final var refType, final var javaType, final var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
           final var handler = customHandlers.stream()
               .filter(h -> h.valueBasedLike().equals(javaType))
@@ -162,6 +138,8 @@ sealed interface Companion2 permits Companion2.Nothing {
 
       case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
           createArrayReader(elementNode, componentType, customHandlers, typeReaderResolver);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) ->
+          createPrimitiveArrayReader(primitiveType, arrayType);
       case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
           createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
@@ -180,7 +158,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       case TypeExpr2.PrimitiveValueNode ignored -> // Primitives cannot be null, so no null check needed
           createValueReaderWithoutNullCheck(typeExpr, customHandlers, typeReaderResolver);
 
-      case TypeExpr2.RefValueNode(final var refType, final var javaType, final var marker) -> {
+      case TypeExpr2.RefValueNode(final var ignored, final var ignored1, final var ignored2) -> {
         // Get the value reader without null checking
         final var valueReader = createValueReaderWithoutNullCheck(typeExpr, customHandlers, typeReaderResolver);
 
@@ -203,6 +181,8 @@ sealed interface Companion2 permits Companion2.Nothing {
 
       case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
           createArrayReader(elementNode, componentType, customHandlers, typeReaderResolver);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) ->
+          createPrimitiveArrayReader(primitiveType, arrayType);
       case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
           createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
@@ -219,9 +199,9 @@ sealed interface Companion2 permits Companion2.Nothing {
       SizerResolver typeSizerResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> createPrimitiveSizer(type);
+      case TypeExpr2.PrimitiveValueNode(var type, var ignored) -> createPrimitiveSizer(type);
 
-      case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
+      case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
           SerdeHandler handler = customHandlers.stream()
               .filter(h -> h.valueBasedLike().equals(javaType))
@@ -233,8 +213,10 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
       }
 
-      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
+      case TypeExpr2.ArrayNode(var elementNode, var ignored1) ->
           createArraySizer(elementNode, getter, customHandlers, typeSizerResolver);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
+          createPrimitiveArraySizer(primitiveType, getter);
       case TypeExpr2.ListNode(var elementNode) ->
           createListSizer(elementNode, getter, customHandlers, typeSizerResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
@@ -263,7 +245,7 @@ sealed interface Companion2 permits Companion2.Nothing {
     return (buffer, obj) -> {
       try {
         switch (type) {
-          case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
+          case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored) -> {
             switch (name) {
               case "BOOLEAN" -> buffer.put((byte) ((boolean) getter.invoke(obj) ? 1 : 0));
               case "BYTE" -> buffer.put((byte) getter.invoke(obj));
@@ -316,17 +298,15 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Create reader for primitive types
   static Reader createPrimitiveReader(TypeExpr2.PrimitiveValueType type) {
     return buffer -> switch (type) {
-      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> {
-        yield switch (name) {
-          case "BOOLEAN" -> buffer.get() != 0;
-          case "BYTE" -> buffer.get();
-          case "SHORT" -> buffer.getShort();
-          case "CHARACTER" -> buffer.getChar();
-          case "FLOAT" -> buffer.getFloat();
-          case "DOUBLE" -> buffer.getDouble();
-          default -> throw new IllegalStateException("Unknown primitive type: " + name);
-        };
-      }
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored) -> switch (name) {
+        case "BOOLEAN" -> buffer.get() != 0;
+        case "BYTE" -> buffer.get();
+        case "SHORT" -> buffer.getShort();
+        case "CHARACTER" -> buffer.getChar();
+        case "FLOAT" -> buffer.getFloat();
+        case "DOUBLE" -> buffer.getDouble();
+        default -> throw new IllegalStateException("Unknown primitive type: " + name);
+      };
       case TypeExpr2.PrimitiveValueType.IntegerType(var fixedMarker, var varMarker) -> {
         // Read the marker to determine encoding
         int marker = ZigZagEncoding.getInt(buffer);
@@ -352,13 +332,11 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
-  Sizer byteSizer = (o) -> Byte.BYTES;
-
   /// Create sizer for primitive types
   static Sizer createPrimitiveSizer(TypeExpr2.PrimitiveValueType type) {
     // Primitive types don't need the record object, just return worst-case sizes
     return switch (type) {
-      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> switch (name) {
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored1) -> switch (name) {
         case "BOOLEAN", "BYTE" -> (o) -> Byte.BYTES;
         case "SHORT", "CHARACTER" -> (o) -> Short.BYTES;
         case "FLOAT" -> (o) -> Float.BYTES;
@@ -463,11 +441,9 @@ sealed interface Companion2 permits Companion2.Nothing {
     // Use extractAndDelegate for null handling. The returned delegate handles the non-null value.
     return extractAndDelegate((buffer, value) -> {
       switch (refType) {
-        case RECORD, ENUM, INTERFACE -> {
-          // For user types, we don't write a marker. We delegate to the resolver,
+        case RECORD, ENUM, INTERFACE -> // For user types, we don't write a marker. We delegate to the resolver,
           // which is responsible for writing the 'long' signature.
-          typeWriterResolver.resolveWriter(javaType).accept(buffer, value);
-        }
+            typeWriterResolver.resolveWriter(javaType).accept(buffer, value);
         default -> {
           // For built-in ref types, write the 'int' marker first, then the data.
           switch (refType) {
@@ -532,7 +508,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Create reader for reference value types
   static Reader createRefValueReader(
       TypeExpr2.RefValueType refType,
-      Class<?> javaType,
+      Class<?> ignoredJavaType,
       ReaderResolver typeReaderResolver
   ) {
     // Meta-programming time decision - return focused functions with no runtime switches
@@ -652,44 +628,42 @@ sealed interface Companion2 permits Companion2.Nothing {
       SizerResolver typeSizerResolver
   ) {
     // Use extractAndDelegate for null handling
-    return extractAndDelegate((value) -> {
-      return switch (refType) {
-        case BOOLEAN -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Boolean.class)) + Byte.BYTES;
-        case BYTE -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Byte.class)) + Byte.BYTES;
-        case SHORT -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Short.class)) + Short.BYTES;
-        case CHARACTER -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Character.class)) + Character.BYTES;
-        case INTEGER -> {
-          int intValue = (Integer) value;
-          if (intValue >= -1 && intValue <= 125) {
-            yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Integer.class)) + Byte.BYTES;
-          } else {
-            yield ZigZagEncoding.sizeOf(((TypeExpr2.PrimitiveValueType.IntegerType) TypeExpr2.PrimitiveValueType.INTEGER).varMarker()) + ZigZagEncoding.sizeOf(intValue);
-          }
+    return extractAndDelegate((value) -> switch (refType) {
+      case BOOLEAN -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Boolean.class)) + Byte.BYTES;
+      case BYTE -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Byte.class)) + Byte.BYTES;
+      case SHORT -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Short.class)) + Short.BYTES;
+      case CHARACTER -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Character.class)) + Character.BYTES;
+      case INTEGER -> {
+        int intValue = (Integer) value;
+        if (intValue >= -1 && intValue <= 125) {
+          yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Integer.class)) + Byte.BYTES;
+        } else {
+          yield ZigZagEncoding.sizeOf(((TypeExpr2.PrimitiveValueType.IntegerType) TypeExpr2.PrimitiveValueType.INTEGER).varMarker()) + ZigZagEncoding.sizeOf(intValue);
         }
-        case LONG -> {
-          long longValue = (Long) value;
-          if (longValue >= -1 && longValue <= 125) {
-            yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Long.class)) + Byte.BYTES;
-          } else {
-            yield ZigZagEncoding.sizeOf(((TypeExpr2.PrimitiveValueType.LongType) TypeExpr2.PrimitiveValueType.LONG).varMarker()) + ZigZagEncoding.sizeOf(longValue);
-          }
+      }
+      case LONG -> {
+        long longValue = (Long) value;
+        if (longValue >= -1 && longValue <= 125) {
+          yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Long.class)) + Byte.BYTES;
+        } else {
+          yield ZigZagEncoding.sizeOf(((TypeExpr2.PrimitiveValueType.LongType) TypeExpr2.PrimitiveValueType.LONG).varMarker()) + ZigZagEncoding.sizeOf(longValue);
         }
-        case FLOAT -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Float.class)) + Float.BYTES;
-        case DOUBLE -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Double.class)) + Double.BYTES;
-        case STRING -> {
-          String str = (String) value;
-          byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-          yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(String.class)) +
-              ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
-        }
-        case RECORD, ENUM, INTERFACE -> {
-          // Delegate to the main pickler's sizer resolver
-          Sizer sizer = typeSizerResolver.apply(javaType);
-          yield sizer.applyAsInt(value); // The extractAndDelegate wrapper will handle nulls
-        }
-        case LOCAL_DATE, LOCAL_DATE_TIME, CUSTOM ->
-            throw new UnsupportedOperationException("Type not yet supported: " + refType);
-      };
+      }
+      case FLOAT -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Float.class)) + Float.BYTES;
+      case DOUBLE -> ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Double.class)) + Double.BYTES;
+      case STRING -> {
+        String str = (String) value;
+        byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
+        yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(String.class)) +
+            ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
+      }
+      case RECORD, ENUM, INTERFACE -> {
+        // Delegate to the main pickler's sizer resolver
+        Sizer sizer = typeSizerResolver.apply(javaType);
+        yield sizer.applyAsInt(value); // The extractAndDelegate wrapper will handle nulls
+      }
+      case LOCAL_DATE, LOCAL_DATE_TIME, CUSTOM ->
+          throw new UnsupportedOperationException("Type not yet supported: " + refType);
     }, getter);
   }
 
@@ -1117,6 +1091,255 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
+  /// Create writer for primitive array types
+  static Writer createPrimitiveArrayWriter(TypeExpr2.PrimitiveValueType primitiveType, MethodHandle getter) {
+    final BiConsumer<ByteBuffer, Object> valueWriter = buildPrimitiveArrayWriterInner(primitiveType);
+    return (buffer, record) -> {
+      try {
+        Object array = getter.invoke(record);
+        if (array == null) {
+          ZigZagEncoding.putInt(buffer, -1); // Null array marker
+        } else {
+          valueWriter.accept(buffer, array);
+        }
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to write primitive array", e);
+      }
+    };
+  }
+
+  static @NotNull BiConsumer<ByteBuffer, Object> buildPrimitiveArrayWriterInner(TypeExpr2.PrimitiveValueType primitiveType) {
+    return switch (primitiveType) {
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored) -> switch (name) {
+        case "BOOLEAN" -> (buffer, array) -> {
+          boolean[] booleans = (boolean[]) array;
+          ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(boolean.class));
+          ZigZagEncoding.putInt(buffer, booleans.length);
+          if (booleans.length > 0) {
+            java.util.BitSet bitSet = new java.util.BitSet(booleans.length);
+            for (int i = 0; i < booleans.length; i++) {
+              if (booleans[i]) {
+                bitSet.set(i);
+              }
+            }
+            byte[] bytes = bitSet.toByteArray();
+            ZigZagEncoding.putInt(buffer, bytes.length);
+            buffer.put(bytes);
+          } else {
+            ZigZagEncoding.putInt(buffer, 0);
+          }
+        };
+        case "BYTE" -> (buffer, array) -> {
+          byte[] bytes = (byte[]) array;
+          ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(byte.class));
+          ZigZagEncoding.putInt(buffer, bytes.length);
+          buffer.put(bytes);
+        };
+        case "SHORT" -> (buffer, array) -> {
+          short[] shorts = (short[]) array;
+          ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(short.class));
+          ZigZagEncoding.putInt(buffer, shorts.length);
+          for (short s : shorts) buffer.putShort(s);
+        };
+        case "CHARACTER" -> (buffer, array) -> {
+          char[] chars = (char[]) array;
+          ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(char.class));
+          ZigZagEncoding.putInt(buffer, chars.length);
+          for (char c : chars) buffer.putChar(c);
+        };
+        case "FLOAT" -> (buffer, array) -> {
+          float[] floats = (float[]) array;
+          ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(float.class));
+          ZigZagEncoding.putInt(buffer, floats.length);
+          for (float f : floats) buffer.putFloat(f);
+        };
+        case "DOUBLE" -> (buffer, array) -> {
+          double[] doubles = (double[]) array;
+          ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(double.class));
+          ZigZagEncoding.putInt(buffer, doubles.length);
+          for (double d : doubles) buffer.putDouble(d);
+        };
+        default -> throw new IllegalStateException("Unknown primitive type: " + name);
+      };
+      case TypeExpr2.PrimitiveValueType.IntegerType(int fixedMarker, int varMarker) -> (buffer, array) -> {
+        int[] ints = (int[]) array;
+        // Simplified sampling: if any value is large, use fixed encoding for all.
+        boolean useVar = Arrays.stream(ints).allMatch(i -> ZigZagEncoding.sizeOf(i) < Integer.BYTES);
+        if (useVar) {
+          ZigZagEncoding.putInt(buffer, varMarker);
+          ZigZagEncoding.putInt(buffer, ints.length);
+          for (int i : ints) ZigZagEncoding.putInt(buffer, i);
+        } else {
+          ZigZagEncoding.putInt(buffer, fixedMarker);
+          ZigZagEncoding.putInt(buffer, ints.length);
+          for (int i : ints) buffer.putInt(i);
+        }
+      };
+      case TypeExpr2.PrimitiveValueType.LongType(int fixedMarker, int varMarker) -> (buffer, array) -> {
+        long[] longs = (long[]) array;
+        boolean useVar = Arrays.stream(longs).allMatch(l -> ZigZagEncoding.sizeOf(l) < Long.BYTES);
+        if (useVar) {
+          ZigZagEncoding.putInt(buffer, varMarker);
+          ZigZagEncoding.putInt(buffer, longs.length);
+          for (long l : longs) ZigZagEncoding.putLong(buffer, l);
+        } else {
+          ZigZagEncoding.putInt(buffer, fixedMarker);
+          ZigZagEncoding.putInt(buffer, longs.length);
+          for (long l : longs) buffer.putLong(l);
+        }
+      };
+    };
+  }
+
+  /// Create reader for primitive array types
+  static Reader createPrimitiveArrayReader(TypeExpr2.PrimitiveValueType primitiveType, Class<?> ignoredArrayType) {
+    final Function<ByteBuffer, Object> valueReader = buildPrimitiveArrayReaderInner(primitiveType);
+    return buffer -> {
+      int size = ZigZagEncoding.getInt(buffer);
+      if (size == -1) {
+        return null;
+      }
+      // Rewind to read the marker again inside the value reader
+      buffer.position(buffer.position() - ZigZagEncoding.sizeOf(size));
+      return valueReader.apply(buffer);
+    };
+  }
+
+  static @NotNull Function<ByteBuffer, Object> buildPrimitiveArrayReaderInner(TypeExpr2.PrimitiveValueType primitiveType) {
+    return switch (primitiveType) {
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> switch (name) {
+        case "BOOLEAN" -> buffer -> {
+          int typeMarker = ZigZagEncoding.getInt(buffer);
+          assert typeMarker == marker : "Expected BOOLEAN array marker";
+          int arrayLength = ZigZagEncoding.getInt(buffer);
+          boolean[] booleans = new boolean[arrayLength];
+          if (arrayLength > 0) {
+            int bytesLength = ZigZagEncoding.getInt(buffer);
+            byte[] bytes = new byte[bytesLength];
+            buffer.get(bytes);
+            java.util.BitSet bitSet = java.util.BitSet.valueOf(bytes);
+            for (int i = 0; i < arrayLength; i++) booleans[i] = bitSet.get(i);
+          }
+          return booleans;
+        };
+        case "BYTE" -> buffer -> {
+          int typeMarker = ZigZagEncoding.getInt(buffer);
+          assert typeMarker == marker : "Expected BYTE array marker";
+          int length = ZigZagEncoding.getInt(buffer);
+          byte[] bytes = new byte[length];
+          buffer.get(bytes);
+          return bytes;
+        };
+        case "SHORT" -> buffer -> {
+          int typeMarker = ZigZagEncoding.getInt(buffer);
+          assert typeMarker == marker : "Expected SHORT array marker";
+          int length = ZigZagEncoding.getInt(buffer);
+          short[] shorts = new short[length];
+          for (int i = 0; i < length; i++) shorts[i] = buffer.getShort();
+          return shorts;
+        };
+        case "CHARACTER" -> buffer -> {
+          int typeMarker = ZigZagEncoding.getInt(buffer);
+          assert typeMarker == marker : "Expected CHARACTER array marker";
+          int length = ZigZagEncoding.getInt(buffer);
+          char[] chars = new char[length];
+          for (int i = 0; i < length; i++) chars[i] = buffer.getChar();
+          return chars;
+        };
+        case "FLOAT" -> buffer -> {
+          int typeMarker = ZigZagEncoding.getInt(buffer);
+          assert typeMarker == marker : "Expected FLOAT array marker";
+          int length = ZigZagEncoding.getInt(buffer);
+          float[] floats = new float[length];
+          for (int i = 0; i < length; i++) floats[i] = buffer.getFloat();
+          return floats;
+        };
+        case "DOUBLE" -> buffer -> {
+          int typeMarker = ZigZagEncoding.getInt(buffer);
+          assert typeMarker == marker : "Expected DOUBLE array marker";
+          int length = ZigZagEncoding.getInt(buffer);
+          double[] doubles = new double[length];
+          for (int i = 0; i < length; i++) doubles[i] = buffer.getDouble();
+          return doubles;
+        };
+        default -> throw new IllegalStateException("Unknown primitive type: " + name);
+      };
+      case TypeExpr2.PrimitiveValueType.IntegerType(int ignored, int varMarker) -> buffer -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        int length = ZigZagEncoding.getInt(buffer);
+        int[] ints = new int[length];
+        if (marker == varMarker) {
+          for (int i = 0; i < length; i++) ints[i] = ZigZagEncoding.getInt(buffer);
+        } else {
+          for (int i = 0; i < length; i++) ints[i] = buffer.getInt();
+        }
+        return ints;
+      };
+      case TypeExpr2.PrimitiveValueType.LongType(int ignored, int varMarker) -> buffer -> {
+        int marker = ZigZagEncoding.getInt(buffer);
+        int length = ZigZagEncoding.getInt(buffer);
+        long[] longs = new long[length];
+        if (marker == varMarker) {
+          for (int i = 0; i < length; i++) longs[i] = ZigZagEncoding.getLong(buffer);
+        } else {
+          for (int i = 0; i < length; i++) longs[i] = buffer.getLong();
+        }
+        return longs;
+      };
+    };
+  }
+
+  /// Create sizer for primitive array types
+  static Sizer createPrimitiveArraySizer(TypeExpr2.PrimitiveValueType primitiveType, MethodHandle getter) {
+    final ToIntFunction<Object> valueSizer = buildPrimitiveArraySizerInner(primitiveType);
+    return record -> {
+      try {
+        Object array = getter.invoke(record);
+        if (array == null) {
+          return ZigZagEncoding.sizeOf(-1);
+        }
+        return valueSizer.applyAsInt(array);
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size primitive array", e);
+      }
+    };
+  }
+
+  static @NotNull ToIntFunction<Object> buildPrimitiveArraySizerInner(TypeExpr2.PrimitiveValueType primitiveType) {
+    return switch (primitiveType) {
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> switch (name) {
+        case "BOOLEAN" -> array -> {
+          boolean[] booleans = (boolean[]) array;
+          java.util.BitSet bitSet = new java.util.BitSet(booleans.length);
+          for (int i = 0; i < booleans.length; i++) if (booleans[i]) bitSet.set(i);
+          byte[] bytes = bitSet.toByteArray();
+          return ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(booleans.length) + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
+        };
+        case "BYTE" ->
+            array -> ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(((byte[]) array).length) + ((byte[]) array).length;
+        case "SHORT" ->
+            array -> ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(((short[]) array).length) + ((short[]) array).length * Short.BYTES;
+        case "CHARACTER" ->
+            array -> ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(((char[]) array).length) + ((char[]) array).length * Character.BYTES;
+        case "FLOAT" ->
+            array -> ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(((float[]) array).length) + ((float[]) array).length * Float.BYTES;
+        case "DOUBLE" ->
+            array -> ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(((double[]) array).length) + ((double[]) array).length * Double.BYTES;
+        default -> throw new IllegalStateException("Unknown primitive type: " + name);
+      };
+      case TypeExpr2.PrimitiveValueType.IntegerType(int fixedMarker, int ignored) -> array -> {
+        int[] ints = (int[]) array;
+        // Worst-case sizing
+        return ZigZagEncoding.sizeOf(fixedMarker) + ZigZagEncoding.sizeOf(ints.length) + ints.length * Integer.BYTES;
+      };
+      case TypeExpr2.PrimitiveValueType.LongType(int fixedMarker, int ignored) -> array -> {
+        long[] longs = (long[]) array;
+        // Worst-case sizing
+        return ZigZagEncoding.sizeOf(fixedMarker) + ZigZagEncoding.sizeOf(longs.length) + longs.length * Long.BYTES;
+      };
+    };
+  }
+
   /// Write a value directly based on its TypeExpr2
   static void writeValue(
       ByteBuffer buffer,
@@ -1128,11 +1351,11 @@ sealed interface Companion2 permits Companion2.Nothing {
     final var positionBefore = buffer.position();
     LOGGER.fine(() -> "writeValue: Starting at position " + positionBefore + " for value=" + value + " typeExpr=" + typeExpr.toTreeString());
     switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> {
-        // For primitive types, we can't have them in Optional, this should be a RefValueNode
-        throw new IllegalStateException("Primitives cannot be in Optional, should be boxed: " + javaType);
-      }
-      case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
+      case TypeExpr2.PrimitiveValueNode(
+          var ignored, var javaType
+      ) -> // For primitive types, we can't have them in Optional, this should be a RefValueNode
+          throw new IllegalStateException("Primitives cannot be in Optional, should be boxed: " + javaType);
+      case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
           SerdeHandler handler = customHandlers.stream()
               .filter(h -> h.valueBasedLike().equals(javaType))
@@ -1164,7 +1387,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Expected Optional but got: " + value.getClass());
         }
       }
-      case TypeExpr2.ArrayNode(var elementNode, var componentType) -> {
+      case TypeExpr2.ArrayNode(var elementNode, var ignored) -> {
         Object[] array = (Object[]) value;
         if (array == null) {
           ZigZagEncoding.putInt(buffer, -1); // Use -1 to indicate a null array
@@ -1181,9 +1404,11 @@ sealed interface Companion2 permits Companion2.Nothing {
           }
         }
       }
-      case TypeExpr2.ListNode listNode ->
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
+          buildPrimitiveArrayWriterInner(primitiveType).accept(buffer, value);
+      case TypeExpr2.ListNode ignored ->
           throw new UnsupportedOperationException("List not yet implemented in writeValue");
-      case TypeExpr2.MapNode mapNode ->
+      case TypeExpr2.MapNode ignored ->
           throw new UnsupportedOperationException("Map not yet implemented in writeValue");
     }
     final var positionAfter = buffer.position();
@@ -1286,10 +1511,9 @@ sealed interface Companion2 permits Companion2.Nothing {
       SizerResolver typeSizerResolver
   ) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> {
-        throw new IllegalStateException("Primitives cannot be in Optional, should be boxed: " + javaType);
-      }
-      case TypeExpr2.RefValueNode(var refType, var javaType, var marker) -> {
+      case TypeExpr2.PrimitiveValueNode(var ignored, var javaType) ->
+          throw new IllegalStateException("Primitives cannot be in Optional, should be boxed: " + javaType);
+      case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
           SerdeHandler handler = customHandlers.stream()
               .filter(h -> h.valueBasedLike().equals(javaType))
@@ -1315,7 +1539,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Expected Optional but got: " + value.getClass());
         }
       }
-      case TypeExpr2.ArrayNode(var elementNode, var componentType) -> {
+      case TypeExpr2.ArrayNode(var elementNode, var ignored1) -> {
         Object[] array = (Object[]) value;
         if (array == null) {
           yield ZigZagEncoding.sizeOf(-1);
@@ -1331,6 +1555,8 @@ sealed interface Companion2 permits Companion2.Nothing {
             .sum();
         yield ZigZagEncoding.sizeOf(array.length) + itemsSize;
       }
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
+          buildPrimitiveArraySizerInner(primitiveType).applyAsInt(value);
       case TypeExpr2.ListNode(var elementType) -> {
         if (value instanceof java.util.List<?> list) {
           int itemsSize = list.stream()
@@ -1347,7 +1573,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Expected List but got: " + value.getClass());
         }
       }
-      case TypeExpr2.MapNode mapNode -> throw new UnsupportedOperationException("Map not yet implemented in sizeValue");
+      case TypeExpr2.MapNode ignored -> throw new UnsupportedOperationException("Map not yet implemented in sizeValue");
     };
   }
 
@@ -1364,7 +1590,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       case STRING -> {
         String str = (String) value;
         byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        yield 2 * Integer.BYTES + +bytes.length;
+        yield 2 * Integer.BYTES + bytes.length;
       }
       case LOCAL_DATE, LOCAL_DATE_TIME, CUSTOM, RECORD, ENUM, INTERFACE ->
           throw new UnsupportedOperationException("Type not yet supported in sizeBuiltInRefValue: " + refType);

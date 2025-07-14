@@ -131,9 +131,7 @@ final class RecordSerde<T> implements Pickler<T> {
     ZigZagEncoding.putInt(buffer, componentWriters.length);
 
     IntStream.range(0, componentWriters.length)
-        .forEach(i -> {
-          componentWriters[i].accept(buffer, record);
-        });
+        .forEach(i -> componentWriters[i].accept(buffer, record));
 
     return buffer.position() - startPosition;
   }

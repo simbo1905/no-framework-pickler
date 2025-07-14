@@ -96,7 +96,7 @@ final class PicklerImpl<R> implements Pickler<R> {
             recordClassToTypeSignatureMap.get(obj.getClass()));
         if (serde instanceof RecordSerde<?> recordSerde) {
           return Byte.BYTES + maxSizeOfWitness(obj, recordSerde);
-        } else if (serde instanceof EmptyRecordSerde<?> emptyRecordSerde) {
+        } else if (serde instanceof EmptyRecordSerde<?>) {
           return Byte.BYTES + Long.BYTES; // marker + typeSignature
         }
       }
@@ -157,11 +157,6 @@ final class PicklerImpl<R> implements Pickler<R> {
       return constants[ordinal];
     };
   }
-
-//  private static Pickler<?> resolvePicker(Class<?> clz) {
-//    // Use existing ManyPickler.resolvePicker for now - this could be improved
-//    return PicklerImpl.resolvePicker(clz, enumToTypeSignatureMap);
-//  }
 
   @Override
   public int serialize(ByteBuffer buffer, R record) {

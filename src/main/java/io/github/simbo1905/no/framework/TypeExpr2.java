@@ -15,7 +15,7 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 /// All type expression nodes are nested within this interface to provide a clean API
 sealed interface TypeExpr2 permits
     TypeExpr2.ArrayNode, TypeExpr2.ListNode, TypeExpr2.OptionalNode, TypeExpr2.MapNode,
-    TypeExpr2.RefValueNode, TypeExpr2.PrimitiveValueNode {
+    TypeExpr2.RefValueNode, TypeExpr2.PrimitiveValueNode, TypeExpr2.PrimitiveArrayNode {
 
   /// Get marker for a primitive type
   static int primitiveToMarker(Class<?> primitiveClass) {
@@ -88,9 +88,15 @@ sealed interface TypeExpr2 permits
       LOGGER.finer(() -> "Class type: " + clazz.getSimpleName());
       if (clazz.isArray()) {
         LOGGER.finer(() -> "Processing array type: " + clazz);
-        TypeExpr2 elementTypeExpr = analyzeType(clazz.getComponentType(), customHandlers);
-        LOGGER.finer(() -> "Created array node for: " + clazz + " with element type: " + elementTypeExpr.toTreeString());
-        return new ArrayNode(elementTypeExpr, clazz.getComponentType());
+        final Class<?> componentType = clazz.getComponentType();
+        if (componentType.isPrimitive()) {
+          final var primitiveType = classifyPrimitiveClass(componentType);
+          return new PrimitiveArrayNode(primitiveType, clazz);
+        } else {
+          TypeExpr2 elementTypeExpr = analyzeType(componentType, customHandlers);
+          LOGGER.finer(() -> "Created array node for: " + clazz + " with element type: " + elementTypeExpr.toTreeString());
+          return new ArrayNode(elementTypeExpr, componentType);
+        }
       } else {
         if (clazz.isPrimitive()) {
           PrimitiveValueType primType = classifyPrimitiveClass(clazz);
@@ -284,6 +290,8 @@ sealed interface TypeExpr2 permits
   default String toTreeString() {
     return switch (this) {
       case ArrayNode(var element, var ignored) -> "ARRAY(" + element.toTreeString() + ")";
+      case PrimitiveArrayNode(var ignored, var arrayType) ->
+          "ARRAY(" + arrayType.getComponentType().getSimpleName() + ")";
       case ListNode(var element) -> "LIST(" + element.toTreeString() + ")";
       case OptionalNode(var wrapped) -> "OPTIONAL(" + wrapped.toTreeString() + ")";
       case MapNode(var key, var value) -> "MAP(" + key.toTreeString() + "," + value.toTreeString() + ")";
@@ -323,6 +331,32 @@ sealed interface TypeExpr2 permits
     @Override
     public boolean isPrimitive() {
       return false;
+    }
+
+    @Override
+    public boolean isRecord() {
+      return false;
+    }
+  }
+
+  /// Container node for primitive arrays
+  record PrimitiveArrayNode(PrimitiveValueType primitiveType, Class<?> arrayType) implements TypeExpr2 {
+    public PrimitiveArrayNode {
+      java.util.Objects.requireNonNull(primitiveType, "Primitive type cannot be null");
+      java.util.Objects.requireNonNull(arrayType, "Array type cannot be null");
+      if (!arrayType.isArray() || !arrayType.getComponentType().isPrimitive()) {
+        throw new IllegalArgumentException("PrimitiveArrayNode requires a primitive array type");
+      }
+    }
+
+    @Override
+    public int marker() {
+      return ContainerType.ARRAY.marker();
+    }
+
+    @Override
+    public boolean isPrimitive() {
+      return false; // The container itself is not a primitive
     }
 
     @Override

@@ -159,8 +159,8 @@ class TypeExpr2Tests {
   void testArrayTypes() {
     // Test primitive array
     var intArrayExpr = TypeExpr2.analyzeType(int[].class, List.of());
-    assertThat(intArrayExpr).isInstanceOf(TypeExpr2.ArrayNode.class);
-    var intArrayNode = (TypeExpr2.ArrayNode) intArrayExpr;
+    assertThat(intArrayExpr).isInstanceOf(TypeExpr2.PrimitiveArrayNode.class);
+    var intArrayNode = (TypeExpr2.PrimitiveArrayNode) intArrayExpr;
     assertThat(intArrayNode.toTreeString()).isEqualTo("ARRAY(int)");
 
     // Test reference array
