@@ -7,4 +7,8 @@ interface Sizer extends ToIntFunction<Object> {
   default int sizeOf(Object obj) {
     return applyAsInt(obj);
   }
+
+  interface Resolver {
+    Sizer resolveTypeSizer(Class<?> targetClass);
+  }
 }

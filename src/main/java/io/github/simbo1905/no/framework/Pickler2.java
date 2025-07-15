@@ -17,7 +17,7 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler2<T> permits PicklerImpl2, RecordSerde2 {
+public sealed interface Pickler2<T> permits EmptyRecordSerde2, PicklerImpl2, RecordSerde2 {
 
   Logger LOGGER = Logger.getLogger(Pickler2.class.getName());
 
@@ -115,27 +115,14 @@ public sealed interface Pickler2<T> permits PicklerImpl2, RecordSerde2 {
     );
 
     // For the simple case of a single record, we can directly create a RecordSerde2.
-    if (recordClasses.size() == 1) {
+    if (recordClasses.size() == 1 && !clazz.isSealed()) {
       @SuppressWarnings("unchecked") final Class<T> recordClass = (Class<T>) recordClasses.getFirst();
-      final var customHandlers = List.<SerdeHandler>of(); // No custom handlers for this simple case.
-
-      final var componentSerdes = Companion2.buildComponentSerdes(
-          recordClass,
-          customHandlers,
-          SizerResolver.throwsSizerResolver,
-          WriterResolver.throwsWriterResolver,
-          ReaderResolver.throwsReaderResolver
-      );
-
       final var recordTypeSignatures = Companion2.computeRecordTypeSignatures(recordClasses);
       final var typeSignature = recordTypeSignatures.get(recordClass);
 
-      return new RecordSerde2<>(recordClass, typeSignature, componentSerdes, Optional.empty());
+      return new RecordSerde2<>(recordClass, typeSignature, Optional.empty());
     } else {
-      // FIXME if there is only one Serde pickler class we can just return it yet if we have multiple we need to create a PicklerImpl2 that knows how to delegate to the right one
-      // we also need the WriterResolver, ReaderResolver, and SizerResolver to be able to resolve the right writer/reader/sizer for the type
-      // to build the ComponentSerde[] for what each RecordSerde2 needs to serialize/deserialize
-      return null;
+        return new PicklerImpl2<>(clazz, typeSignatures);
     }
   }
 

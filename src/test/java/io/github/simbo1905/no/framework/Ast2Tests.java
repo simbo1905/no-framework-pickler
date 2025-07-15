@@ -14,45 +14,196 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class Ast2Tests {
 
-    private static final Logger LOGGER = Logger.getLogger(Ast2Tests.class.getName());
+  private static final Logger LOGGER = Logger.getLogger(Ast2Tests.class.getName());
 
-    @BeforeAll
-    static void setupLogging() {
-        LoggingControl.setupCleanLogging();
+  @BeforeAll
+  static void setupLogging() {
+    LoggingControl.setupCleanLogging();
+  }
+
+  // A trivial record for testing
+  public record TrivialRecord(int value) {
+  }
+
+  @Test
+  void testTrivialRecordRoundTrip() {
+    // 1. Get a pickler for the trivial record
+    final Pickler2<TrivialRecord> pickler = Pickler2.forClass(TrivialRecord.class);
+
+    // 2. Create an instance of the record
+    final var original = new TrivialRecord(42);
+    LOGGER.fine(() -> "Original record: " + original);
+    LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
+
+
+    // 3. Use maxSizeOf to create a ByteBuffer
+    final int maxSize = pickler.maxSizeOf(original);
+    LOGGER.fine(() -> "maxSizeOf: " + maxSize);
+    final ByteBuffer buffer = ByteBuffer.allocate(maxSize);
+
+    // 4. Write the record to the buffer
+    final int bytesWritten = pickler.serialize(buffer, original);
+    LOGGER.fine(() -> "Bytes written: " + bytesWritten);
+
+
+    // 5. Flip the buffer for reading
+    buffer.flip();
+
+    // 6. Read the record back
+    final TrivialRecord deserialized = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized record: " + deserialized);
+
+    // 7. Assert the deserialized record is equal to the original
+    assertEquals(original, deserialized);
+  }
+
+  @Test
+  void testLinkedListRecordRoundTrip() {
+    // 1. Get a pickler for the linked list record
+    final Pickler2<LinkedListNode> pickler = Pickler2.forClass(LinkedListNode.class);
+
+    // 2. Create a sample linked list
+    final var originalList = new LinkedListNode(3, new LinkedListNode(2, new LinkedListNode(1)));
+
+    LOGGER.fine(() -> String.format(
+        "Original linked list: %s (hashCode: %d)",
+        originalList,
+        originalList.hashCode()
+    ));
+
+    // 3. Calculate max size and allocate buffer
+    final int maxSize = pickler.maxSizeOf(originalList);
+    LOGGER.fine(() -> "Max size: " + maxSize);
+    final ByteBuffer buffer = ByteBuffer.allocate(maxSize);
+
+    // 4. Serialize the linked list
+    final int bytesWritten = pickler.serialize(buffer, originalList);
+    LOGGER.fine(() -> "Bytes written: " + bytesWritten);
+
+    // 5. Flip buffer for reading
+    buffer.flip();
+
+    // 6. Deserialize the linked list
+    final LinkedListNode deserializedList = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized linked list: " + deserializedList);
+
+    // 7. Assert equality
+    assertEquals(originalList, deserializedList,
+        "Deserialized linked list should equal the original linked list");
+  }
+
+  // Add the nested record definition
+  public record LinkedListNode(int value, LinkedListNode next) {
+    public LinkedListNode(int value) {
+      this(value, null);
     }
+  }
 
-    // A trivial record for testing
-    public record TrivialRecord(int value) {}
+// For nested record test
+public record NestedRecord(String name) {}
+public record OuterRecord(int id, NestedRecord nested) {}
 
-    @Test
-    void testTrivialRecordRoundTrip() {
-        // 1. Get a pickler for the trivial record
-        final Pickler2<TrivialRecord> pickler = Pickler2.forClass(TrivialRecord.class);
+// For enum test
+public enum Color { RED, GREEN, BLUE }
+public record RecordWithEnum(String name, Color color) {}
 
-        // 2. Create an instance of the record
-        final var original = new TrivialRecord(42);
-        LOGGER.fine(() -> "Original record: " + original);
-        LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
+// For empty record test
+public record EmptyRecord() {}
+public record RecordWithEmpty(int id, EmptyRecord empty) {}
 
+@Test
+void testNestedRecordRoundTrip() {
+    // 1. Get a pickler for the trivial record
+    final Pickler2<OuterRecord> pickler = Pickler2.forClass(OuterRecord.class);
 
-        // 3. Use maxSizeOf to create a ByteBuffer
-        final int maxSize = pickler.maxSizeOf(original);
-        LOGGER.fine(() -> "maxSizeOf: " + maxSize);
-        final ByteBuffer buffer = ByteBuffer.allocate(maxSize);
-
-        // 4. Write the record to the buffer
-        final int bytesWritten = pickler.serialize(buffer, original);
-        LOGGER.fine(() -> "Bytes written: " + bytesWritten);
+    // 2. Create an instance of the record
+    final var original = new OuterRecord(1, new NestedRecord("test"));
+    LOGGER.fine(() -> "Original record: " + original);
+    LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
 
 
-        // 5. Flip the buffer for reading
-        buffer.flip();
+    // 3. Use maxSizeOf to create a ByteBuffer
+    final int maxSize = pickler.maxSizeOf(original);
+    LOGGER.fine(() -> "maxSizeOf: " + maxSize);
+    final ByteBuffer buffer = ByteBuffer.allocate(maxSize);
 
-        // 6. Read the record back
-        final TrivialRecord deserialized = pickler.deserialize(buffer);
-        LOGGER.fine(() -> "Deserialized record: " + deserialized);
-        
-        // 7. Assert the deserialized record is equal to the original
-        assertEquals(original, deserialized);
-    }
+    // 4. Write the record to the buffer
+    final int bytesWritten = pickler.serialize(buffer, original);
+    LOGGER.fine(() -> "Bytes written: " + bytesWritten);
+
+
+    // 5. Flip the buffer for reading
+    buffer.flip();
+
+    // 6. Read the record back
+    final OuterRecord deserialized = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized record: " + deserialized);
+
+    // 7. Assert the deserialized record is equal to the original
+    assertEquals(original, deserialized);
+}
+
+@Test
+void testRecordWithEnumRoundTrip() {
+    // 1. Get a pickler for the trivial record
+    final Pickler2<RecordWithEnum> pickler = Pickler2.forClass(RecordWithEnum.class);
+
+    // 2. Create an instance of the record
+    final var original = new RecordWithEnum("car", Color.BLUE);
+    LOGGER.fine(() -> "Original record: " + original);
+    LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
+
+
+    // 3. Use maxSizeOf to create a ByteBuffer
+    final int maxSize = pickler.maxSizeOf(original);
+    LOGGER.fine(() -> "maxSizeOf: " + maxSize);
+    final ByteBuffer buffer = ByteBuffer.allocate(maxSize);
+
+    // 4. Write the record to the buffer
+    final int bytesWritten = pickler.serialize(buffer, original);
+    LOGGER.fine(() -> "Bytes written: " + bytesWritten);
+
+
+    // 5. Flip the buffer for reading
+    buffer.flip();
+
+    // 6. Read the record back
+    final RecordWithEnum deserialized = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized record: " + deserialized);
+
+    // 7. Assert the deserialized record is equal to the original
+    assertEquals(original, deserialized);
+}
+
+@Test
+void testRecordWithEmptyRoundTrip() {
+    // 1. Get a pickler for the trivial record
+    final Pickler2<RecordWithEmpty> pickler = Pickler2.forClass(RecordWithEmpty.class);
+
+    // 2. Create an instance of the record
+    final var original = new RecordWithEmpty(10, new EmptyRecord());
+    LOGGER.fine(() -> "Original record: " + original);
+    LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
+
+
+    // 3. Use maxSizeOf to create a ByteBuffer
+    final int maxSize = pickler.maxSizeOf(original);
+    LOGGER.fine(() -> "maxSizeOf: " + maxSize);
+    final ByteBuffer buffer = ByteBuffer.allocate(maxSize);
+
+    // 4. Write the record to the buffer
+    final int bytesWritten = pickler.serialize(buffer, original);
+    LOGGER.fine(() -> "Bytes written: " + bytesWritten);
+
+
+    // 5. Flip the buffer for reading
+    buffer.flip();
+
+    // 6. Read the record back
+    final RecordWithEmpty deserialized = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized record: " + deserialized);
+
+    // 7. Assert the deserialized record is equal to the original
+    assertEquals(original, deserialized);
+}
 }

@@ -10,4 +10,8 @@ interface Writer extends
   default void write(ByteBuffer buffer, Object obj) {
     accept(buffer, obj);
   }
+
+  interface Resolver {
+    Writer resolveTypeWriter(Class<?> targetClass);
+  }
 }

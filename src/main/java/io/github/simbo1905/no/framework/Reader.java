@@ -10,4 +10,8 @@ interface Reader extends
   default Object read(ByteBuffer buffer) {
     return apply(buffer);
   }
+
+  interface Resolver {
+    Reader resolveTypeReader(Long typeSignature);
+  }
 }

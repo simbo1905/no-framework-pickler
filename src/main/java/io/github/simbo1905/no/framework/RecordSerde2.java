@@ -10,6 +10,7 @@ import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.IntStream;
@@ -30,14 +31,34 @@ final class RecordSerde2<T> implements Pickler2<T> {
 
   RecordSerde2(Class<?> userType,
                long typeSignature,
-               ComponentSerde[] componentSerdes,
                Optional<Long> altTypeSignature
+  ) {
+    this(userType, typeSignature, altTypeSignature, null, null, null);
+  }
+
+  RecordSerde2(Class<?> userType,
+               long typeSignature,
+               Optional<Long> altTypeSignature,
+               SizerResolver sizerResolver,
+               WriterResolver writerResolver,
+               ReaderResolver readerResolver
   ) {
     assert userType.isRecord() : "User type must be a record: " + userType;
     compatibilityMode = CompatibilityMode.current() == CompatibilityMode.ENABLED;
     this.userType = userType;
     this.typeSignature = typeSignature;
     this.altTypeSignature = altTypeSignature;
+
+    // Create component serdes directly without external resolvers
+    final var customHandlers = List.<SerdeHandler>of();
+    final var componentSerdes = Companion2.buildComponentSerdes(
+        userType,
+        customHandlers,
+        sizerResolver != null ? sizerResolver : this::resolveTypeSizer,
+        writerResolver != null ? writerResolver : this::resolveTypeWriter,
+        readerResolver != null ? readerResolver : this::resolveTypeReader
+    );
+
     this.sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Sizer[]::new);
     this.writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Writer[]::new);
     this.readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Reader[]::new);
@@ -102,7 +123,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
     LOGGER.fine(() -> String.format("Writing component count: %d", writers.length));
     ZigZagEncoding.putInt(buffer, writers.length);
     LOGGER.fine(() -> String.format("Buffer position after count: %d", buffer.position()));
-    
+
     IntStream.range(0, writers.length)
         .forEach(i -> {
           final int posBefore = buffer.position();
@@ -212,6 +233,38 @@ final class RecordSerde2<T> implements Pickler2<T> {
   @Override
   public String toString() {
     return "RecordSerde{userType=" + userType + ", typeSignature=0x" + Long.toHexString(typeSignature) + "}";
+  }
+
+  @SuppressWarnings("unchecked")
+  Sizer resolveTypeSizer(Class<?> targetClass) {
+    return obj -> {
+      if (obj == null) return Byte.BYTES;
+      if (userType.isAssignableFrom(targetClass)) {
+        return this.maxSizeOf((T) obj);
+      }
+      throw new UnsupportedOperationException("Unhandled type: " + targetClass);
+    };
+  }
+
+  @SuppressWarnings("unchecked")
+  Writer resolveTypeWriter(Class<?> targetClass) {
+    return (buffer, obj) -> {
+      if (userType.isAssignableFrom(targetClass)) {
+        this.writeToWire(buffer, (T) obj);
+      } else {
+        throw new UnsupportedOperationException("Unhandled type: " + targetClass);
+      }
+    };
+  }
+
+  Reader resolveTypeReader(Long typeSignature) {
+    return buffer -> {
+      if (typeSignature == 0L) return null;
+      if (typeSignature == this.typeSignature) {
+        return this.readFromWire(buffer);
+      }
+      throw new UnsupportedOperationException("Unhandled type signature: " + typeSignature);
+    };
   }
 
   static Object defaultValue(Class<?> type) {
