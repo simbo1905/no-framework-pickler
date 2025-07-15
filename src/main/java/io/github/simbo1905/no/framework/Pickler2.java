@@ -17,9 +17,9 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, RecordSerde {
+public sealed interface Pickler2<T> permits PicklerImpl2, RecordSerde2 {
 
-  Logger LOGGER = Logger.getLogger(Pickler.class.getName());
+  Logger LOGGER = Logger.getLogger(Pickler2.class.getName());
 
   /// Serialize an object to a ByteBuffer
   /// @param buffer The buffer to write to
@@ -40,7 +40,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
   /// Factory method for creating a unified pickler for any type using refactored architecture
   /// @param clazz The root class (record, enum, or sealed interface)
   /// @return A pickler instance
-  static <T> Pickler<T> forClass(Class<T> clazz) {
+  static <T> Pickler2<T> forClass(Class<T> clazz) {
     return forClass(clazz, Map.of());
   }
 
@@ -48,7 +48,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
   /// @param clazz The root class (record, enum, or sealed interface)
   /// @param typeSignatures A map of class signatures to type signatures for backwards compatibility
   /// @return A pickler instance
-  static <T> Pickler<T> forClass(Class<T> clazz, Map<Class<?>, Long> typeSignatures) {
+  static <T> Pickler2<T> forClass(Class<T> clazz, Map<Class<?>, Long> typeSignatures) {
     Objects.requireNonNull(clazz, "Class must not be null");
     if (!clazz.isRecord() && !clazz.isEnum() && !clazz.isSealed()) {
       throw new IllegalArgumentException("Class must be a record, enum, or sealed interface: " + clazz);
@@ -114,8 +114,29 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
         " and enums: " + enumToTypeSignatureMap.keySet().stream().map(Class::getName).collect(Collectors.joining(","))
     );
 
-    // FIXME if there is only one Serde pickler class we can just return it and save the map lookup as long as we handle the type signature correctly
-    return new PicklerImpl<>(recordClasses, enumToTypeSignatureMap, typeSignatures);
+    // For the simple case of a single record, we can directly create a RecordSerde2.
+    if (recordClasses.size() == 1) {
+      @SuppressWarnings("unchecked") final Class<T> recordClass = (Class<T>) recordClasses.getFirst();
+      final var customHandlers = List.<SerdeHandler>of(); // No custom handlers for this simple case.
+
+      final var componentSerdes = Companion2.buildComponentSerdes(
+          recordClass,
+          customHandlers,
+          SizerResolver.throwsSizerResolver,
+          WriterResolver.throwsWriterResolver,
+          ReaderResolver.throwsReaderResolver
+      );
+
+      final var recordTypeSignatures = Companion2.computeRecordTypeSignatures(recordClasses);
+      final var typeSignature = recordTypeSignatures.get(recordClass);
+
+      return new RecordSerde2<>(recordClass, typeSignature, componentSerdes, Optional.empty());
+    } else {
+      // FIXME if there is only one Serde pickler class we can just return it yet if we have multiple we need to create a PicklerImpl2 that knows how to delegate to the right one
+      // we also need the WriterResolver, ReaderResolver, and SizerResolver to be able to resolve the right writer/reader/sizer for the type
+      // to build the ComponentSerde[] for what each RecordSerde2 needs to serialize/deserialize
+      return null;
+    }
   }
 
   /// In order to support optional backwards compatibility, we need to be able to tell the newer pickler what is the

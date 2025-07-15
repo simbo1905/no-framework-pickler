@@ -3,7 +3,6 @@ package io.github.simbo1905.no.framework;
 import java.util.Objects;
 
 /// Component serialization bundle
-@SuppressWarnings("auxiliary-class")
 record ComponentSerde(
     Writer writer,
     Reader reader,

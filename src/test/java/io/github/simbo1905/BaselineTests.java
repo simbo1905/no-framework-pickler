@@ -21,7 +21,7 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.Pickler.forClass;
 import static org.junit.jupiter.api.Assertions.*;
 
-public class RefactorTests {
+public class BaselineTests {
 
   public record ArrayExample(
       String[] stringArray,
@@ -42,7 +42,7 @@ public class RefactorTests {
   }
 
   public record NullableFieldsExample(String stringField, Integer integerField, Double doubleField,
-                                      RefactorTests.Animal objectField) {
+                                      BaselineTests.Animal objectField) {
   }
 
   public record Person(String name, int age) {

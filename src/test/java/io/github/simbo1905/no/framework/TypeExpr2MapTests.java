@@ -3,8 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
+import io.github.simbo1905.BaselineTests;
 import io.github.simbo1905.LoggingControl;
-import io.github.simbo1905.RefactorTests;
 import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,6 @@ import java.util.*;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SuppressWarnings("auxiliaryclass")
 class TypeExpr2MapTests {
 
   @BeforeAll
@@ -44,7 +43,7 @@ class TypeExpr2MapTests {
   public record ItemNull() implements HeterogeneousItem {
   }
 
-  public record ItemTestRecord(RefactorTests.Person person) implements HeterogeneousItem {
+  public record ItemTestRecord(BaselineTests.Person person) implements HeterogeneousItem {
   }
 
   public record ItemTestEnum(TypeExpr2Tests.TestEnum value) implements HeterogeneousItem {
@@ -81,7 +80,7 @@ class TypeExpr2MapTests {
     // 1. Define all record and enum types that need explicit signature handling.
     final List<Class<?>> allRecordTypes = new ArrayList<>(sealedTypes);
     allRecordTypes.add(ComplexMapRecord.class);
-    allRecordTypes.add(RefactorTests.Person.class);
+    allRecordTypes.add(BaselineTests.Person.class);
 
     final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(allRecordTypes);
     final long testEnumSignature = Companion2.hashEnumSignature(TypeExpr2Tests.TestEnum.class);
@@ -101,8 +100,8 @@ class TypeExpr2MapTests {
     SizerResolver sizerResolver = type -> (obj) -> {
       if (obj == null) return Long.BYTES; // Null signature
 
-      if (type == RefactorTests.Person.class) {
-        RefactorTests.Person person = (RefactorTests.Person) obj;
+      if (type == BaselineTests.Person.class) {
+        BaselineTests.Person person = (BaselineTests.Person) obj;
         return Long.BYTES + // signature
             Byte.BYTES + ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(String.class)) +
             ZigZagEncoding.sizeOf(person.name().length()) + person.name().getBytes(java.nio.charset.StandardCharsets.UTF_8).length + // name
@@ -131,11 +130,11 @@ class TypeExpr2MapTests {
 
       Class<?> concreteType = obj.getClass();
 
-      if (concreteType == RefactorTests.Person.class) {
-        RefactorTests.Person person = (RefactorTests.Person) obj;
-        buffer.putLong(recordTypeSignatureMap.get(RefactorTests.Person.class));
+      if (concreteType == BaselineTests.Person.class) {
+        BaselineTests.Person person = (BaselineTests.Person) obj;
+        buffer.putLong(recordTypeSignatureMap.get(BaselineTests.Person.class));
         // Write components of Person
-        var personSerdes = serdeMap.computeIfAbsent(RefactorTests.Person.class, t ->
+        var personSerdes = serdeMap.computeIfAbsent(BaselineTests.Person.class, t ->
             Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
         personSerdes[0].writer().accept(buffer, person); // name
         personSerdes[1].writer().accept(buffer, person); // age
@@ -181,12 +180,12 @@ class TypeExpr2MapTests {
           .findFirst()
           .orElseThrow(() -> new IllegalArgumentException("Unknown signature: " + Long.toHexString(signature)));
 
-      if (targetType == RefactorTests.Person.class) {
-        var personSerdes = serdeMap.computeIfAbsent(RefactorTests.Person.class, t ->
+      if (targetType == BaselineTests.Person.class) {
+        var personSerdes = serdeMap.computeIfAbsent(BaselineTests.Person.class, t ->
             Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
         String name = (String) personSerdes[0].reader().apply(buffer);
         int age = (int) personSerdes[1].reader().apply(buffer);
-        return new RefactorTests.Person(name, age);
+        return new BaselineTests.Person(name, age);
       }
 
       if (sealedTypes.contains(targetType)) {
@@ -205,7 +204,7 @@ class TypeExpr2MapTests {
         if (targetType == ItemInt.class) return new ItemInt((Integer) componentValue);
         if (targetType == ItemLong.class) return new ItemLong((Long) componentValue);
         if (targetType == ItemBoolean.class) return new ItemBoolean((Boolean) componentValue);
-        if (targetType == ItemTestRecord.class) return new ItemTestRecord((RefactorTests.Person) componentValue);
+        if (targetType == ItemTestRecord.class) return new ItemTestRecord((BaselineTests.Person) componentValue);
         if (targetType == ItemTestEnum.class) return new ItemTestEnum((TypeExpr2Tests.TestEnum) componentValue);
         if (targetType == ItemOptional.class) return new ItemOptional((Optional<String>) componentValue);
         if (targetType == ItemList.class) return new ItemList((List<String>) componentValue);
@@ -244,7 +243,7 @@ class TypeExpr2MapTests {
     map.put(new ItemString("stringKey"), new ItemInt(12345));
     map.put(new ItemInt(54321), new ItemString("value for int key"));
     map.put(new ItemLong(98765L), new ItemBoolean(true));
-    map.put(new ItemTestRecord(new RefactorTests.Person("keyPerson", 99)), new ItemString("value for record key"));
+    map.put(new ItemTestRecord(new BaselineTests.Person("keyPerson", 99)), new ItemString("value for record key"));
     map.put(new ItemString("key for enum value"), new ItemTestEnum(TypeExpr2Tests.TestEnum.THIRD));
     map.put(new ItemString("keyToNullItem"), new ItemNull());
     map.put(new ItemNull(), new ItemString("valueForItemNullKey"));

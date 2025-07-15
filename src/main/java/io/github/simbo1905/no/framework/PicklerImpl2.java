@@ -19,7 +19,7 @@ import static io.github.simbo1905.no.framework.Companion.computeRecordTypeSignat
 import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
 
 /// Main coordinator for multiple record types using static analysis and callback delegation
-final class PicklerImpl<R> implements Pickler<R> {
+final class PicklerImpl2<R> implements Pickler2<R> {
   final List<Class<?>> userTypes;
   final Map<Long, Pickler<?>> typeSignatureToPicklerMap;
   final Map<Class<?>, Long> recordClassToTypeSignatureMap;
@@ -33,9 +33,9 @@ final class PicklerImpl<R> implements Pickler<R> {
   /// @param recordClasses List of record classes to be serialized.
   /// @param enumToTypeSignatureMap Map of enum classes to their type signatures.
   /// @param altTypeSignatures Map of class signatures to type signatures for backwards compatibility.
-  PicklerImpl(final List<Class<?>> recordClasses,
-              final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap,
-              final Map<Class<?>, Long> altTypeSignatures) {
+  PicklerImpl2(final List<Class<?>> recordClasses,
+               final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap,
+               final Map<Class<?>, Long> altTypeSignatures) {
     this.compatibilityMode = CompatibilityMode.current() == CompatibilityMode.ENABLED;
     this.userTypes = List.copyOf(recordClasses);
     this.enumToTypeSignatureMap = Map.copyOf(enumToTypeSignatureMap);

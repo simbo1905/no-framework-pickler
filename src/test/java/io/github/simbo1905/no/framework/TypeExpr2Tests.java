@@ -3,8 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
+import io.github.simbo1905.BaselineTests;
 import io.github.simbo1905.LoggingControl;
-import io.github.simbo1905.RefactorTests;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +19,6 @@ import java.util.function.Function;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SuppressWarnings("auxiliaryclass")
 class TypeExpr2Tests {
 
   @BeforeAll
@@ -1029,7 +1028,7 @@ class TypeExpr2Tests {
   public record ItemNull() implements HeterogeneousItem {
   }
 
-  public record ItemTestRecord(RefactorTests.Person value) implements HeterogeneousItem {
+  public record ItemTestRecord(BaselineTests.Person value) implements HeterogeneousItem {
   }
 
   public record ItemTestEnum(TestEnum value) implements HeterogeneousItem {
@@ -1060,7 +1059,7 @@ class TypeExpr2Tests {
         ItemTestRecord.class, ItemTestEnum.class, ItemOptional.class, ItemList.class
     );
     final List<Class<?>> allRecordTypes = new ArrayList<>(sealedTypes);
-    allRecordTypes.add(RefactorTests.Person.class);
+    allRecordTypes.add(BaselineTests.Person.class);
     allRecordTypes.add(ComplexListRecord.class);
     final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(allRecordTypes);
     final long testEnumSignature = Companion2.hashEnumSignature(TestEnum.class);

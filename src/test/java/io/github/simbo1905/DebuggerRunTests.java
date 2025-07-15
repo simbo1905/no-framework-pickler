@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public class DebuggerRunTests {
   public static void main(String[] args) {
     LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
-        .selectors(DiscoverySelectors.selectClass(RefactorTests.class),
+        .selectors(DiscoverySelectors.selectClass(BaselineTests.class),
             DiscoverySelectors.selectClass(RecordPicklerTests.class),
             DiscoverySelectors.selectClass(TreeDemo.class),
             DiscoverySelectors.selectClass(io.github.simbo1905.no.framework.TreeTypeExprTests.class),

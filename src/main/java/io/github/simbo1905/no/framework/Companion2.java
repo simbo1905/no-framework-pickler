@@ -27,10 +27,19 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
 interface SizerResolver extends
     Function<Class<?>, Sizer> {
+  // For this simple case, the resolvers can be simple lambdas that throw
+  // as they shouldn't be called for a trivial record with only primitive components.
+  SizerResolver throwsSizerResolver = type -> {
+    throw new AssertionError("Sizer throwsSizerResolver should not be reachable.");
+  };
 }
 
 interface WriterResolver extends
     Function<Class<?>, Writer> {
+  WriterResolver throwsWriterResolver = type -> {
+    throw new AssertionError("Writer throwsWriterResolver should not be reachable.");
+  };
+
   default Writer resolveWriter(Class<?> type) {
     return apply(type);
   }
@@ -38,6 +47,9 @@ interface WriterResolver extends
 
 interface ReaderResolver extends
     Function<Long, Reader> {
+  ReaderResolver throwsReaderResolver = type -> {
+    throw new AssertionError("Reader throwsReaderResolver should not be reachable.");
+  };
 }
 
 /// Companion for TypeExpr2-based component serde building
@@ -45,7 +57,6 @@ interface ReaderResolver extends
 sealed interface Companion2 permits Companion2.Nothing {
 
   /// Build ComponentSerde array for a record type using TypeExpr2 AST
-  @SuppressWarnings("auxiliaryclass")
   static ComponentSerde[] buildComponentSerdes(
       Class<?> recordClass,
       Collection<SerdeHandler> customHandlers,
@@ -79,7 +90,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Writer createComponentWriter(
       TypeExpr2 typeExpr,
       MethodHandle getter,
-      @SuppressWarnings("auxiliaryclass") Collection<SerdeHandler> customHandlers,
+      Collection<SerdeHandler> customHandlers,
       WriterResolver typeWriterResolver
   ) {
     return switch (typeExpr) {
@@ -151,7 +162,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Create reader for a component based on its TypeExpr2
   static Reader createComponentReader(
       TypeExpr2 typeExpr,
-      @SuppressWarnings("auxiliaryclass") Collection<SerdeHandler> customHandlers,
+      Collection<SerdeHandler> customHandlers,
       ReaderResolver typeReaderResolver
   ) {
     return switch (typeExpr) {
@@ -195,7 +206,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Sizer createComponentSizer(
       TypeExpr2 typeExpr,
       MethodHandle getter,
-      @SuppressWarnings("auxiliaryclass") Collection<SerdeHandler> customHandlers,
+      Collection<SerdeHandler> customHandlers,
       SizerResolver typeSizerResolver
   ) {
     return switch (typeExpr) {
@@ -424,7 +435,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create sizer for custom value types
-  static Sizer createCustomSizer(MethodHandle getter, @SuppressWarnings("auxiliaryclass") SerdeHandler handler) {
+  static Sizer createCustomSizer(MethodHandle getter, SerdeHandler handler) {
     // Use extractAndDelegate for null handling
     return extractAndDelegate((value) ->
             ZigZagEncoding.sizeOf(handler.marker()) + handler.sizer().applyAsInt(value),
