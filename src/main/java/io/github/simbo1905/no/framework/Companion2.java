@@ -253,113 +253,139 @@ sealed interface Companion2 permits Companion2.Nothing {
 
   /// Create writer for primitive types
   static Writer createPrimitiveWriter(TypeExpr2.PrimitiveValueType type, MethodHandle getter) {
-    return (buffer, obj) -> {
-      try {
-        switch (type) {
-          case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored) -> {
-            switch (name) {
-              case "BOOLEAN" -> buffer.put((byte) ((boolean) getter.invoke(obj) ? 1 : 0));
-              case "BYTE" -> buffer.put((byte) getter.invoke(obj));
-              case "SHORT" -> buffer.putShort((short) getter.invoke(obj));
-              case "CHARACTER" -> buffer.putChar((char) getter.invoke(obj));
-              case "FLOAT" -> buffer.putFloat((float) getter.invoke(obj));
-              case "DOUBLE" -> buffer.putDouble((double) getter.invoke(obj));
-              default -> throw new IllegalStateException("Unknown primitive type: " + name);
-            }
+    // Switch at meta-value time, yield focused function
+    return switch (type) {
+      case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored) -> switch (name) {
+        case "BOOLEAN" -> (buffer, obj) -> {
+          try {
+            buffer.put((byte) ((boolean) getter.invoke(obj) ? 1 : 0));
+          } catch (Throwable e) {
+            throw new IllegalStateException("Failed to write BOOLEAN", e);
           }
-          case TypeExpr2.PrimitiveValueType.IntegerType(var fixedMarker, var varMarker) -> {
-            int result = (int) getter.invoke(obj);
-            int position = buffer.position();
-            int zigzagSize = ZigZagEncoding.sizeOf(result);
-            LOGGER.fine(() -> "Writing primitive int value=" + result + " at position=" + position + " zigzagSize=" + zigzagSize + " vs Integer.BYTES=" + Integer.BYTES);
-            if (zigzagSize < Integer.BYTES) {
-              LOGGER.fine(() -> "Using INTEGER_VAR marker=" + varMarker);
-              ZigZagEncoding.putInt(buffer, varMarker);
-              ZigZagEncoding.putInt(buffer, result);
-            } else {
-              LOGGER.fine(() -> "Using INTEGER marker=" + fixedMarker);
-              ZigZagEncoding.putInt(buffer, fixedMarker);
-              buffer.putInt(result);
-            }
-            LOGGER.fine(() -> "Wrote " + (buffer.position() - position) + " bytes total");
+        };
+        case "BYTE" -> (buffer, obj) -> {
+          try {
+            buffer.put((byte) getter.invoke(obj));
+          } catch (Throwable e) {
+            throw new IllegalStateException("Failed to write BYTE", e);
           }
-          case TypeExpr2.PrimitiveValueType.LongType(var fixedMarker, var varMarker) -> {
-            long result = (long) getter.invoke(obj);
-            int position = buffer.position();
-            int zigzagSize = ZigZagEncoding.sizeOf(result);
-            LOGGER.fine(() -> "Writing primitive long value=" + result + " at position=" + position + " zigzagSize=" + zigzagSize + " vs Long.BYTES=" + Long.BYTES);
-            if (zigzagSize < Long.BYTES) {
-              LOGGER.fine(() -> "Using LONG_VAR marker=" + varMarker);
-              ZigZagEncoding.putInt(buffer, varMarker);
-              ZigZagEncoding.putLong(buffer, result);
-            } else {
-              LOGGER.fine(() -> "Using LONG marker=" + fixedMarker);
-              ZigZagEncoding.putInt(buffer, fixedMarker);
-              buffer.putLong(result);
-            }
-            LOGGER.fine(() -> "Wrote " + (buffer.position() - position) + " bytes total");
+        };
+        case "SHORT" -> (buffer, obj) -> {
+          try {
+            buffer.putShort((short) getter.invoke(obj));
+          } catch (Throwable e) {
+            throw new IllegalStateException("Failed to write SHORT", e);
           }
+        };
+        case "CHARACTER" -> (buffer, obj) -> {
+          try {
+            buffer.putChar((char) getter.invoke(obj));
+          } catch (Throwable e) {
+            throw new IllegalStateException("Failed to write CHARACTER", e);
+          }
+        };
+        case "FLOAT" -> (buffer, obj) -> {
+          try {
+            buffer.putFloat((float) getter.invoke(obj));
+          } catch (Throwable e) {
+            throw new IllegalStateException("Failed to write FLOAT", e);
+          }
+        };
+        case "DOUBLE" -> (buffer, obj) -> {
+          try {
+            buffer.putDouble((double) getter.invoke(obj));
+          } catch (Throwable e) {
+            throw new IllegalStateException("Failed to write DOUBLE", e);
+          }
+        };
+        default -> throw new IllegalStateException("Unknown primitive type: " + name);
+      };
+      case TypeExpr2.PrimitiveValueType.IntegerType(int fixedMarker, int varMarker) -> (buffer, obj) -> {
+        try {
+          int result = (int) getter.invoke(obj);
+          int zigzagSize = ZigZagEncoding.sizeOf(result);
+          if (zigzagSize < Integer.BYTES) {
+            ZigZagEncoding.putInt(buffer, varMarker);
+            ZigZagEncoding.putInt(buffer, result);
+          } else {
+            ZigZagEncoding.putInt(buffer, fixedMarker);
+            buffer.putInt(result);
+          }
+        } catch (Throwable e) {
+          throw new IllegalStateException("Failed to write INTEGER", e);
         }
-      } catch (Throwable e) {
-        throw new IllegalStateException("Failed to write primitive", e);
-      }
+      };
+      case TypeExpr2.PrimitiveValueType.LongType(int fixedMarker, int varMarker) -> (buffer, obj) -> {
+        try {
+          long result = (long) getter.invoke(obj);
+          int zigzagSize = ZigZagEncoding.sizeOf(result);
+          if (zigzagSize < Long.BYTES) {
+            ZigZagEncoding.putInt(buffer, varMarker);
+            ZigZagEncoding.putLong(buffer, result);
+          } else {
+            ZigZagEncoding.putInt(buffer, fixedMarker);
+            buffer.putLong(result);
+          }
+        } catch (Throwable e) {
+          throw new IllegalStateException("Failed to write LONG", e);
+        }
+      };
     };
   }
 
   /// Create reader for primitive types
   static Reader createPrimitiveReader(TypeExpr2.PrimitiveValueType type) {
-    return buffer -> switch (type) {
+    // Switch at meta-value time, yield focused function
+    return switch (type) {
       case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored) -> switch (name) {
-        case "BOOLEAN" -> buffer.get() != 0;
-        case "BYTE" -> buffer.get();
-        case "SHORT" -> buffer.getShort();
-        case "CHARACTER" -> buffer.getChar();
-        case "FLOAT" -> buffer.getFloat();
-        case "DOUBLE" -> buffer.getDouble();
+        case "BOOLEAN" -> buffer -> buffer.get() != 0;
+        case "BYTE" -> buffer -> buffer.get();
+        case "SHORT" -> buffer -> buffer.getShort();
+        case "CHARACTER" -> buffer -> buffer.getChar();
+        case "FLOAT" -> buffer -> buffer.getFloat();
+        case "DOUBLE" -> buffer -> buffer.getDouble();
         default -> throw new IllegalStateException("Unknown primitive type: " + name);
       };
-      case TypeExpr2.PrimitiveValueType.IntegerType(var fixedMarker, var varMarker) -> {
-        // Read the marker to determine encoding
+      case TypeExpr2.PrimitiveValueType.IntegerType(int fixedMarker, int varMarker) -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
         if (marker == fixedMarker) {
-          yield buffer.getInt();
+          return buffer.getInt();
         } else if (marker == varMarker) {
-          yield ZigZagEncoding.getInt(buffer);
+          return ZigZagEncoding.getInt(buffer);
         } else {
           throw new IllegalStateException("Expected INTEGER marker " + fixedMarker + " or " + varMarker + ", got " + marker);
         }
-      }
-      case TypeExpr2.PrimitiveValueType.LongType(var fixedMarker, var varMarker) -> {
-        // Read the marker to determine encoding
+      };
+      case TypeExpr2.PrimitiveValueType.LongType(int fixedMarker, int varMarker) -> buffer -> {
         int marker = ZigZagEncoding.getInt(buffer);
         if (marker == fixedMarker) {
-          yield buffer.getLong();
+          return buffer.getLong();
         } else if (marker == varMarker) {
-          yield ZigZagEncoding.getLong(buffer);
+          return ZigZagEncoding.getLong(buffer);
         } else {
           throw new IllegalStateException("Expected LONG marker " + fixedMarker + " or " + varMarker + ", got " + marker);
         }
-      }
+      };
     };
   }
 
   /// Create sizer for primitive types
   static Sizer createPrimitiveSizer(TypeExpr2.PrimitiveValueType type) {
-    // Primitive types don't need the record object, just return worst-case sizes
+    // Switch at meta-value time, yield focused function
     return switch (type) {
       case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var ignored1) -> switch (name) {
-        case "BOOLEAN", "BYTE" -> (o) -> Byte.BYTES;
-        case "SHORT", "CHARACTER" -> (o) -> Short.BYTES;
-        case "FLOAT" -> (o) -> Float.BYTES;
-        case "DOUBLE" -> (o) -> Double.BYTES;
+        case "BOOLEAN", "BYTE" -> o -> Byte.BYTES;
+        case "SHORT", "CHARACTER" -> o -> Short.BYTES;
+        case "FLOAT" -> o -> Float.BYTES;
+        case "DOUBLE" -> o -> Double.BYTES;
         default -> throw new IllegalStateException("Unknown primitive type: " + name);
       };
-      case TypeExpr2.PrimitiveValueType.IntegerType ignored -> (o) ->
-          // Worst case: 1 byte marker + 4 bytes data
-          ZigZagEncoding.sizeOf(-6) + Integer.BYTES;
-      case TypeExpr2.PrimitiveValueType.LongType ignored -> (o) ->
-          // Worst case: 1 byte marker + 8 bytes data
-          ZigZagEncoding.sizeOf(-8) + Long.BYTES;
+      case TypeExpr2.PrimitiveValueType.IntegerType(int fixedMarker, int varMarker) -> o ->
+          // Worst case: marker + 4 bytes data
+          ZigZagEncoding.sizeOf(fixedMarker) + Integer.BYTES;
+      case TypeExpr2.PrimitiveValueType.LongType(int fixedMarker, int varMarker) -> o ->
+          // Worst case: marker + 8 bytes data
+          ZigZagEncoding.sizeOf(fixedMarker) + Long.BYTES;
     };
   }
 
