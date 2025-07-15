@@ -7,15 +7,13 @@ import org.jetbrains.annotations.NotNull;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
@@ -66,6 +64,16 @@ sealed interface Companion2 permits Companion2.Nothing {
   ) {
     LOGGER.fine(() -> "Building ComponentSerde[] for record: " + recordClass.getName());
 
+    // Pre-process custom handlers into efficient lookup maps
+    final Map<Class<?>, ToIntFunction<Object>> customSizers = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::sizer));
+    final Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::writer));
+    final Map<Class<?>, Function<ByteBuffer, Object>> customReaders = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+    final Map<Class<?>, Integer> customMarkers = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+
     RecordComponent[] components = recordClass.getRecordComponents();
     MethodHandle[] getters = resolveGetters(recordClass, components);
 
@@ -77,9 +85,9 @@ sealed interface Companion2 permits Companion2.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          Writer writer = createComponentWriter(typeExpr, getter, customHandlers, typeWriterResolver);
-          Reader reader = createComponentReader(typeExpr, customHandlers, typeReaderResolver);
-          Sizer sizer = createComponentSizer(typeExpr, getter, customHandlers, typeSizerResolver);
+          Writer writer = createComponentWriter(typeExpr, getter, customWriters, customMarkers, typeWriterResolver);
+          Reader reader = createComponentReader(typeExpr, customReaders, customMarkers, typeReaderResolver);
+          Sizer sizer = createComponentSizer(typeExpr, getter, customSizers, customMarkers, typeSizerResolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
@@ -90,7 +98,8 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Writer createComponentWriter(
       TypeExpr2 typeExpr,
       MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters,
+      Map<Class<?>, Integer> customMarkers,
       WriterResolver typeWriterResolver
   ) {
     return switch (typeExpr) {
@@ -98,27 +107,57 @@ sealed interface Companion2 permits Companion2.Nothing {
 
       case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
-          // Find the custom handler
-          SerdeHandler handler = customHandlers.stream()
-              .filter(h -> h.valueBasedLike().equals(javaType))
-              .findFirst()
-              .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType));
-          yield createCustomWriter(getter, handler);
+          BiConsumer<ByteBuffer, Object> writer = customWriters.get(javaType);
+          Integer marker = customMarkers.get(javaType);
+          if (writer == null || marker == null) {
+            throw new IllegalStateException("No handler for custom type: " + javaType);
+          }
+          yield createCustomWriter(getter, writer, marker);
         } else {
           yield createRefValueWriter(refType, getter, (Class<?>) javaType, typeWriterResolver);
         }
       }
 
       case TypeExpr2.ArrayNode(var elementNode, var ignored1) ->
-          createArrayWriter(elementNode, getter, customHandlers, typeWriterResolver);
+          createArrayWriter(elementNode, getter, customWriters, customMarkers, typeWriterResolver);
       case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
           createPrimitiveArrayWriter(primitiveType, getter);
       case TypeExpr2.ListNode(var elementNode) ->
-          createListWriter(elementNode, getter, customHandlers, typeWriterResolver);
+          createListWriter(elementNode, getter, customWriters, customMarkers, typeWriterResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
-          createOptionalWriter(wrappedType, getter, customHandlers, typeWriterResolver);
+          createOptionalWriter(wrappedType, getter, customWriters, customMarkers, typeWriterResolver);
       case TypeExpr2.MapNode(var keyNode, var valueNode) ->
-          createMapWriter(keyNode, valueNode, getter, customHandlers, typeWriterResolver);
+          createMapWriter(keyNode, valueNode, getter, customWriters, customMarkers, typeWriterResolver);
+    };
+  }
+
+  /// Create writer for Array types
+  static Writer createArrayWriter(
+      TypeExpr2 elementNode,
+      MethodHandle getter,
+      Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters,
+      Map<Class<?>, Integer> customMarkers,
+      WriterResolver typeWriterResolver
+  ) {
+    return (buffer, record) -> {
+      try {
+        Object[] array = (Object[]) getter.invoke(record);
+        if (array == null) {
+          ZigZagEncoding.putInt(buffer, -1); // Null array marker
+        } else {
+          ZigZagEncoding.putInt(buffer, array.length);
+          for (Object item : array) {
+            if (item == null) {
+              buffer.put(NULL_MARKER);
+            } else {
+              buffer.put(NOT_NULL_MARKER);
+              writeValue(buffer, item, elementNode, null, typeWriterResolver); // null for customHandlers, not used here
+            }
+          }
+        }
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to write Array", e);
+      }
     };
   }
 
@@ -128,52 +167,81 @@ sealed interface Companion2 permits Companion2.Nothing {
       Collection<SerdeHandler> customHandlers,
       ReaderResolver typeReaderResolver
   ) {
+    // Build lookup maps locally
+    final Map<Class<?>, Function<ByteBuffer, Object>> customReaders = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+    final Map<Class<?>, Integer> customMarkers = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(final var type, final var ignored) -> createPrimitiveReader(type);
 
       case TypeExpr2.RefValueNode(final var refType, final var javaType, final var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
-          final var handler = customHandlers.stream()
-              .filter(h -> h.valueBasedLike().equals(javaType))
-              .findFirst()
-              .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType));
+          final Function<ByteBuffer, Object> reader = customReaders.get(javaType);
+          final Integer expectedMarker = customMarkers.get(javaType);
+          if (reader == null || expectedMarker == null) {
+            throw new IllegalStateException("No handler for custom type: " + javaType);
+          }
           yield buffer -> {
             final var typeMarker = ZigZagEncoding.getInt(buffer);
-            assert typeMarker == handler.marker() : "Expected marker " + handler.marker() + " but got " + typeMarker;
-            return handler.reader().apply(buffer);
+            assert typeMarker == expectedMarker : "Expected marker " + expectedMarker + " but got " + typeMarker;
+            return reader.apply(buffer);
           };
         } else {
           yield createRefValueReader(refType, (Class<?>) javaType, typeReaderResolver);
         }
       }
 
-      case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
-          createArrayReader(elementNode, componentType, customHandlers, typeReaderResolver);
+      case TypeExpr2.ArrayNode(var elementNode, var componentType) -> {
+        // Build lookup maps for recursive calls
+        final Map<Class<?>, Function<ByteBuffer, Object>> customReaders2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+        final Map<Class<?>, Integer> customMarkers2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+        yield createArrayReader(elementNode, componentType, customReaders2, customMarkers2, typeReaderResolver);
+      }
       case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) ->
           createPrimitiveArrayReader(primitiveType, arrayType);
-      case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
-      case TypeExpr2.OptionalNode(final var wrappedType) ->
-          createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
-      case TypeExpr2.MapNode(var keyNode, var valueNode) ->
-          createMapReader(keyNode, valueNode, customHandlers, typeReaderResolver);
+      case TypeExpr2.ListNode(var elementNode) -> {
+        final Map<Class<?>, Function<ByteBuffer, Object>> customReaders2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+        final Map<Class<?>, Integer> customMarkers2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+        yield createListReader(elementNode, customReaders2, customMarkers2, typeReaderResolver);
+      }
+      case TypeExpr2.OptionalNode(final var wrappedType) -> {
+        final Map<Class<?>, Function<ByteBuffer, Object>> customReaders2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+        final Map<Class<?>, Integer> customMarkers2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+        yield createOptionalReader(wrappedType, customReaders2, customMarkers2, typeReaderResolver);
+      }
+      case TypeExpr2.MapNode(var keyNode, var valueNode) -> {
+        final Map<Class<?>, Function<ByteBuffer, Object>> customReaders2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+        final Map<Class<?>, Integer> customMarkers2 = customHandlers.stream()
+            .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+        yield createMapReader(keyNode, valueNode, customReaders2, customMarkers2, typeReaderResolver);
+      }
     };
   }
 
   /// Create reader for a component based on its TypeExpr2
   static Reader createComponentReader(
       TypeExpr2 typeExpr,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, Function<ByteBuffer, Object>> customReaders,
+      Map<Class<?>, Integer> customMarkers,
       ReaderResolver typeReaderResolver
   ) {
+    // Build a dummy collection for recursive calls
+    final Collection<SerdeHandler> customHandlers = List.of(); // Not used in this context
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode ignored -> // Primitives cannot be null, so no null check needed
+      case TypeExpr2.PrimitiveValueNode ignored ->
           createValueReaderWithoutNullCheck(typeExpr, customHandlers, typeReaderResolver);
 
       case TypeExpr2.RefValueNode(final var ignored, final var ignored1, final var ignored2) -> {
-        // Get the value reader without null checking
         final var valueReader = createValueReaderWithoutNullCheck(typeExpr, customHandlers, typeReaderResolver);
-
-        // Wrap the value reader with a null check for reference types
         yield buffer -> {
           final var positionBefore = buffer.position();
           final var nullMarker = buffer.get();
@@ -191,14 +259,15 @@ sealed interface Companion2 permits Companion2.Nothing {
       }
 
       case TypeExpr2.ArrayNode(var elementNode, var componentType) ->
-          createArrayReader(elementNode, componentType, customHandlers, typeReaderResolver);
+          createArrayReader(elementNode, componentType, customReaders, customMarkers, typeReaderResolver);
       case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) ->
           createPrimitiveArrayReader(primitiveType, arrayType);
-      case TypeExpr2.ListNode(var elementNode) -> createListReader(elementNode, customHandlers, typeReaderResolver);
+      case TypeExpr2.ListNode(var elementNode) ->
+          createListReader(elementNode, customReaders, customMarkers, typeReaderResolver);
       case TypeExpr2.OptionalNode(final var wrappedType) ->
-          createOptionalReader(wrappedType, customHandlers, typeReaderResolver);
+          createOptionalReader(wrappedType, customReaders, customMarkers, typeReaderResolver);
       case TypeExpr2.MapNode(var keyNode, var valueNode) ->
-          createMapReader(keyNode, valueNode, customHandlers, typeReaderResolver);
+          createMapReader(keyNode, valueNode, customReaders, customMarkers, typeReaderResolver);
     };
   }
 
@@ -206,34 +275,169 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Sizer createComponentSizer(
       TypeExpr2 typeExpr,
       MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, ToIntFunction<Object>> customSizers,
+      Map<Class<?>, Integer> customMarkers,
       SizerResolver typeSizerResolver
   ) {
+    // Build a dummy collection for recursive calls
+    final Collection<SerdeHandler> customHandlers = List.of(); // Not used in this context
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var type, var ignored) -> createPrimitiveSizer(type);
 
       case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
-          SerdeHandler handler = customHandlers.stream()
-              .filter(h -> h.valueBasedLike().equals(javaType))
-              .findFirst()
-              .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType));
-          yield createCustomSizer(getter, handler);
+          ToIntFunction<Object> sizer = customSizers.get(javaType);
+          Integer marker = customMarkers.get(javaType);
+          if (sizer == null || marker == null) {
+            throw new IllegalStateException("No handler for custom type: " + javaType);
+          }
+          yield createCustomSizer(getter, sizer, marker);
         } else {
           yield createRefValueSizer(refType, getter, (Class<?>) javaType, typeSizerResolver);
         }
       }
 
       case TypeExpr2.ArrayNode(var elementNode, var ignored1) ->
-          createArraySizer(elementNode, getter, customHandlers, typeSizerResolver);
+          createArraySizer(elementNode, getter, customSizers, customMarkers, typeSizerResolver);
       case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
           createPrimitiveArraySizer(primitiveType, getter);
       case TypeExpr2.ListNode(var elementNode) ->
-          createListSizer(elementNode, getter, customHandlers, typeSizerResolver);
+          createListSizer(elementNode, getter, customSizers, customMarkers, typeSizerResolver);
       case TypeExpr2.OptionalNode(var wrappedType) ->
-          createOptionalSizer(wrappedType, getter, customHandlers, typeSizerResolver);
+          createOptionalSizer(wrappedType, getter, customSizers, customMarkers, typeSizerResolver);
       case TypeExpr2.MapNode(var keyNode, var valueNode) ->
-          createMapSizer(keyNode, valueNode, getter, customHandlers, typeSizerResolver);
+          createMapSizer(keyNode, valueNode, getter, customSizers, customMarkers, typeSizerResolver);
+    };
+  }
+
+  /// Create sizer for custom value types
+  static Sizer createCustomSizer(MethodHandle getter, ToIntFunction<Object> sizer, int marker) {
+    // Use extractAndDelegate for null handling
+    return extractAndDelegate((value) ->
+            ZigZagEncoding.sizeOf(marker) + sizer.applyAsInt(value),
+        getter);
+  }
+
+  /// Create sizer for Array types
+  static Sizer createArraySizer(
+      TypeExpr2 elementNode,
+      MethodHandle getter,
+      Map<Class<?>, ToIntFunction<Object>> customSizers,
+      Map<Class<?>, Integer> customMarkers,
+      SizerResolver typeSizerResolver
+  ) {
+    return record -> {
+      try {
+        Object[] array = (Object[]) getter.invoke(record);
+        if (array == null) {
+          return ZigZagEncoding.sizeOf(-1);
+        }
+        int totalSize = ZigZagEncoding.sizeOf(array.length);
+        for (Object item : array) {
+          totalSize += Byte.BYTES; // For the null marker
+          if (item != null) {
+            totalSize += sizeValue(item, elementNode, customSizers, customMarkers, typeSizerResolver);
+          }
+        }
+        int finalTotalSize = totalSize;
+        LOGGER.fine(() -> "Sizing array of length " + array.length + ", total size: " + finalTotalSize);
+        return totalSize;
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size Array", e);
+      }
+    };
+  }
+
+  /// Create sizer for List types
+  static Sizer createListSizer(
+      TypeExpr2 elementType,
+      MethodHandle getter,
+      Map<Class<?>, ToIntFunction<Object>> customSizers,
+      Map<Class<?>, Integer> customMarkers,
+      SizerResolver typeSizerResolver
+  ) {
+    return record -> {
+      try {
+        @SuppressWarnings("unchecked")
+        List<Object> list = (List<Object>) getter.invoke(record);
+        if (list == null) {
+          return ZigZagEncoding.sizeOf(-1);
+        }
+        int totalSize = ZigZagEncoding.sizeOf(list.size());
+        for (Object item : list) {
+          totalSize += Byte.BYTES; // For the null marker
+          if (item != null) {
+            totalSize += sizeValue(item, elementType, customSizers, customMarkers, typeSizerResolver);
+          }
+        }
+        return totalSize;
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size List", e);
+      }
+    };
+  }
+
+  /// Create sizer for Optional types
+  static Sizer createOptionalSizer(
+      TypeExpr2 wrappedType,
+      MethodHandle getter,
+      Map<Class<?>, ToIntFunction<Object>> customSizers,
+      Map<Class<?>, Integer> customMarkers,
+      SizerResolver typeSizerResolver
+  ) {
+    return record -> {
+      try {
+        Optional<?> optional = (Optional<?>) getter.invoke(record);
+        if (optional.isEmpty()) {
+          // Size of OPTIONAL_EMPTY marker only
+          return ZigZagEncoding.sizeOf(TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
+        } else {
+          // Size of OPTIONAL_OF marker + wrapped value size
+          Object value = optional.get();
+          int wrappedSize = sizeValue(value, wrappedType, customSizers, customMarkers, typeSizerResolver);
+          return ZigZagEncoding.sizeOf(TypeExpr2.ContainerType.OPTIONAL_OF.marker()) + wrappedSize;
+        }
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size Optional", e);
+      }
+    };
+  }
+
+  /// Create sizer for Map types
+  static Sizer createMapSizer(
+      TypeExpr2 keyType,
+      TypeExpr2 valueType,
+      MethodHandle getter,
+      Map<Class<?>, ToIntFunction<Object>> customSizers,
+      Map<Class<?>, Integer> customMarkers,
+      SizerResolver typeSizerResolver
+  ) {
+    return record -> {
+      try {
+        @SuppressWarnings("unchecked")
+        Map<Object, Object> map = (Map<Object, Object>) getter.invoke(record);
+        if (map == null) {
+          return ZigZagEncoding.sizeOf(-1);
+        }
+
+        int totalSize = ZigZagEncoding.sizeOf(map.size());
+        for (Map.Entry<Object, Object> entry : map.entrySet()) {
+          // Key size
+          totalSize += Byte.BYTES; // null marker
+          if (entry.getKey() != null) {
+            totalSize += sizeValue(entry.getKey(), keyType, customSizers, customMarkers, typeSizerResolver);
+          }
+
+          // Value size
+          totalSize += Byte.BYTES; // null marker
+          if (entry.getValue() != null) {
+            totalSize += sizeValue(entry.getValue(), valueType, customSizers, customMarkers, typeSizerResolver);
+          }
+        }
+        return totalSize;
+      } catch (Throwable e) {
+        throw new IllegalStateException("Failed to size Map", e);
+      }
     };
   }
 
@@ -450,22 +654,12 @@ sealed interface Companion2 permits Companion2.Nothing {
   }
 
   /// Create writer for custom value types
-  static Writer createCustomWriter(MethodHandle getter, SerdeHandler handler) {
-    final var marker = handler.marker();
-    final var writer = handler.writer();
+  static Writer createCustomWriter(MethodHandle getter, BiConsumer<ByteBuffer, Object> writer, int marker) {
     // Use extractAndDelegate for null handling
     return extractAndDelegate((buffer, value) -> {
       ZigZagEncoding.putInt(buffer, marker);
       writer.accept(buffer, value);
     }, getter);
-  }
-
-  /// Create sizer for custom value types
-  static Sizer createCustomSizer(MethodHandle getter, SerdeHandler handler) {
-    // Use extractAndDelegate for null handling
-    return extractAndDelegate((value) ->
-            ZigZagEncoding.sizeOf(handler.marker()) + handler.sizer().applyAsInt(value),
-        getter);
   }
 
   /// Create writer for reference value types (boxed primitives, String, etc.)
@@ -530,7 +724,7 @@ sealed interface Companion2 permits Companion2.Nothing {
             }
             case STRING -> {
               ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(String.class));
-              byte[] bytes = ((String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+              byte[] bytes = ((String) value).getBytes(StandardCharsets.UTF_8);
               ZigZagEncoding.putInt(buffer, bytes.length);
               buffer.put(bytes);
             }
@@ -648,7 +842,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           final var length = ZigZagEncoding.getInt(buffer);
           final var bytes = new byte[length];
           buffer.get(bytes);
-          return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+          return new String(bytes, StandardCharsets.UTF_8);
         };
       }
 
@@ -761,12 +955,13 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Writer createOptionalWriter(
       TypeExpr2 wrappedType,
       MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters,
+      Map<Class<?>, Integer> customMarkers,
       WriterResolver typeWriterResolver
   ) {
     return (buffer, record) -> {
       try {
-        java.util.Optional<?> optional = (java.util.Optional<?>) getter.invoke(record);
+        Optional<?> optional = (Optional<?>) getter.invoke(record);
         if (optional.isEmpty()) {
           LOGGER.fine(() -> "Writing OPTIONAL_EMPTY marker");
           ZigZagEncoding.putInt(buffer, TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
@@ -775,7 +970,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           ZigZagEncoding.putInt(buffer, TypeExpr2.ContainerType.OPTIONAL_OF.marker());
           // Write the wrapped value directly
           Object value = optional.get();
-          writeValue(buffer, value, wrappedType, customHandlers, typeWriterResolver);
+          writeValue(buffer, value, wrappedType, null, typeWriterResolver); // null for customHandlers, not used here
         }
       } catch (Throwable e) {
         throw new IllegalStateException("Failed to write Optional", e);
@@ -786,11 +981,11 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Create reader for Optional types
   static Reader createOptionalReader(
       TypeExpr2 wrappedType,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, Function<ByteBuffer, Object>> customReaders,
+      Map<Class<?>, Integer> customMarkers,
       ReaderResolver typeReaderResolver
   ) {
-    // Create reader for the wrapped value WITHOUT null checking (Optional handles null at container level)
-    Reader wrappedReader = createValueReaderWithoutNullCheck(wrappedType, customHandlers, typeReaderResolver);
+    Reader wrappedReader = createValueReaderWithoutNullCheck(wrappedType, List.of(), typeReaderResolver);
 
     return buffer -> {
       final var positionBefore = buffer.position();
@@ -798,39 +993,14 @@ sealed interface Companion2 permits Companion2.Nothing {
       LOGGER.fine(() -> "createOptionalReader: At position " + positionBefore + " read marker=" + marker + " (EMPTY=" + TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker() + ", OF=" + TypeExpr2.ContainerType.OPTIONAL_OF.marker() + ")");
       if (marker == TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker()) {
         LOGGER.fine(() -> "Reading OPTIONAL_EMPTY");
-        return java.util.Optional.empty();
+        return Optional.empty();
       } else if (marker == TypeExpr2.ContainerType.OPTIONAL_OF.marker()) {
         LOGGER.fine(() -> "Reading OPTIONAL_OF then value");
         Object value = wrappedReader.apply(buffer);
         LOGGER.fine(() -> "createOptionalReader: Read wrapped value=" + value);
-        return java.util.Optional.of(value);
+        return Optional.of(value);
       } else {
         throw new IllegalStateException("Expected OPTIONAL_EMPTY or OPTIONAL_OF marker, got: " + marker);
-      }
-    };
-  }
-
-  /// Create sizer for Optional types
-  static Sizer createOptionalSizer(
-      TypeExpr2 wrappedType,
-      MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
-      SizerResolver typeSizerResolver
-  ) {
-    return record -> {
-      try {
-        java.util.Optional<?> optional = (java.util.Optional<?>) getter.invoke(record);
-        if (optional.isEmpty()) {
-          // Size of OPTIONAL_EMPTY marker only
-          return ZigZagEncoding.sizeOf(TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
-        } else {
-          // Size of OPTIONAL_OF marker + wrapped value size
-          Object value = optional.get();
-          int wrappedSize = sizeValue(value, wrappedType, customHandlers, typeSizerResolver);
-          return ZigZagEncoding.sizeOf(TypeExpr2.ContainerType.OPTIONAL_OF.marker()) + wrappedSize;
-        }
-      } catch (Throwable e) {
-        throw new IllegalStateException("Failed to size Optional", e);
       }
     };
   }
@@ -839,13 +1009,14 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Writer createListWriter(
       TypeExpr2 elementType,
       MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters,
+      Map<Class<?>, Integer> customMarkers,
       WriterResolver typeWriterResolver
   ) {
     return (buffer, record) -> {
       try {
         @SuppressWarnings("unchecked")
-        java.util.List<Object> list = (java.util.List<Object>) getter.invoke(record);
+        List<Object> list = (List<Object>) getter.invoke(record);
         if (list == null) {
           ZigZagEncoding.putInt(buffer, -1); // Use -1 to indicate a null list
         } else {
@@ -856,7 +1027,7 @@ sealed interface Companion2 permits Companion2.Nothing {
               buffer.put(NULL_MARKER);
             } else {
               buffer.put(NOT_NULL_MARKER);
-              writeValue(buffer, item, elementType, customHandlers, typeWriterResolver);
+              writeValue(buffer, item, elementType, null, typeWriterResolver); // null for customHandlers, not used here
             }
           }
         }
@@ -869,16 +1040,17 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Create reader for List types
   static Reader createListReader(
       TypeExpr2 elementType,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, Function<ByteBuffer, Object>> customReaders,
+      Map<Class<?>, Integer> customMarkers,
       ReaderResolver typeReaderResolver
   ) {
-    final var elementReader = createComponentReader(elementType, customHandlers, typeReaderResolver);
+    final var elementReader = createComponentReader(elementType, customReaders, customMarkers, typeReaderResolver);
     return buffer -> {
       final int size = ZigZagEncoding.getInt(buffer);
       if (size == -1) {
         return null;
       }
-      final var list = new java.util.ArrayList<>(size);
+      final var list = new ArrayList<>(size);
       for (int i = 0; i < size; i++) {
         list.add(elementReader.apply(buffer));
       }
@@ -891,13 +1063,14 @@ sealed interface Companion2 permits Companion2.Nothing {
       TypeExpr2 keyType,
       TypeExpr2 valueType,
       MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters,
+      Map<Class<?>, Integer> customMarkers,
       WriterResolver typeWriterResolver
   ) {
     return (buffer, record) -> {
       try {
         @SuppressWarnings("unchecked")
-        java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) getter.invoke(record);
+        Map<Object, Object> map = (Map<Object, Object>) getter.invoke(record);
 
         if (map == null) {
           LOGGER.fine(() -> "Writing null map marker");
@@ -919,7 +1092,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           } else {
             LOGGER.finer(() -> "Writing NOT_NULL_MARKER for key");
             buffer.put(NOT_NULL_MARKER);
-            writeValue(buffer, key, keyType, customHandlers, typeWriterResolver);
+            writeValue(buffer, key, keyType, null, typeWriterResolver); // null for customHandlers, not used here
           }
 
           // Write value with null handling
@@ -929,7 +1102,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           } else {
             LOGGER.finer(() -> "Writing NOT_NULL_MARKER for value");
             buffer.put(NOT_NULL_MARKER);
-            writeValue(buffer, value, valueType, customHandlers, typeWriterResolver);
+            writeValue(buffer, value, valueType, null, typeWriterResolver); // null for customHandlers, not used here
           }
         }
       } catch (Throwable e) {
@@ -942,11 +1115,12 @@ sealed interface Companion2 permits Companion2.Nothing {
   static Reader createMapReader(
       TypeExpr2 keyType,
       TypeExpr2 valueType,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, Function<ByteBuffer, Object>> customReaders,
+      Map<Class<?>, Integer> customMarkers,
       ReaderResolver typeReaderResolver
   ) {
-    final Function<ByteBuffer, Object> keyReader = createComponentReader(keyType, customHandlers, typeReaderResolver);
-    final Function<ByteBuffer, Object> valueReader = createComponentReader(valueType, customHandlers, typeReaderResolver);
+    final Function<ByteBuffer, Object> keyReader = createComponentReader(keyType, customReaders, customMarkers, typeReaderResolver);
+    final Function<ByteBuffer, Object> valueReader = createComponentReader(valueType, customReaders, customMarkers, typeReaderResolver);
 
     return buffer -> {
       final int size = ZigZagEncoding.getInt(buffer);
@@ -956,7 +1130,7 @@ sealed interface Companion2 permits Companion2.Nothing {
         return null;
       }
 
-      final var map = new java.util.HashMap<>(size);
+      final var map = new HashMap<>(size);
       for (int i = 0; i < size; i++) {
         final int entryIndex = i;
         LOGGER.fine(() -> "Reading map entry " + entryIndex);
@@ -970,87 +1144,15 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
-  /// Create sizer for Map types
-  static Sizer createMapSizer(
-      TypeExpr2 keyType,
-      TypeExpr2 valueType,
-      MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
-      SizerResolver typeSizerResolver
-  ) {
-    return record -> {
-      try {
-        @SuppressWarnings("unchecked")
-        java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) getter.invoke(record);
-        if (map == null) {
-          return ZigZagEncoding.sizeOf(-1);
-        }
-
-        int totalSize = ZigZagEncoding.sizeOf(map.size());
-        for (Map.Entry<Object, Object> entry : map.entrySet()) {
-          // Key size
-          totalSize += Byte.BYTES; // null marker
-          if (entry.getKey() != null) {
-            totalSize += sizeValue(entry.getKey(), keyType, customHandlers, typeSizerResolver);
-          }
-
-          // Value size
-          totalSize += Byte.BYTES; // null marker
-          if (entry.getValue() != null) {
-            totalSize += sizeValue(entry.getValue(), valueType, customHandlers, typeSizerResolver);
-          }
-        }
-        return totalSize;
-      } catch (Throwable e) {
-        throw new IllegalStateException("Failed to size Map", e);
-      }
-    };
-  }
-
-  /// Create writer for Array types
-  static Writer createArrayWriter(
-      TypeExpr2 elementNode,
-      MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
-      WriterResolver typeWriterResolver
-  ) {
-    return (buffer, record) -> {
-      try {
-        Object[] array = (Object[]) getter.invoke(record);
-        if (array == null) {
-          LOGGER.fine(() -> "Writing null array marker at position " + buffer.position());
-          ZigZagEncoding.putInt(buffer, -1); // Use -1 to indicate a null array
-        } else {
-          LOGGER.fine(() -> "Writing array of size: " + array.length + " at position " + buffer.position());
-          ZigZagEncoding.putInt(buffer, array.length);
-          for (int i = 0; i < array.length; i++) {
-            Object item = array[i];
-            final int index = i;
-            // Write array item with null handling
-            if (item == null) {
-              LOGGER.finer(() -> "Writing NULL_MARKER for array item " + index + " at position " + buffer.position());
-              buffer.put(NULL_MARKER);
-            } else {
-              LOGGER.finer(() -> "Writing NOT_NULL_MARKER for array item " + index + " (" + item + ") at position " + buffer.position());
-              buffer.put(NOT_NULL_MARKER);
-              writeValue(buffer, item, elementNode, customHandlers, typeWriterResolver);
-            }
-          }
-        }
-      } catch (Throwable e) {
-        throw new IllegalStateException("Failed to write Array", e);
-      }
-    };
-  }
-
   /// Create reader for Array types
   static Reader createArrayReader(
       TypeExpr2 elementNode,
       Class<?> componentType,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, Function<ByteBuffer, Object>> customReaders,
+      Map<Class<?>, Integer> customMarkers,
       ReaderResolver typeReaderResolver
   ) {
-    final var elementReader = createComponentReader(elementNode, customHandlers, typeReaderResolver);
+    final var elementReader = createComponentReader(elementNode, customReaders, customMarkers, typeReaderResolver);
     return buffer -> {
       final int positionBefore = buffer.position();
       final int size = ZigZagEncoding.getInt(buffer);
@@ -1059,7 +1161,7 @@ sealed interface Companion2 permits Companion2.Nothing {
         LOGGER.fine(() -> "Read null array marker, returning null");
         return null;
       }
-      Object[] array = (Object[]) java.lang.reflect.Array.newInstance(componentType, size);
+      Object[] array = (Object[]) Array.newInstance(componentType, size);
       LOGGER.fine(() -> "Reading " + size + " elements of type " + componentType.getSimpleName());
       for (int i = 0; i < size; i++) {
         final int index = i;
@@ -1071,64 +1173,7 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
-  /// Create sizer for Array types
-  static Sizer createArraySizer(
-      TypeExpr2 elementNode,
-      MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
-      SizerResolver typeSizerResolver
-  ) {
-    return record -> {
-      try {
-        Object[] array = (Object[]) getter.invoke(record);
-        if (array == null) {
-          return ZigZagEncoding.sizeOf(-1);
-        }
-        int totalSize = ZigZagEncoding.sizeOf(array.length);
-        for (Object item : array) {
-          totalSize += Byte.BYTES; // For the null marker
-          if (item != null) {
-            totalSize += sizeValue(item, elementNode, customHandlers, typeSizerResolver);
-          }
-        }
-        int finalTotalSize = totalSize;
-        LOGGER.fine(() -> "Sizing array of length " + array.length + ", total size: " + finalTotalSize);
-        return totalSize;
-      } catch (Throwable e) {
-        throw new IllegalStateException("Failed to size Array", e);
-      }
-    };
-  }
-
-  /// Create sizer for List types
-  static Sizer createListSizer(
-      TypeExpr2 elementType,
-      MethodHandle getter,
-      Collection<SerdeHandler> customHandlers,
-      SizerResolver typeSizerResolver
-  ) {
-    return record -> {
-      try {
-        @SuppressWarnings("unchecked")
-        java.util.List<Object> list = (java.util.List<Object>) getter.invoke(record);
-        if (list == null) {
-          return ZigZagEncoding.sizeOf(-1);
-        }
-        int totalSize = ZigZagEncoding.sizeOf(list.size());
-        for (Object item : list) {
-          totalSize += Byte.BYTES; // For the null marker
-          if (item != null) {
-            totalSize += sizeValue(item, elementType, customHandlers, typeSizerResolver);
-          }
-        }
-        return totalSize;
-      } catch (Throwable e) {
-        throw new IllegalStateException("Failed to size List", e);
-      }
-    };
-  }
-
-  /// Create writer for primitive array types
+  /// Create sizer for primitive array types
   static Writer createPrimitiveArrayWriter(TypeExpr2.PrimitiveValueType primitiveType, MethodHandle getter) {
     final BiConsumer<ByteBuffer, Object> valueWriter = buildPrimitiveArrayWriterInner(primitiveType);
     return (buffer, record) -> {
@@ -1153,7 +1198,7 @@ sealed interface Companion2 permits Companion2.Nothing {
           ZigZagEncoding.putInt(buffer, TypeExpr2.primitiveToMarker(boolean.class));
           ZigZagEncoding.putInt(buffer, booleans.length);
           if (booleans.length > 0) {
-            java.util.BitSet bitSet = new java.util.BitSet(booleans.length);
+            BitSet bitSet = new BitSet(booleans.length);
             for (int i = 0; i < booleans.length; i++) {
               if (booleans[i]) {
                 bitSet.set(i);
@@ -1254,7 +1299,7 @@ sealed interface Companion2 permits Companion2.Nothing {
             int bytesLength = ZigZagEncoding.getInt(buffer);
             byte[] bytes = new byte[bytesLength];
             buffer.get(bytes);
-            java.util.BitSet bitSet = java.util.BitSet.valueOf(bytes);
+            BitSet bitSet = BitSet.valueOf(bytes);
             for (int i = 0; i < arrayLength; i++) booleans[i] = bitSet.get(i);
           }
           return booleans;
@@ -1347,7 +1392,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       case TypeExpr2.PrimitiveValueType.SimplePrimitive(var name, var marker) -> switch (name) {
         case "BOOLEAN" -> array -> {
           boolean[] booleans = (boolean[]) array;
-          java.util.BitSet bitSet = new java.util.BitSet(booleans.length);
+          BitSet bitSet = new BitSet(booleans.length);
           for (int i = 0; i < booleans.length; i++) if (booleans[i]) bitSet.set(i);
           byte[] bytes = bitSet.toByteArray();
           return ZigZagEncoding.sizeOf(marker) + ZigZagEncoding.sizeOf(booleans.length) + ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
@@ -1394,25 +1439,25 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Primitives cannot be in Optional, should be boxed: " + javaType);
       case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
-          SerdeHandler handler = customHandlers.stream()
+          SerdeHandler handler = customHandlers != null
+              ? customHandlers.stream()
               .filter(h -> h.valueBasedLike().equals(javaType))
               .findFirst()
-              .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType));
+              .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType))
+              : null;
+          if (handler == null) throw new IllegalStateException("No handler for custom type: " + javaType);
           ZigZagEncoding.putInt(buffer, handler.marker());
           handler.writer().accept(buffer, value);
         } else if (refType == TypeExpr2.RefValueType.RECORD || refType == TypeExpr2.RefValueType.ENUM || refType == TypeExpr2.RefValueType.INTERFACE) {
-          // User types delegate to typeWriterResolver
           typeWriterResolver.resolveWriter((Class<?>) javaType).accept(buffer, value);
         } else {
-          // Built-in reference types - create focused writer during construction time
           final var writer = createBuiltInRefWriter(refType);
-          LOGGER.fine(() -> "writeValue: Writing built-in ref type " + refType + " value=" + value);
           writer.accept(buffer, value);
         }
       }
       case TypeExpr2.OptionalNode(var wrappedType) -> {
         // Nested Optional
-        if (value instanceof java.util.Optional<?> nested) {
+        if (value instanceof Optional<?> nested) {
           if (nested.isEmpty()) {
             ZigZagEncoding.putInt(buffer, TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
           } else {
@@ -1427,9 +1472,8 @@ sealed interface Companion2 permits Companion2.Nothing {
       case TypeExpr2.ArrayNode(var elementNode, var ignored) -> {
         Object[] array = (Object[]) value;
         if (array == null) {
-          ZigZagEncoding.putInt(buffer, -1); // Use -1 to indicate a null array
+          ZigZagEncoding.putInt(buffer, -1);
         } else {
-          LOGGER.fine(() -> "Writing array of size: " + array.length + " at position: " + buffer.position());
           ZigZagEncoding.putInt(buffer, array.length);
           for (Object item : array) {
             if (item == null) {
@@ -1530,7 +1574,7 @@ sealed interface Companion2 permits Companion2.Nothing {
         final var marker = TypeExpr2.referenceToMarker(String.class);
         yield (buffer, value) -> {
           ZigZagEncoding.putInt(buffer, marker);
-          final var bytes = ((String) value).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+          final var bytes = ((String) value).getBytes(StandardCharsets.UTF_8);
           ZigZagEncoding.putInt(buffer, bytes.length);
           buffer.put(bytes);
         };
@@ -1544,7 +1588,8 @@ sealed interface Companion2 permits Companion2.Nothing {
   static int sizeValue(
       Object value,
       TypeExpr2 typeExpr,
-      Collection<SerdeHandler> customHandlers,
+      Map<Class<?>, ToIntFunction<Object>> customSizers,
+      Map<Class<?>, Integer> customMarkers,
       SizerResolver typeSizerResolver
   ) {
     return switch (typeExpr) {
@@ -1552,11 +1597,11 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Primitives cannot be in Optional, should be boxed: " + javaType);
       case TypeExpr2.RefValueNode(var refType, var javaType, var ignored) -> {
         if (refType == TypeExpr2.RefValueType.CUSTOM) {
-          SerdeHandler handler = customHandlers.stream()
-              .filter(h -> h.valueBasedLike().equals(javaType))
-              .findFirst()
-              .orElseThrow(() -> new IllegalStateException("No handler for custom type: " + javaType));
-          yield ZigZagEncoding.sizeOf(handler.marker()) + handler.sizer().applyAsInt(value);
+          ToIntFunction<Object> sizer = customSizers != null ? customSizers.get(javaType) : null;
+          Integer marker = customMarkers != null ? customMarkers.get(javaType) : null;
+          if (sizer == null || marker == null)
+            throw new IllegalStateException("No handler for custom type: " + javaType);
+          yield ZigZagEncoding.sizeOf(marker) + sizer.applyAsInt(value);
         } else if (refType == TypeExpr2.RefValueType.RECORD || refType == TypeExpr2.RefValueType.ENUM || refType == TypeExpr2.RefValueType.INTERFACE) {
           Sizer sizer = typeSizerResolver.apply((Class<?>) javaType);
           yield sizer.sizeOf(value);
@@ -1565,12 +1610,12 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
       }
       case TypeExpr2.OptionalNode(var wrappedType) -> {
-        if (value instanceof java.util.Optional<?> nested) {
+        if (value instanceof Optional<?> nested) {
           if (nested.isEmpty()) {
             yield ZigZagEncoding.sizeOf(TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
           } else {
             yield ZigZagEncoding.sizeOf(TypeExpr2.ContainerType.OPTIONAL_OF.marker()) +
-                sizeValue(nested.get(), wrappedType, customHandlers, typeSizerResolver);
+                sizeValue(nested.get(), wrappedType, customSizers, customMarkers, typeSizerResolver);
           }
         } else {
           throw new IllegalStateException("Expected Optional but got: " + value.getClass());
@@ -1583,24 +1628,22 @@ sealed interface Companion2 permits Companion2.Nothing {
         }
         int itemsSize = Arrays.stream(array)
             .mapToInt(item -> {
-              int itemSize = Byte.BYTES; // For the null marker
+              int itemSize = Byte.BYTES;
               if (item != null) {
-                itemSize += sizeValue(item, elementNode, customHandlers, typeSizerResolver);
+                itemSize += sizeValue(item, elementNode, customSizers, customMarkers, typeSizerResolver);
               }
               return itemSize;
             })
             .sum();
         yield ZigZagEncoding.sizeOf(array.length) + itemsSize;
       }
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
-          buildPrimitiveArraySizerInner(primitiveType).applyAsInt(value);
       case TypeExpr2.ListNode(var elementType) -> {
-        if (value instanceof java.util.List<?> list) {
+        if (value instanceof List<?> list) {
           int itemsSize = list.stream()
               .mapToInt(item -> {
-                int itemSize = Byte.BYTES; // For the null marker
+                int itemSize = Byte.BYTES;
                 if (item != null) {
-                  itemSize += sizeValue(item, elementType, customHandlers, typeSizerResolver);
+                  itemSize += sizeValue(item, elementType, customSizers, customMarkers, typeSizerResolver);
                 }
                 return itemSize;
               })
@@ -1610,6 +1653,8 @@ sealed interface Companion2 permits Companion2.Nothing {
           throw new IllegalStateException("Expected List but got: " + value.getClass());
         }
       }
+      case TypeExpr2.PrimitiveArrayNode ignored ->
+          throw new UnsupportedOperationException("Map not yet implemented in sizeValue");
       case TypeExpr2.MapNode ignored -> throw new UnsupportedOperationException("Map not yet implemented in sizeValue");
     };
   }
@@ -1626,7 +1671,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       case DOUBLE -> Byte.BYTES + Double.BYTES;
       case STRING -> {
         String str = (String) value;
-        byte[] bytes = str.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
         yield 2 * Integer.BYTES + bytes.length;
       }
       case LOCAL_DATE, LOCAL_DATE_TIME, CUSTOM, RECORD, ENUM, INTERFACE ->
