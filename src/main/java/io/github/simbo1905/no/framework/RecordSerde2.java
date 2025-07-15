@@ -152,6 +152,11 @@ final class RecordSerde<T> implements Pickler<T> {
       if (compatibilityMode && altTypeSignature.isPresent() && incomingSignature == altTypeSignature.get()) {
         LOGGER.info(() -> "Type signature mismatch, but compatibility mode is ENABLED. Proceeding with deserialization.");
       }
+    } else {
+      throw new IllegalStateException("Type signature mismatch: expected " +
+          Long.toHexString(this.typeSignature) + " or " +
+          altTypeSignature.map(Long::toHexString).orElse("none") + " but got " +
+          Long.toHexString(incomingSignature) + " at position: " + typeSigPosition);
     }
 
     LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
