@@ -94,18 +94,15 @@ final class RecordSerde2<T> implements Pickler2<T> {
 
   int writeToWire(ByteBuffer buffer, T record) {
     final int startPosition = buffer.position();
-    LOGGER.fine(() -> String.format("writeToWire START for %s (hashCode: %d) at position %d",
-        userType.getSimpleName(), record.hashCode(), startPosition));
-
-    LOGGER.fine(() -> String.format("Writing typeSignature: 0x%s", Long.toHexString(typeSignature)));
+    LOGGER.fine(() -> String.format("writeToWire START for %s (hashCode: %d) at position %d; Writing typeSignature: 0x%s",
+        userType.getSimpleName(), record.hashCode(), startPosition, Long.toHexString(typeSignature)));
     buffer.putLong(typeSignature);
     LOGGER.fine(() -> String.format("Buffer position after signature: %d", buffer.position()));
 
     LOGGER.fine(() -> String.format("Writing component count: %d", writers.length));
     ZigZagEncoding.putInt(buffer, writers.length);
     LOGGER.fine(() -> String.format("Buffer position after count: %d", buffer.position()));
-
-
+    
     IntStream.range(0, writers.length)
         .forEach(i -> {
           final int posBefore = buffer.position();
