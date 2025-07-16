@@ -117,17 +117,28 @@ final class RecordSerde2<T> implements Pickler2<T> {
     final int startPosition = buffer.position();
     LOGGER.fine(() -> String.format("writeToWire START for %s (hashCode: %d) at position %d; Writing typeSignature: 0x%s",
         userType.getSimpleName(), record.hashCode(), startPosition, Long.toHexString(typeSignature)));
+
+    // Log before writing type signature
+    LOGGER.finer(() -> String.format("Writing typeSignature: 0x%s at position %d", Long.toHexString(typeSignature), startPosition));
     buffer.putLong(typeSignature);
-    LOGGER.fine(() -> String.format("Buffer position after signature: %d", buffer.position()));
+    LOGGER.finer(() -> String.format("After writing typeSignature, position: %d", buffer.position()));
+
+    // Log before writing component count
+    LOGGER.finer(() -> String.format("Writing component count: %d at position %d", writers.length, buffer.position()));
     ZigZagEncoding.putInt(buffer, writers.length);
-    LOGGER.fine(() -> String.format("Buffer position after component length: %d", buffer.position()));
+    LOGGER.finer(() -> String.format("After writing component count, position: %d", buffer.position()));
+
+    // Log component writing details
     IntStream.range(0, writers.length)
         .forEach(i -> {
           final int posBefore = buffer.position();
+          LOGGER.finer(() -> String.format("Starting component %d of %d at position %d",
+              i + 1, writers.length, posBefore));
           LOGGER.fine(() -> String.format("Writing component %d at position %d", i, posBefore));
           writers[i].accept(buffer, record);
           final int posAfter = buffer.position();
-          LOGGER.fine(() -> String.format("Wrote component %d, new position %d (%d bytes written)", i, posAfter, posAfter - posBefore));
+          LOGGER.finer(() -> String.format("Finished component %d at position %d (wrote %d bytes)",
+              i, posAfter, posAfter - posBefore));
         });
 
     final int endPosition = buffer.position();
@@ -161,19 +172,30 @@ final class RecordSerde2<T> implements Pickler2<T> {
   }
 
   T readFromWire(ByteBuffer buffer) {
-    final int wireCountPosition = buffer.position();
+    LOGGER.fine(() -> String.format("[%s.readFromWire] Entry. Position: %d", userType.getSimpleName(), buffer.position()));
+
+    final int countPosition = buffer.position();
+    LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component count at position %d", userType.getSimpleName(), countPosition));
     final int wireCount = ZigZagEncoding.getInt(buffer);
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " wireCount read as " + wireCount + " at position " + wireCountPosition);
+    LOGGER.fine(() -> String.format("[%s.readFromWire] Read component count. Position before: %d, after: %d. Count: %d",
+        userType.getSimpleName(), countPosition, buffer.position(), wireCount));
     // Fill the components from the buffer up to the wireCount
     Object[] components = new Object[readers.length];
+    LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read components", userType.getSimpleName()));
+
     IntStream.range(0, readers.length).forEach(i -> {
-      final int componentIndex = i; // final for lambda capture
-      final int beforePosition = buffer.position();
-      LOGGER.fine(() -> "RecordPickler reading component " + componentIndex + " at position " + beforePosition + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
-      components[i] = readers[i].apply(buffer);
-      final Object componentValue = components[i]; // final for lambda capture
-      final int afterPosition = buffer.position();
-      LOGGER.finer(() -> "Read component " + componentIndex + ": " + componentValue + " moved from position " + beforePosition + " to " + afterPosition);
+      final int componentIndex = i;
+      final int readPosition = buffer.position();
+      LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component %d of %d at position %d",
+          userType.getSimpleName(), componentIndex + 1, readers.length, readPosition));
+
+      LOGGER.fine(() -> String.format("[%s.readFromWire] Reading component %d at position %d. Reader: %s",
+          userType.getSimpleName(), componentIndex, readPosition, readers[componentIndex].getClass().getSimpleName()));
+
+      components[i] = readers[componentIndex].apply(buffer);
+
+      LOGGER.finer(() -> String.format("[%s.readFromWire] Read component %d. Position after: %d. Value: %s",
+          userType.getSimpleName(), componentIndex, buffer.position(), components[i]));
     });
 
     // If we need more, and we are in backwards compatibility mode, fill the remaining components with default values
@@ -250,7 +272,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
     return buffer -> {
       if (typeSignature == 0L) return null;
       if (typeSignature == this.typeSignature) {
-        return this.readFromWire(buffer);
+        return this.deserialize(buffer);
       }
       throw new UnsupportedOperationException("Unhandled type signature: " + typeSignature);
     };

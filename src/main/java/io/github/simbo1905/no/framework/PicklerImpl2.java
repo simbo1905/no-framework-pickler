@@ -67,11 +67,14 @@ final class PicklerImpl2<R> implements Pickler2<R> {
     return classToPicklerMap.get(targetClass);
   }
 
-  Writer resolveTypeWriter(Class<?> targetClass) {
+  @SuppressWarnings("unchecked")
+  <X> Writer resolveTypeWriter(Class<X> targetClass) {
     return (buffer, obj) -> {
-      final Pickler2 pickler = classToPicklerMap.get(targetClass);
+      final Pickler2<X> pickler = (Pickler2<X>) classToPicklerMap.get(targetClass);
       if (pickler != null) {
-        @SuppressWarnings("unchecked") final int bytesWritten = pickler.serialize(buffer, obj);
+        final var positionBefore = buffer.position();
+        final int bytesWritten = pickler.serialize(buffer, (X) obj);
+        LOGGER.fine(() -> "Serialized " + targetClass.getSimpleName() + " to " + bytesWritten + " bytes at position " + positionBefore);
         return;
       }
       throw new UnsupportedOperationException("Unhandled type: " + targetClass);
@@ -113,9 +116,8 @@ final class PicklerImpl2<R> implements Pickler2<R> {
   @Override
   public int maxSizeOf(R record) {
     Objects.requireNonNull(record);
-    final Pickler2 pickler = classToPicklerMap.get(record.getClass());
-    @SuppressWarnings("unchecked") final int size = pickler.maxSizeOf(record);
-    return size;
+    @SuppressWarnings("unchecked") final Pickler2<R> pickler = (Pickler2<R>) classToPicklerMap.get(record.getClass());
+    return pickler.maxSizeOf(record);
   }
 
   @Override

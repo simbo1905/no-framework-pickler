@@ -747,12 +747,23 @@ sealed interface Companion2 permits Companion2.Nothing {
       Class<?> ignoredJavaType,
       ReaderResolver typeReaderResolver
   ) {
+    LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Creating reader for refType: %s", refType));
+
     // Meta-programming time decision - return focused functions with no runtime switches
     return switch (refType) {
       case RECORD, INTERFACE -> buffer -> {
+        final var positionBefore = buffer.position();
+        LOGGER.finer(() -> String.format("[Companion2.createRefValueReader] Reading type signature at position %d", positionBefore));
         final var typeSignature = buffer.getLong();
+        LOGGER.finer(() -> String.format("[Companion2.createRefValueReader] Read type signature 0x%s at position %d",
+            Long.toHexString(typeSignature), positionBefore));
+
         buffer.position(buffer.position() - Long.BYTES); // Rewind buffer so deserializer can read signature again
+        LOGGER.finer(() -> String.format("[Companion2.createRefValueReader] Rewound buffer to position %d", buffer.position()));
+
         // The resolver returns a Reader for the specific type, which we must then apply to the buffer.
+        LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Delegating to typeReaderResolver for signature 0x%s",
+            Long.toHexString(typeSignature)));
         return typeReaderResolver.apply(typeSignature).apply(buffer);
       };
       case ENUM -> { // Handle ENUM separately
@@ -1173,21 +1184,35 @@ sealed interface Companion2 permits Companion2.Nothing {
   ) {
     final var elementReader = createComponentReader(elementNode, customReaders, customMarkers, typeReaderResolver);
     return buffer -> {
-      final int positionBefore = buffer.position();
+      LOGGER.finer(() -> "[ArrayReader] Starting to read array");
+
+      final int sizePos = buffer.position();
+      LOGGER.finer(() -> String.format("[ArrayReader] Reading array size at position %d", sizePos));
       final int size = ZigZagEncoding.getInt(buffer);
-      LOGGER.fine(() -> "Reading array size: " + size + " at position " + positionBefore);
+      LOGGER.fine(() -> String.format("[ArrayReader] Read array size. Position before: %d, after: %d. Size: %d",
+          sizePos, buffer.position(), size));
+
       if (size == -1) {
-        LOGGER.fine(() -> "Read null array marker, returning null");
+        LOGGER.fine(() -> "[ArrayReader] Read null array marker, returning null");
         return null;
       }
+
+      LOGGER.finer(() -> String.format("[ArrayReader] Creating array of size %d", size));
       Object[] array = (Object[]) Array.newInstance(componentType, size);
-      LOGGER.fine(() -> "Reading " + size + " elements of type " + componentType.getSimpleName());
+
+      LOGGER.finer(() -> String.format("[ArrayReader] Reading %d elements of type %s", size, componentType.getSimpleName()));
       for (int i = 0; i < size; i++) {
-        final int index = i;
-        LOGGER.finer(() -> "Reading array element " + index + " at position " + buffer.position());
+        final int elementPos = buffer.position();
+        int finalI = i;
+        LOGGER.finer(() -> String.format("[ArrayReader] Reading element %d at position %d", finalI, elementPos));
         array[i] = elementReader.apply(buffer);
-        LOGGER.finer(() -> "Read array element " + index + ": " + array[index]);
+        int finalI1 = i;
+        int finalI2 = i;
+        LOGGER.finer(() -> String.format("[ArrayReader] Read element %d. Position after: %d. Value: %s",
+            finalI1, buffer.position(), array[finalI2]));
       }
+
+      LOGGER.finer(() -> String.format("[ArrayReader] Finished reading array of size %d at position %d", size, buffer.position()));
       return array;
     };
   }
