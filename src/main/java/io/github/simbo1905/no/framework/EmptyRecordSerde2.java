@@ -75,6 +75,19 @@ final class EmptyRecordSerde2<T> implements Pickler2<T> {
     return singleton;
   }
 
+  /// Package-private deserialization method that assumes the type signature has already been read
+  /// and validated by the caller (e.g., RefValueReader)
+  T deserializeWithoutSignature(ByteBuffer buffer) {
+    Objects.requireNonNull(buffer);
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    LOGGER.fine(() -> "EmptyRecordSerde2 " + userType.getSimpleName() + 
+        " deserializeWithoutSignature() at position " + buffer.position());
+    
+    final int count = ZigZagEncoding.getInt(buffer);
+    assert count == 0 : "Empty record should have zero components, but got " + count;
+    return singleton;
+  }
+
   @Override
   public int maxSizeOf(T record) {
     Objects.requireNonNull(record);

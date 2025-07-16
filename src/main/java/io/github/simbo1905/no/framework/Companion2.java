@@ -758,12 +758,11 @@ sealed interface Companion2 permits Companion2.Nothing {
             positionBefore, buffer.limit()));
         final var typeSignature = buffer.getLong();
         final var positionAfterRead = buffer.position();
-        buffer.position(buffer.position() - Long.BYTES); // Rewind buffer so deserializer can read signature again
-        final var positionAfterRewind = buffer.position();
-        LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Read signature 0x%s, position after read: %d, after rewind: %d",
-            Long.toHexString(typeSignature), positionAfterRead, positionAfterRewind));
+        LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Read signature 0x%s at position %d, now at position %d",
+            Long.toHexString(typeSignature), positionBefore, positionAfterRead));
 
         // The resolver returns a Reader for the specific type, which we must then apply to the buffer.
+        // No need to rewind - PicklerImpl2.resolveTypeReader now handles RecordSerde2 specially
         LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Delegating to typeReaderResolver for signature 0x%s",
             Long.toHexString(typeSignature)));
         return typeReaderResolver.apply(typeSignature).apply(buffer);

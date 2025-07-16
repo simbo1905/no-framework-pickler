@@ -166,6 +166,10 @@ final class RecordSerde2<T> implements Pickler2<T> {
     if (incomingSignature != this.typeSignature) {
       if (compatibilityMode && altTypeSignature.isPresent() && incomingSignature == altTypeSignature.get()) {
         LOGGER.info(() -> "Type signature mismatch, but compatibility mode is ENABLED. Proceeding with deserialization.");
+      } else {
+        throw new IllegalStateException("Type signature mismatch for " + userType.getSimpleName() + 
+            ". Expected 0x" + Long.toHexString(typeSignature) + 
+            " but got 0x" + Long.toHexString(incomingSignature));
       }
     }
 
@@ -173,41 +177,72 @@ final class RecordSerde2<T> implements Pickler2<T> {
     return readFromWire(buffer);
   }
 
+  /// Package-private deserialization method that assumes the type signature has already been read
+  /// and validated by the caller (e.g., RefValueReader)
+  T deserializeWithoutSignature(ByteBuffer buffer) {
+    Objects.requireNonNull(buffer);
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + 
+        " deserializeWithoutSignature() at position " + buffer.position());
+    return readFromWire(buffer);
+  }
+
   T readFromWire(ByteBuffer buffer) {
-    LOGGER.fine(() -> String.format("[%s.readFromWire] Entry. Position: %d", userType.getSimpleName(), buffer.position()));
+    LOGGER.fine(() -> String.format("[%s.readFromWire] Entry. Position: %d/%d with %d bytes remaining",
+        userType.getSimpleName(), buffer.position(), buffer.limit(), buffer.remaining()));
 
     final int countPosition = buffer.position();
-    LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component count at position %d", userType.getSimpleName(), countPosition));
+    final int bufferLimit = buffer.limit();
+    final int bufferRemaining = buffer.remaining();
+    LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component count at position %d/%d with %d bytes remaining",
+        userType.getSimpleName(), countPosition, bufferLimit, bufferRemaining));
+    
     final int wireCount = ZigZagEncoding.getInt(buffer);
     LOGGER.fine(() -> String.format("[%s.readFromWire] Read component count. Position before: %d, after: %d. Count: %d",
         userType.getSimpleName(), countPosition, buffer.position(), wireCount));
+
+    LOGGER.finer(() -> String.format("[%s.readFromWire] Component count validation: wireCount=%d, readers.length=%d, compatibilityMode=%b",
+        userType.getSimpleName(), wireCount, readers.length, compatibilityMode));
     // Fill the components from the buffer up to the wireCount
     Object[] components = new Object[readers.length];
     LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read components", userType.getSimpleName()));
 
+    LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read %d components at position %d/%d",
+        userType.getSimpleName(), readers.length, buffer.position(), buffer.limit()));
+    
     IntStream.range(0, readers.length).forEach(i -> {
       final int componentIndex = i;
       final int readPosition = buffer.position();
-      LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component %d of %d at position %d",
-          userType.getSimpleName(), componentIndex + 1, readers.length, readPosition));
-
+      final int readLimit = buffer.limit();
+      final int readRemaining = buffer.remaining();
+      LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component %d of %d at position %d/%d with %d bytes remaining",
+          userType.getSimpleName(), componentIndex + 1, readers.length, readPosition, readLimit, readRemaining));
+      
       LOGGER.fine(() -> String.format("[%s.readFromWire] Reading component %d at position %d. Reader: %s",
           userType.getSimpleName(), componentIndex, readPosition, readers[componentIndex].getClass().getSimpleName()));
-
+      
       components[i] = readers[componentIndex].apply(buffer);
-
+      
       LOGGER.finer(() -> String.format("[%s.readFromWire] Read component %d. Position after: %d. Value: %s",
           userType.getSimpleName(), componentIndex, buffer.position(), components[i]));
+      
+      if (componentIndex + 1 < readers.length) {
+        LOGGER.finer(() -> String.format("[%s.readFromWire] Moving to next component at position %d",
+            userType.getSimpleName(), buffer.position()));
+      }
     });
 
     // If we need more, and we are in backwards compatibility mode, fill the remaining components with default values
     if (wireCount < readers.length) {
-      LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + "wireCount(" + wireCount + ") < componentReaders.length(" +
-          readers.length + "). Filling remaining with default values.");
+      LOGGER.fine(() -> String.format("%s.readFromWire] Need to fill %d components due to wireCount=%d < readers.length=%d",
+          userType.getSimpleName(), readers.length - wireCount, wireCount, readers.length));
+      
       IntStream.range(wireCount, readers.length).forEach(i -> {
         final RecordComponent rc = userType.getRecordComponents()[i];
-        LOGGER.fine(() -> "Filling component " + i + " with default value for type: " + rc.getType().getName());
-        components[i] = defaultValue(rc.getType());
+        final Object defaultValue = defaultValue(rc.getType());
+        LOGGER.finer(() -> String.format("%s.readFromWire] Filling component %d of %d with default value of type %s: %s",
+            userType.getSimpleName(), i + 1, readers.length, rc.getType().getName(), defaultValue));
+        components[i] = defaultValue;
       });
     }
 
@@ -274,7 +309,8 @@ final class RecordSerde2<T> implements Pickler2<T> {
     return buffer -> {
       if (typeSignature == 0L) return null;
       if (typeSignature == this.typeSignature) {
-        return this.deserialize(buffer);
+        // When called via Companion2's type resolution, the signature has already been read
+        return this.deserializeWithoutSignature(buffer);
       }
       throw new UnsupportedOperationException("Unhandled type signature: " + typeSignature);
     };
