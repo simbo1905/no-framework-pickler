@@ -143,7 +143,7 @@ sealed interface Companion2 permits Companion2.Nothing {
       try {
         Object[] array = (Object[]) getter.invoke(record);
         if (array == null) {
-          ZigZagEncoding.putInt(buffer, -1); // Null array marker
+          ZigZagEncoding.putInt(buffer, NULL_MARKER_ARRAY); // Null array marker is negative length
         } else {
           ZigZagEncoding.putInt(buffer, array.length);
           for (Object item : array) {
@@ -596,6 +596,7 @@ sealed interface Companion2 permits Companion2.Nothing {
   /// Constants for null markers
   byte NULL_MARKER = Byte.MIN_VALUE;
   byte NOT_NULL_MARKER = Byte.MAX_VALUE;
+  byte NULL_MARKER_ARRAY = -1; // Special marker for null arrays is negative length
 
   /// Extract value from record using getter and delegate to writer with null handling
   static Writer extractAndDelegate(Writer delegate, MethodHandle accessor) {
@@ -753,13 +754,14 @@ sealed interface Companion2 permits Companion2.Nothing {
     return switch (refType) {
       case RECORD, INTERFACE -> buffer -> {
         final var positionBefore = buffer.position();
-        LOGGER.finer(() -> String.format("[Companion2.createRefValueReader] Reading type signature at position %d", positionBefore));
+        LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Reading type signature at position %d, buffer limit: %d",
+            positionBefore, buffer.limit()));
         final var typeSignature = buffer.getLong();
-        LOGGER.finer(() -> String.format("[Companion2.createRefValueReader] Read type signature 0x%s at position %d",
-            Long.toHexString(typeSignature), positionBefore));
-
+        final var positionAfterRead = buffer.position();
         buffer.position(buffer.position() - Long.BYTES); // Rewind buffer so deserializer can read signature again
-        LOGGER.finer(() -> String.format("[Companion2.createRefValueReader] Rewound buffer to position %d", buffer.position()));
+        final var positionAfterRewind = buffer.position();
+        LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Read signature 0x%s, position after read: %d, after rewind: %d",
+            Long.toHexString(typeSignature), positionAfterRead, positionAfterRewind));
 
         // The resolver returns a Reader for the specific type, which we must then apply to the buffer.
         LOGGER.fine(() -> String.format("[Companion2.createRefValueReader] Delegating to typeReaderResolver for signature 0x%s",
@@ -1224,7 +1226,8 @@ sealed interface Companion2 permits Companion2.Nothing {
       try {
         Object array = getter.invoke(record);
         if (array == null) {
-          ZigZagEncoding.putInt(buffer, -1); // Null array marker
+          LOGGER.fine(() -> "Writing NULL_MARKER_ARRAY for null primitive array");
+          ZigZagEncoding.putInt(buffer, NULL_MARKER_ARRAY);
         } else {
           valueWriter.accept(buffer, array);
         }

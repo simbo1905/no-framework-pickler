@@ -115,18 +115,20 @@ final class RecordSerde2<T> implements Pickler2<T> {
 
   int writeToWire(ByteBuffer buffer, T record) {
     final int startPosition = buffer.position();
-    LOGGER.fine(() -> String.format("writeToWire START for %s (hashCode: %d) at position %d; Writing typeSignature: 0x%s",
-        userType.getSimpleName(), record.hashCode(), startPosition, Long.toHexString(typeSignature)));
-
-    // Log before writing type signature
-    LOGGER.finer(() -> String.format("Writing typeSignature: 0x%s at position %d", Long.toHexString(typeSignature), startPosition));
+    LOGGER.fine(() -> String.format("writeToWire START at position %d", startPosition));
+    
+    LOGGER.finer(() -> String.format("Writing type signature: 0x%s at position %d", 
+        Long.toHexString(typeSignature), startPosition));
     buffer.putLong(typeSignature);
-    LOGGER.finer(() -> String.format("After writing typeSignature, position: %d", buffer.position()));
-
-    // Log before writing component count
-    LOGGER.finer(() -> String.format("Writing component count: %d at position %d", writers.length, buffer.position()));
+    final int afterSigPosition = buffer.position();
+    LOGGER.fine(() -> String.format("Wrote type signature, position now: %d", afterSigPosition));
+    
+    LOGGER.finer(() -> String.format("Writing component count: %d at position %d", 
+        writers.length, afterSigPosition));
     ZigZagEncoding.putInt(buffer, writers.length);
-    LOGGER.finer(() -> String.format("After writing component count, position: %d", buffer.position()));
+    final int afterCountPosition = buffer.position();
+    LOGGER.fine(() -> String.format("Wrote component count %d, position now: %d", 
+        writers.length, afterCountPosition));
 
     // Log component writing details
     IntStream.range(0, writers.length)
