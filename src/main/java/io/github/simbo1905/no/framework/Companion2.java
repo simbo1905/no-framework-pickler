@@ -672,7 +672,12 @@ sealed interface Companion2 permits Companion2.Nothing {
     // Use extractAndDelegate for null handling. The returned delegate handles the non-null value.
     return extractAndDelegate((buffer, value) -> {
       switch (refType) {
-        case RECORD, ENUM, INTERFACE -> // For user types, we don't write a marker. We delegate to the resolver,
+        case ENUM -> { // Handle ENUM separately
+          ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(Enum.class));
+          ZigZagEncoding.putInt(buffer, ((Enum<?>) value).ordinal());
+        }
+        case RECORD, INTERFACE -> // ENUM removed from this case
+          // For user types, we don't write a marker. We delegate to the resolver,
           // which is responsible for writing the 'long' signature.
             typeWriterResolver.resolveWriter(javaType).accept(buffer, value);
         default -> {
@@ -744,11 +749,22 @@ sealed interface Companion2 permits Companion2.Nothing {
   ) {
     // Meta-programming time decision - return focused functions with no runtime switches
     return switch (refType) {
-      case RECORD, ENUM, INTERFACE -> buffer -> {
+      case RECORD, INTERFACE -> buffer -> {
         final var typeSignature = buffer.getLong();
+        buffer.position(buffer.position() - Long.BYTES); // Rewind buffer so deserializer can read signature again
         // The resolver returns a Reader for the specific type, which we must then apply to the buffer.
         return typeReaderResolver.apply(typeSignature).apply(buffer);
       };
+      case ENUM -> { // Handle ENUM separately
+        final var expectedMarker = TypeExpr2.referenceToMarker(Enum.class);
+        yield buffer -> {
+          final var marker = ZigZagEncoding.getInt(buffer);
+          assert marker == expectedMarker : "Expected ENUM marker " + expectedMarker + ", got " + marker;
+          final var ordinal = ZigZagEncoding.getInt(buffer);
+          @SuppressWarnings({"unchecked", "rawtypes"}) final var enumConstants = ((Class<Enum>) ignoredJavaType).getEnumConstants();
+          return enumConstants[ordinal];
+        };
+      }
 
       case BOOLEAN -> {
         final var expectedMarker = TypeExpr2.referenceToMarker(Boolean.class);
@@ -851,6 +867,7 @@ sealed interface Companion2 permits Companion2.Nothing {
     };
   }
 
+  /// FIXME the switch should be on the meta-value time, not runtime.
   /// Create sizer for reference value types
   static Sizer createRefValueSizer(
       TypeExpr2.RefValueType refType,
@@ -888,7 +905,9 @@ sealed interface Companion2 permits Companion2.Nothing {
         yield ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(String.class)) +
             ZigZagEncoding.sizeOf(bytes.length) + bytes.length;
       }
-      case RECORD, ENUM, INTERFACE -> {
+      case ENUM -> // Handle ENUM separately
+          ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(Enum.class)) + Integer.BYTES; // FIXME: it is fixed length, not variable
+      case RECORD, INTERFACE -> { // ENUM removed from this case
         // Delegate to the main pickler's sizer resolver
         Sizer sizer = typeSizerResolver.apply(javaType);
         yield sizer.applyAsInt(value); // The extractAndDelegate wrapper will handle nulls

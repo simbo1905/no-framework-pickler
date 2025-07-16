@@ -119,11 +119,8 @@ final class RecordSerde2<T> implements Pickler2<T> {
         userType.getSimpleName(), record.hashCode(), startPosition, Long.toHexString(typeSignature)));
     buffer.putLong(typeSignature);
     LOGGER.fine(() -> String.format("Buffer position after signature: %d", buffer.position()));
-
-    LOGGER.fine(() -> String.format("Writing component count: %d", writers.length));
     ZigZagEncoding.putInt(buffer, writers.length);
-    LOGGER.fine(() -> String.format("Buffer position after count: %d", buffer.position()));
-
+    LOGGER.fine(() -> String.format("Buffer position after component length: %d", buffer.position()));
     IntStream.range(0, writers.length)
         .forEach(i -> {
           final int posBefore = buffer.position();
@@ -164,20 +161,12 @@ final class RecordSerde2<T> implements Pickler2<T> {
   }
 
   T readFromWire(ByteBuffer buffer) {
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " readFromWire() reading component count " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
+    final int wireCountPosition = buffer.position();
     final int wireCount = ZigZagEncoding.getInt(buffer);
-
-    if (!compatibilityMode && wireCount < readers.length) {
-      throw new IllegalStateException("wireCount(" + wireCount + ") < componentReaders.length(" + readers.length + ") and compatibility mode is disabled.");
-    } else if (wireCount < 0) {
-      throw new IllegalStateException("Invalid wire count: " + wireCount + ". Must be non-negative.");
-    } else if (wireCount > readers.length) {
-      throw new IllegalStateException("wireCount(" + wireCount + ") > componentReaders.length(" + readers.length + "). This indicates a version mismatch or corrupted data.");
-    }
-
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " wireCount read as " + wireCount + " at position " + wireCountPosition);
     // Fill the components from the buffer up to the wireCount
     Object[] components = new Object[readers.length];
-    IntStream.range(0, wireCount).forEach(i -> {
+    IntStream.range(0, readers.length).forEach(i -> {
       final int componentIndex = i; // final for lambda capture
       final int beforePosition = buffer.position();
       LOGGER.fine(() -> "RecordPickler reading component " + componentIndex + " at position " + beforePosition + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());

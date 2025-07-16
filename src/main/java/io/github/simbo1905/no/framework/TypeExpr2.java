@@ -46,6 +46,7 @@ sealed interface TypeExpr2 permits
       case Class<?> c when c == String.class -> -12;
       case Class<?> c when c == java.time.LocalDate.class -> -13;
       case Class<?> c when c == java.time.LocalDateTime.class -> -14;
+      case Class<?> c when c == Enum.class -> -15;
       default -> throw new IllegalArgumentException("Not a built-in reference type: " + refClass);
     };
   }
