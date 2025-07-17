@@ -51,7 +51,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
 
     // Create component serdes directly without external resolvers
     final var customHandlers = List.<SerdeHandler>of();
-    final var componentSerdes = Companion2.buildComponentSerdes(
+    final var componentSerdes = Companion.buildComponentSerdes(
         userType,
         customHandlers,
         sizerResolver != null ? sizerResolver : this::resolveTypeSizer,
@@ -116,18 +116,18 @@ final class RecordSerde2<T> implements Pickler2<T> {
   int writeToWire(ByteBuffer buffer, T record) {
     final int startPosition = buffer.position();
     LOGGER.fine(() -> String.format("writeToWire START at position %d", startPosition));
-    
-    LOGGER.finer(() -> String.format("Writing type signature: 0x%s at position %d", 
+
+    LOGGER.finer(() -> String.format("Writing type signature: 0x%s at position %d",
         Long.toHexString(typeSignature), startPosition));
     buffer.putLong(typeSignature);
     final int afterSigPosition = buffer.position();
     LOGGER.fine(() -> String.format("Wrote type signature, position now: %d", afterSigPosition));
-    
-    LOGGER.finer(() -> String.format("Writing component count: %d at position %d", 
+
+    LOGGER.finer(() -> String.format("Writing component count: %d at position %d",
         writers.length, afterSigPosition));
     ZigZagEncoding.putInt(buffer, writers.length);
     final int afterCountPosition = buffer.position();
-    LOGGER.fine(() -> String.format("Wrote component count %d, position now: %d", 
+    LOGGER.fine(() -> String.format("Wrote component count %d, position now: %d",
         writers.length, afterCountPosition));
 
     // Log component writing details
@@ -167,8 +167,8 @@ final class RecordSerde2<T> implements Pickler2<T> {
       if (compatibilityMode && altTypeSignature.isPresent() && incomingSignature == altTypeSignature.get()) {
         LOGGER.info(() -> "Type signature mismatch, but compatibility mode is ENABLED. Proceeding with deserialization.");
       } else {
-        throw new IllegalStateException("Type signature mismatch for " + userType.getSimpleName() + 
-            ". Expected 0x" + Long.toHexString(typeSignature) + 
+        throw new IllegalStateException("Type signature mismatch for " + userType.getSimpleName() +
+            ". Expected 0x" + Long.toHexString(typeSignature) +
             " but got 0x" + Long.toHexString(incomingSignature));
       }
     }
@@ -182,7 +182,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
   T deserializeWithoutSignature(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + 
+    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() +
         " deserializeWithoutSignature() at position " + buffer.position());
     return readFromWire(buffer);
   }
@@ -196,7 +196,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
     final int bufferRemaining = buffer.remaining();
     LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component count at position %d/%d with %d bytes remaining",
         userType.getSimpleName(), countPosition, bufferLimit, bufferRemaining));
-    
+
     final int wireCount = ZigZagEncoding.getInt(buffer);
     LOGGER.fine(() -> String.format("[%s.readFromWire] Read component count. Position before: %d, after: %d. Count: %d",
         userType.getSimpleName(), countPosition, buffer.position(), wireCount));
@@ -209,7 +209,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
 
     LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read %d components at position %d/%d",
         userType.getSimpleName(), readers.length, buffer.position(), buffer.limit()));
-    
+
     IntStream.range(0, readers.length).forEach(i -> {
       final int componentIndex = i;
       final int readPosition = buffer.position();
@@ -217,15 +217,15 @@ final class RecordSerde2<T> implements Pickler2<T> {
       final int readRemaining = buffer.remaining();
       LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component %d of %d at position %d/%d with %d bytes remaining",
           userType.getSimpleName(), componentIndex + 1, readers.length, readPosition, readLimit, readRemaining));
-      
+
       LOGGER.fine(() -> String.format("[%s.readFromWire] Reading component %d at position %d. Reader: %s",
           userType.getSimpleName(), componentIndex, readPosition, readers[componentIndex].getClass().getSimpleName()));
-      
+
       components[i] = readers[componentIndex].apply(buffer);
-      
+
       LOGGER.finer(() -> String.format("[%s.readFromWire] Read component %d. Position after: %d. Value: %s",
           userType.getSimpleName(), componentIndex, buffer.position(), components[i]));
-      
+
       if (componentIndex + 1 < readers.length) {
         LOGGER.finer(() -> String.format("[%s.readFromWire] Moving to next component at position %d",
             userType.getSimpleName(), buffer.position()));
@@ -236,7 +236,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
     if (wireCount < readers.length) {
       LOGGER.fine(() -> String.format("%s.readFromWire] Need to fill %d components due to wireCount=%d < readers.length=%d",
           userType.getSimpleName(), readers.length - wireCount, wireCount, readers.length));
-      
+
       IntStream.range(wireCount, readers.length).forEach(i -> {
         final RecordComponent rc = userType.getRecordComponents()[i];
         final Object defaultValue = defaultValue(rc.getType());
@@ -309,7 +309,7 @@ final class RecordSerde2<T> implements Pickler2<T> {
     return buffer -> {
       if (typeSignature == 0L) return null;
       if (typeSignature == this.typeSignature) {
-        // When called via Companion2's type resolution, the signature has already been read
+        // When called via Companion's type resolution, the signature has already been read
         return this.deserializeWithoutSignature(buffer);
       }
       throw new UnsupportedOperationException("Unhandled type signature: " + typeSignature);

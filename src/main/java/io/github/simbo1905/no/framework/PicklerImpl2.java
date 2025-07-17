@@ -25,7 +25,7 @@ final class PicklerImpl2<R> implements Pickler2<R> {
     final var classHierarchy = recordClassHierarchy(rootClass);
 
     final var recordClasses = classHierarchy.stream().filter(Class::isRecord).collect(Collectors.toList());
-    this.typeSignatures = Companion2.computeRecordTypeSignatures(recordClasses);
+    this.typeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
 
     this.classToPicklerMap = recordClasses.stream()
         .collect(Collectors.toMap(
@@ -88,33 +88,33 @@ final class PicklerImpl2<R> implements Pickler2<R> {
         LOGGER.fine(() -> "Returning null for typeSignature 0L");
         return null;
       }
-      
+
       LOGGER.finer(() -> "Looking up typeSignature 0x" + Long.toHexString(typeSignature) + " in map");
       final Pickler2<?> pickler = typeSignatureToPicklerMap.get(typeSignature);
-      
+
       if (pickler == null) {
         LOGGER.warning(() -> "No pickler found for typeSignature 0x" + Long.toHexString(typeSignature));
         throw new UnsupportedOperationException("Unhandled type signature: " + typeSignature);
       }
-      
-      LOGGER.fine(() -> "Found pickler " + pickler.getClass().getSimpleName() + " for typeSignature 0x" + 
+
+      LOGGER.fine(() -> "Found pickler " + pickler.getClass().getSimpleName() + " for typeSignature 0x" +
           Long.toHexString(typeSignature));
-      
+
       // If it's a RecordSerde2, use deserializeWithoutSignature since the signature was already read
       if (pickler instanceof RecordSerde2<?> recordSerde) {
-        LOGGER.fine(() -> "[PicklerImpl2] Using RecordSerde2.deserializeWithoutSignature for signature 0x" + 
+        LOGGER.fine(() -> "[PicklerImpl2] Using RecordSerde2.deserializeWithoutSignature for signature 0x" +
             Long.toHexString(typeSignature));
         return recordSerde.deserializeWithoutSignature(buffer);
       }
-      
+
       // If it's an EmptyRecordSerde2, use deserializeWithoutSignature since the signature was already read
       if (pickler instanceof EmptyRecordSerde2<?> emptyRecordSerde) {
-        LOGGER.fine(() -> "[PicklerImpl2] Using EmptyRecordSerde2.deserializeWithoutSignature for signature 0x" + 
+        LOGGER.fine(() -> "[PicklerImpl2] Using EmptyRecordSerde2.deserializeWithoutSignature for signature 0x" +
             Long.toHexString(typeSignature));
         return emptyRecordSerde.deserializeWithoutSignature(buffer);
       }
-      
-      LOGGER.finer(() -> "Starting deserialization of typeSignature 0x" + Long.toHexString(typeSignature) + 
+
+      LOGGER.finer(() -> "Starting deserialization of typeSignature 0x" + Long.toHexString(typeSignature) +
           " at buffer position " + buffer.position() + " with " + buffer.remaining() + " bytes remaining");
       return pickler.deserialize(buffer);
     };

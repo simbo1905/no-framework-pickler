@@ -117,12 +117,12 @@ public sealed interface Pickler2<T> permits EmptyRecordSerde2, PicklerImpl2, Rec
     // For the simple case of a single record, we can directly create a RecordSerde2.
     if (recordClasses.size() == 1 && !clazz.isSealed()) {
       @SuppressWarnings("unchecked") final Class<T> recordClass = (Class<T>) recordClasses.getFirst();
-      final var recordTypeSignatures = Companion2.computeRecordTypeSignatures(recordClasses);
+      final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
       final var typeSignature = recordTypeSignatures.get(recordClass);
 
       return new RecordSerde2<>(recordClass, typeSignature, Optional.empty());
     } else {
-        return new PicklerImpl2<>(clazz, typeSignatures);
+      return new PicklerImpl2<>(clazz, typeSignatures);
     }
   }
 

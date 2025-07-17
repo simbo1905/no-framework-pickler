@@ -229,7 +229,7 @@ class TypeExpr2Tests {
     // Record must be public for reflection access
 
     // Build ComponentSerde array
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         OptionalStringRecord.class,
         List.of(), // No custom handlers
         clazz -> obj -> 100, // Simple sizer resolver
@@ -268,7 +268,7 @@ class TypeExpr2Tests {
   void testOptionalIntegerRoundTrip() {
     // Test Optional<Integer> serialization round-trip
 
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         OptionalIntRecord.class,
         List.of(),
         clazz -> obj -> 100,
@@ -301,9 +301,9 @@ class TypeExpr2Tests {
   @Test
   void testOptionalRecordRoundTrip() {
     final List<Class<?>> recordTypes = List.of(TestRecord.class);
-    final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(recordTypes);
+    final var recordTypeSignatureMap = Companion.computeRecordTypeSignatures(recordTypes);
 
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         OptionalRecordHolder.class,
         List.of(),
         // Sizer resolver for user types
@@ -364,7 +364,7 @@ class TypeExpr2Tests {
 
   @Test
   void testOptionalMarkers() {
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         OptionalHolder.class,
         List.of(),
         clazz -> obj -> 100,
@@ -400,8 +400,8 @@ class TypeExpr2Tests {
     // Test record with String and int components - must be public for reflection
     // Using the existing public TestRecord(String name, int value)
 
-    // Build ComponentSerde array using Companion2
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    // Build ComponentSerde array using Companion
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         TestRecord.class,
         List.of(), // No custom handlers for this test
         clazz -> obj -> 0, // Simple sizer resolver
@@ -438,8 +438,8 @@ class TypeExpr2Tests {
   void testSizerAlwaysGreaterThanOrEqualToWrittenBytes() {
     // Test that sizer always returns worst-case estimate >= actual bytes written
 
-    // Build ComponentSerde array using Companion2
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    // Build ComponentSerde array using Companion
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         TestRecord.class,
         List.of(), // No custom handlers for this test
         clazz -> obj -> 0, // Simple sizer resolver
@@ -489,8 +489,8 @@ class TypeExpr2Tests {
     // Test record with nullable String component
     // Using the existing public TestRecord(String name, int value)
 
-    // Build ComponentSerde array using Companion2
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    // Build ComponentSerde array using Companion
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         TestRecord.class,
         List.of(), // No custom handlers for this test
         clazz -> obj -> 0, // Simple sizer resolver
@@ -555,7 +555,7 @@ class TypeExpr2Tests {
     // Test that INTEGER and LONG use runtime encoding decisions
 
     // Test with small values that should use variable encoding
-    ComponentSerde[] smallSerdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] smallSerdes = Companion.buildComponentSerdes(
         SmallValues.class,
         List.of(),
         clazz -> obj -> 0,
@@ -655,13 +655,13 @@ class TypeExpr2Tests {
     // 1. Create a "mini-pickler" simulation for LinkedListNode
     final var recordClass = LinkedListNode.class;
     final List<Class<?>> userTypes = List.of(recordClass);
-    final var recordClassToTypeSignatureMap = Companion2.computeRecordTypeSignatures(userTypes);
+    final var recordClassToTypeSignatureMap = Companion.computeRecordTypeSignatures(userTypes);
     final var typeSignature = recordClassToTypeSignatureMap.get(recordClass);
     LOGGER.info(() -> "Test: LinkedListNode typeSignature = " + Long.toHexString(typeSignature));
 
-    // 2. Build the ComponentSerdes using Companion2
+    // 2. Build the ComponentSerdes using Companion
     final ComponentSerde[][] serdes = {null};
-    serdes[0] = Companion2.buildComponentSerdes(
+    serdes[0] = Companion.buildComponentSerdes(
         recordClass,
         List.of(), // No custom handlers
         // Sizer Resolver: Delegates back to the main sizer
@@ -760,7 +760,7 @@ class TypeExpr2Tests {
         LinkListEmptyEnd.LinkEnd.class,
         LinkListEmptyEnd.Boxed.class
     );
-    final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(recordTypes);
+    final var recordTypeSignatureMap = Companion.computeRecordTypeSignatures(recordTypes);
 
     // Log the signatures for debugging
     recordTypeSignatureMap.forEach((type, sig) ->
@@ -768,7 +768,7 @@ class TypeExpr2Tests {
 
     // 2. Build the ComponentSerdes for the top-level LinkedRecord
     final ComponentSerde[][] serdes = {null}; // Array wrapper for closure
-    serdes[0] = Companion2.buildComponentSerdes(
+    serdes[0] = Companion.buildComponentSerdes(
         LinkListEmptyEnd.LinkedRecord.class,
         List.of(), // No custom handlers
         // Sizer Resolver: Handles all user types
@@ -962,7 +962,7 @@ class TypeExpr2Tests {
   @Test
   void testListStringRoundTrip() {
     // Test List<String> serialization round-trip
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         ListStringRecord.class,
         List.of(), // No custom handlers
         clazz -> obj -> 100, // Simple sizer resolver
@@ -1061,11 +1061,11 @@ class TypeExpr2Tests {
     final List<Class<?>> allRecordTypes = new ArrayList<>(sealedTypes);
     allRecordTypes.add(BaselineTests.Person.class);
     allRecordTypes.add(ComplexListRecord.class);
-    final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(allRecordTypes);
-    final long testEnumSignature = Companion2.hashEnumSignature(TestEnum.class);
+    final var recordTypeSignatureMap = Companion.computeRecordTypeSignatures(allRecordTypes);
+    final long testEnumSignature = Companion.hashEnumSignature(TestEnum.class);
     final Map<Class<?>, ComponentSerde[]> serdeMap = new HashMap<>();
 
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         ComplexListRecord.class,
         List.of(),
         type -> (obj) -> 256,
@@ -1077,7 +1077,7 @@ class TypeExpr2Tests {
             LOGGER.fine(() -> "WriterResolver: Writing " + concreteType.getSimpleName() + " signature " + Long.toHexString(sig));
             buffer.putLong(sig);
             var componentSerdes = serdeMap.computeIfAbsent(concreteType, t ->
-                Companion2.buildComponentSerdes(t, List.of(),
+                Companion.buildComponentSerdes(t, List.of(),
                     type2 -> (o) -> 256,
                     type2 -> (buf, o) -> {
                     },
@@ -1097,7 +1097,7 @@ class TypeExpr2Tests {
               .orElse(null);
           if (targetType != null && sealedTypes.contains(targetType)) {
             var componentSerdes = serdeMap.computeIfAbsent(targetType, t ->
-                Companion2.buildComponentSerdes(t, List.of(),
+                Companion.buildComponentSerdes(t, List.of(),
                     type -> (obj) -> 256,
                     type2 -> (buf, o) -> {
                     },
@@ -1147,7 +1147,7 @@ class TypeExpr2Tests {
     ComplexListRecord originalRecord = new ComplexListRecord(simpleList);
 
     // Component serdes with focused debugging
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         ComplexListRecord.class,
         List.of(),
         type -> (obj) -> 256,

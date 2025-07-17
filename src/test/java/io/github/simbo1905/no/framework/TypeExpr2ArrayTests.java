@@ -119,8 +119,8 @@ class TypeExpr2ArrayTests {
     allRecordTypes.add(ComplexArrayRecord.class);
     allRecordTypes.add(BaselineTests.Person.class);
 
-    final var recordTypeSignatureMap = Companion2.computeRecordTypeSignatures(allRecordTypes);
-    final long testEnumSignature = Companion2.hashEnumSignature(TypeExpr2Tests.TestEnum.class);
+    final var recordTypeSignatureMap = Companion.computeRecordTypeSignatures(allRecordTypes);
+    final long testEnumSignature = Companion.hashEnumSignature(TypeExpr2Tests.TestEnum.class);
 
     // Log signatures for debugging.
     recordTypeSignatureMap.forEach((type, sig) ->
@@ -151,7 +151,7 @@ class TypeExpr2ArrayTests {
 
       if (sealedTypes.contains(type)) {
         var componentSerdes = serdeMap.computeIfAbsent(type, t ->
-            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+            Companion.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
         if (componentSerdes.length == 0) return Long.BYTES;
         return Long.BYTES + componentSerdes[0].sizer().applyAsInt(obj);
       }
@@ -174,7 +174,7 @@ class TypeExpr2ArrayTests {
         buffer.putLong(recordTypeSignatureMap.get(BaselineTests.Person.class));
         // Write components of Person
         var personSerdes = serdeMap.computeIfAbsent(BaselineTests.Person.class, t ->
-            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+            Companion.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
         personSerdes[0].writer().accept(buffer, person); // name
         personSerdes[1].writer().accept(buffer, person); // age
         return;
@@ -189,7 +189,7 @@ class TypeExpr2ArrayTests {
       if (sealedTypes.contains(concreteType)) {
         buffer.putLong(recordTypeSignatureMap.get(concreteType));
         var componentSerdes = serdeMap.computeIfAbsent(concreteType, t ->
-            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+            Companion.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
         if (componentSerdes.length > 0) {
           componentSerdes[0].writer().accept(buffer, obj);
         }
@@ -221,7 +221,7 @@ class TypeExpr2ArrayTests {
 
       if (targetType == BaselineTests.Person.class) {
         var personSerdes = serdeMap.computeIfAbsent(BaselineTests.Person.class, t ->
-            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+            Companion.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
         String name = (String) personSerdes[0].reader().apply(buffer);
         int age = (int) personSerdes[1].reader().apply(buffer);
         return new BaselineTests.Person(name, age);
@@ -229,7 +229,7 @@ class TypeExpr2ArrayTests {
 
       if (sealedTypes.contains(targetType)) {
         var componentSerdes = serdeMap.computeIfAbsent(targetType, t ->
-            Companion2.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
+            Companion.buildComponentSerdes(t, List.of(), sizerResolverHolder[0], writerResolverHolder[0], readerResolverHolder[0]));
 
         if (componentSerdes.length == 0) {
           if (targetType == ItemNull.class) return new ItemNull();
@@ -255,7 +255,7 @@ class TypeExpr2ArrayTests {
     readerResolverHolder[0] = readerResolver;
 
     // 2. Build component serdes for the ComplexMapRecord
-    ComponentSerde[] serdes = Companion2.buildComponentSerdes(
+    ComponentSerde[] serdes = Companion.buildComponentSerdes(
         ComplexArrayRecord.class,
         List.of(),
         sizerResolver,

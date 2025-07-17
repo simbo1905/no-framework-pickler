@@ -6,6 +6,7 @@ package io.github.simbo1905.no.framework;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -325,6 +326,59 @@ sealed interface Companion permits Companion.Nothing {
       }
     };
   }
+
+  /// Build ComponentSerde array for a record type using TypeExpr AST
+  static ComponentSerde[] buildComponentSerdes(
+      Class<?> recordClass,
+      Collection<SerdeHandler> customHandlers,
+      SizerResolver typeSizerResolver,
+      WriterResolver typeWriterResolver,
+      ReaderResolver typeReaderResolver
+  ) {
+    LOGGER.fine(() -> "Building ComponentSerde[] for record: " + recordClass.getName());
+
+    // Pre-process custom handlers into efficient lookup maps
+    final Map<Class<?>, ToIntFunction<Object>> customSizers = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::sizer));
+    final Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::writer));
+    final Map<Class<?>, Function<ByteBuffer, Object>> customReaders = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
+    final Map<Class<?>, Integer> customMarkers = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+
+    RecordComponent[] components = recordClass.getRecordComponents();
+    MethodHandle[] getters = resolveGetters(recordClass, components);
+
+    return IntStream.range(0, components.length)
+        .mapToObj(i -> {
+          RecordComponent component = components[i];
+          MethodHandle getter = getters[i];
+          TypeExpr2 typeExpr = TypeExpr2.analyzeType(component.getGenericType(), customHandlers);
+
+          LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
+
+          Writer writer = createComponentWriter(typeExpr, getter, customWriters, customMarkers, typeWriterResolver);
+          Reader reader = createComponentReader(typeExpr, customReaders, customMarkers, typeReaderResolver);
+          Sizer sizer = createComponentSizer(typeExpr, getter, customSizers, customMarkers, typeSizerResolver);
+
+          return new ComponentSerde(writer, reader, sizer);
+        })
+        .toArray(ComponentSerde[]::new);
+  }
+
+  static Sizer createComponentSizer(TypeExpr2 typeExpr, MethodHandle getter, Map<Class<?>, ToIntFunction<Object>> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
+    throw new ArrayStoreException("not implemented");
+  }
+
+  static Reader createComponentReader(TypeExpr2 typeExpr, Map<Class<?>, Function<ByteBuffer, Object>> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
+    throw new AssertionError("not implemented yet");
+  }
+
+  static Writer createComponentWriter(TypeExpr2 typeExpr, MethodHandle getter, Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
+    throw new AssertionError("not implemented yet");
+  }
+
 
   record Nothing() implements Companion {
   }
@@ -1155,5 +1209,19 @@ sealed interface Companion permits Companion.Nothing {
     //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
     result = IntStream.range(0, Long.BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     return result;
+  }
+
+  /// Resolve getters for record components
+  static MethodHandle[] resolveGetters(Class<?> recordClass, RecordComponent[] components) {
+    MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+    return IntStream.range(0, components.length)
+        .mapToObj(i -> {
+          try {
+            return lookup.unreflect(components[i].getAccessor());
+          } catch (IllegalAccessException e) {
+            throw new IllegalStateException("Cannot access component " + i + " of " + recordClass, e);
+          }
+        })
+        .toArray(MethodHandle[]::new);
   }
 }
