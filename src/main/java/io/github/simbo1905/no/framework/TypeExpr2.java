@@ -8,6 +8,7 @@ import org.jetbrains.annotations.NotNull;
 import java.lang.reflect.*;
 import java.util.Collection;
 import java.util.Objects;
+import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
@@ -53,7 +54,7 @@ sealed interface TypeExpr2 permits
           // Check if it's a custom type first
           for (SerdeHandler handler : customHandlers) {
             if (handler.valueBasedLike().equals(clazz)) {
-              return new RefValueNode(RefValueType.CUSTOM, clazz, handler.marker());
+              return new RefValueNode(RefValueType.CUSTOM, clazz);
             }
           }
           // Otherwise it's a built-in reference type
@@ -64,7 +65,7 @@ sealed interface TypeExpr2 permits
           } else {
             marker = Companion.referenceToMarker(clazz);
           }
-          return new RefValueNode(refType, clazz, marker);
+          return new RefValueNode(refType, clazz);
         }
       }
     }
@@ -233,6 +234,22 @@ sealed interface TypeExpr2 permits
     throw new IllegalArgumentException("Unsupported reference class type: " + clazz);
   }
 
+  static Stream<Class<?>> classesInAST(TypeExpr2 structure) {
+    return switch (structure) {
+      case ArrayNode(var element, var javaType) -> Stream.concat(
+          Stream.of(javaType),
+          classesInAST(element));
+      case PrimitiveArrayNode(var ignored1, var arrayType) -> Stream.of(arrayType);
+      case ListNode(var element) -> classesInAST(element);
+      case OptionalNode(var wrapped) -> classesInAST(wrapped);
+      case MapNode(var key, var value) -> Stream.concat(
+          classesInAST(key),
+          classesInAST(value));
+      case RefValueNode(var type, var javaType) -> Stream.of((Class<?>) javaType);
+      case PrimitiveValueNode(var ignored2, var javaType) -> Stream.of((Class<?>) javaType);
+    };
+  }
+
   /// Helper method to get a string representation for debugging
   /// Example: LIST(STRING) or MAP(STRING, INTEGER)
   default String toTreeString() {
@@ -243,22 +260,13 @@ sealed interface TypeExpr2 permits
       case ListNode(var element) -> "LIST(" + element.toTreeString() + ")";
       case OptionalNode(var wrapped) -> "OPTIONAL(" + wrapped.toTreeString() + ")";
       case MapNode(var key, var value) -> "MAP(" + key.toTreeString() + "," + value.toTreeString() + ")";
-      case RefValueNode(var type, var javaType, var marker) -> {
+      case RefValueNode(var type, var javaType) -> {
         String className = ((Class<?>) javaType).getSimpleName();
-        if (type == RefValueType.CUSTOM) {
-          yield className + "[m=" + marker + "]";
-        } else if (marker == VOID_MARKER) {
-          yield className + "[sig]";
-        } else {
-          yield className;
-        }
+        yield className;
       }
       case PrimitiveValueNode(var ignored1, var javaType) -> ((Class<?>) javaType).getSimpleName();
     };
   }
-
-  /// Get the marker for this type expression
-  int marker();
 
   boolean isPrimitive();
 
@@ -268,12 +276,6 @@ sealed interface TypeExpr2 permits
   record ArrayNode(TypeExpr2 element, Class<?> componentType) implements TypeExpr2 {
     public ArrayNode {
       java.util.Objects.requireNonNull(element, "Array element type cannot be null");
-    }
-
-    @Override
-    public int marker() {
-      // Array has its own marker
-      return Companion.ContainerType.ARRAY.marker();
     }
 
     @Override
@@ -298,11 +300,6 @@ sealed interface TypeExpr2 permits
     }
 
     @Override
-    public int marker() {
-      return Companion.ContainerType.ARRAY.marker();
-    }
-
-    @Override
     public boolean isPrimitive() {
       return false; // The container itself is not a primitive
     }
@@ -320,11 +317,6 @@ sealed interface TypeExpr2 permits
     }
 
     @Override
-    public int marker() {
-      return Companion.ContainerType.LIST.marker();
-    }
-
-    @Override
     public boolean isPrimitive() {
       return false;
     }
@@ -339,13 +331,6 @@ sealed interface TypeExpr2 permits
   record OptionalNode(TypeExpr2 wrapped) implements TypeExpr2 {
     public OptionalNode {
       java.util.Objects.requireNonNull(wrapped, "Optional wrapped type cannot be null");
-    }
-
-    @Override
-    public int marker() {
-      // Optional has two markers: EMPTY and OF
-      // This is the container marker, actual wire format uses OPTIONAL_EMPTY/OPTIONAL_OF
-      return Companion.ContainerType.OPTIONAL_OF.marker();
     }
 
     @Override
@@ -367,11 +352,6 @@ sealed interface TypeExpr2 permits
     }
 
     @Override
-    public int marker() {
-      return Companion.ContainerType.MAP.marker();
-    }
-
-    @Override
     public boolean isPrimitive() {
       return false;
     }
@@ -383,7 +363,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Leaf node for all reference types with marker
-  record RefValueNode(RefValueType type, Type javaType, int marker) implements TypeExpr2 {
+  record RefValueNode(RefValueType type, Type javaType) implements TypeExpr2 {
     public RefValueNode {
       Objects.requireNonNull(type, "Reference type cannot be null");
       Objects.requireNonNull(javaType, "Java type cannot be null");
@@ -392,14 +372,7 @@ sealed interface TypeExpr2 permits
     /// Override to only show the type name, not the Java type
     @Override
     public String toTreeString() {
-      String className = ((Class<?>) javaType()).getSimpleName();
-      if (type == RefValueType.CUSTOM) {
-        return className + "[m=" + marker + "]";
-      } else if (marker == 0) {
-        return className + "[sig]";
-      } else {
-        return className;
-      }
+      return ((Class<?>) this.javaType()).getSimpleName();
     }
 
     @Override
@@ -431,11 +404,6 @@ sealed interface TypeExpr2 permits
     }
 
     @Override
-    public int marker() {
-      return type.marker();
-    }
-
-    @Override
     public String toTreeString() {
       return ((Class<?>) javaType()).getSimpleName();
     }
@@ -451,57 +419,8 @@ sealed interface TypeExpr2 permits
     }
   }
 
-  /// Sealed interface for primitive types supporting runtime encoding decisions
-  sealed interface PrimitiveValueType permits
-      PrimitiveValueType.SimplePrimitive,
-      PrimitiveValueType.IntegerType,
-      PrimitiveValueType.LongType {
-
-    /// Get the primary marker for this primitive type
-    int marker();
-
-    /// Simple primitive types with fixed encoding
-    record SimplePrimitive(String name, int marker) implements PrimitiveValueType {
-      @Override
-      public String toString() {
-        return name;
-      }
-    }
-
-    /// Integer type with runtime selection between fixed and variable encoding
-    record IntegerType(int fixedMarker, int varMarker) implements PrimitiveValueType {
-      @Override
-      public int marker() {
-        return fixedMarker; // Default to fixed marker
-      }
-
-      @Override
-      public String toString() {
-        return "INTEGER";
-      }
-    }
-
-    /// Long type with runtime selection between fixed and variable encoding
-    record LongType(int fixedMarker, int varMarker) implements PrimitiveValueType {
-      @Override
-      public int marker() {
-        return fixedMarker; // Default to fixed marker
-      }
-
-      @Override
-      public String toString() {
-        return "LONG";
-      }
-    }
-
-    // Static instances for all primitive types
-    PrimitiveValueType BOOLEAN = new SimplePrimitive("BOOLEAN", -2);
-    PrimitiveValueType BYTE = new SimplePrimitive("BYTE", -3);
-    PrimitiveValueType SHORT = new SimplePrimitive("SHORT", -4);
-    PrimitiveValueType CHARACTER = new SimplePrimitive("CHARACTER", -5);
-    PrimitiveValueType INTEGER = new IntegerType(-6, -7); // INTEGER and INTEGER_VAR
-    PrimitiveValueType LONG = new LongType(-8, -9); // LONG and LONG_VAR
-    PrimitiveValueType FLOAT = new SimplePrimitive("FLOAT", -10);
-    PrimitiveValueType DOUBLE = new SimplePrimitive("DOUBLE", -11);
+  enum PrimitiveValueType {
+    BOOLEAN, BYTE, SHORT, CHARACTER,
+    INTEGER, LONG, FLOAT, DOUBLE;
   }
 }

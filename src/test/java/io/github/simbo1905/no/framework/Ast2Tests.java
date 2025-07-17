@@ -28,7 +28,7 @@ public class Ast2Tests {
   @Test
   void testTrivialRecordRoundTrip() {
     // 1. Get a pickler for the trivial record
-    final Pickler2<TrivialRecord> pickler = Pickler2.forClass(TrivialRecord.class);
+    final Pickler<TrivialRecord> pickler = Pickler.forClass(TrivialRecord.class);
 
     // 2. Create an instance of the record
     final var original = new TrivialRecord(42);
@@ -60,7 +60,7 @@ public class Ast2Tests {
   @Test
   void testLinkedListRecordRoundTrip() {
     // 1. Get a pickler for the linked list record
-    final Pickler2<LinkedListNode> pickler = Pickler2.forClass(LinkedListNode.class);
+    final Pickler<LinkedListNode> pickler = Pickler.forClass(LinkedListNode.class);
 
     // 2. Create a sample linked list
     final var originalList = new LinkedListNode(3, new LinkedListNode(2, new LinkedListNode(1)));
@@ -99,22 +99,30 @@ public class Ast2Tests {
     }
   }
 
-// For nested record test
-public record NestedRecord(String name) {}
-public record OuterRecord(int id, NestedRecord nested) {}
+  // For nested record test
+  public record NestedRecord(String name) {
+  }
 
-// For enum test
-public enum Color { RED, GREEN, BLUE }
-public record RecordWithEnum(String name, Color color) {}
+  public record OuterRecord(int id, NestedRecord nested) {
+  }
 
-// For empty record test
-public record EmptyRecord() {}
-public record RecordWithEmpty(int id, EmptyRecord empty) {}
+  // For enum test
+  public enum Color {RED, GREEN, BLUE}
 
-@Test
-void testNestedRecordRoundTrip() {
+  public record RecordWithEnum(String name, Color color) {
+  }
+
+  // For empty record test
+  public record EmptyRecord() {
+  }
+
+  public record RecordWithEmpty(int id, EmptyRecord empty) {
+  }
+
+  @Test
+  void testNestedRecordRoundTrip() {
     // 1. Get a pickler for the trivial record
-    final Pickler2<OuterRecord> pickler = Pickler2.forClass(OuterRecord.class);
+    final Pickler<OuterRecord> pickler = Pickler.forClass(OuterRecord.class);
 
     // 2. Create an instance of the record
     final var original = new OuterRecord(1, new NestedRecord("test"));
@@ -141,12 +149,12 @@ void testNestedRecordRoundTrip() {
 
     // 7. Assert the deserialized record is equal to the original
     assertEquals(original, deserialized);
-}
+  }
 
-@Test
-void testRecordWithEnumRoundTrip() {
+  @Test
+  void testRecordWithEnumRoundTrip() {
     // 1. Get a pickler for the trivial record
-    final Pickler2<RecordWithEnum> pickler = Pickler2.forClass(RecordWithEnum.class);
+    final Pickler<RecordWithEnum> pickler = Pickler.forClass(RecordWithEnum.class);
 
     // 2. Create an instance of the record
     final var original = new RecordWithEnum("car", Color.BLUE);
@@ -173,12 +181,12 @@ void testRecordWithEnumRoundTrip() {
 
     // 7. Assert the deserialized record is equal to the original
     assertEquals(original, deserialized);
-}
+  }
 
-@Test
-void testRecordWithEmptyRoundTrip() {
+  @Test
+  void testRecordWithEmptyRoundTrip() {
     // 1. Get a pickler for the trivial record
-    final Pickler2<RecordWithEmpty> pickler = Pickler2.forClass(RecordWithEmpty.class);
+    final Pickler<RecordWithEmpty> pickler = Pickler.forClass(RecordWithEmpty.class);
 
     // 2. Create an instance of the record
     final var original = new RecordWithEmpty(10, new EmptyRecord());
@@ -205,5 +213,5 @@ void testRecordWithEmptyRoundTrip() {
 
     // 7. Assert the deserialized record is equal to the original
     assertEquals(original, deserialized);
-}
+  }
 }

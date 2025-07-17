@@ -9,25 +9,25 @@ import org.jetbrains.annotations.NotNull;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
-
-import static io.github.simbo1905.no.framework.Companion.hashClassSignature;
+import java.util.Optional;
 
 /// Specialized handler for records with no components (empty records)
-@Deprecated
 final class EmptyRecordSerde<T> implements Pickler<T> {
   final Class<?> userType;
   final long typeSignature;
+  final Optional<Long> altTypeSignature;
   final T singleton;
 
   @SuppressWarnings("unchecked")
-  public EmptyRecordSerde(@NotNull Class<?> userType) {
+  public EmptyRecordSerde(@NotNull Class<?> userType, long typeSignature, Optional<Long> altTypeSignature) {
     assert userType.isRecord() : "User type must be a record: " + userType;
 
     final var components = userType.getRecordComponents();
     assert components != null && components.length == 0 : "Empty record must have no components: " + userType;
 
     this.userType = userType;
-    this.typeSignature = hashClassSignature(userType, components, new TypeExpr[0]);
+    this.typeSignature = typeSignature;
+    this.altTypeSignature = altTypeSignature;
 
     // Create singleton instance
     try {
@@ -68,6 +68,19 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
       throw new IllegalStateException("Type signature mismatch: expected 0x" +
           Long.toHexString(typeSignature) + " but got 0x" + Long.toHexString(incomingSignature));
     }
+    final int count = ZigZagEncoding.getInt(buffer);
+    assert count == 0 : "Empty record should have zero components, but got " + count;
+    return singleton;
+  }
+
+  /// Package-private deserialization method that assumes the type signature has already been read
+  /// and validated by the caller (e.g., RefValueReader)
+  T deserializeWithoutSignature(ByteBuffer buffer) {
+    Objects.requireNonNull(buffer);
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    LOGGER.fine(() -> "EmptyRecordSerde " + userType.getSimpleName() +
+        " deserializeWithoutSignature() at position " + buffer.position());
+
     final int count = ZigZagEncoding.getInt(buffer);
     assert count == 0 : "Empty record should have zero components, but got " + count;
     return singleton;

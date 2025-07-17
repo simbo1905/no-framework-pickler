@@ -33,13 +33,11 @@ class TypeExpr2Tests {
     var intExpr = TypeExpr2.analyzeType(int.class, List.of());
     assertThat(intExpr).isInstanceOf(TypeExpr2.PrimitiveValueNode.class);
     var intNode = (TypeExpr2.PrimitiveValueNode) intExpr;
-    assertThat(intNode.marker()).isLessThan(0);
     assertThat(intNode.toTreeString()).isEqualTo("int");
 
     var boolExpr = TypeExpr2.analyzeType(boolean.class, List.of());
     assertThat(boolExpr).isInstanceOf(TypeExpr2.PrimitiveValueNode.class);
     var boolNode = (TypeExpr2.PrimitiveValueNode) boolExpr;
-    assertThat(boolNode.marker()).isLessThan(0);
     assertThat(boolNode.toTreeString()).isEqualTo("boolean");
   }
 
@@ -101,7 +99,6 @@ class TypeExpr2Tests {
     var integerExpr = TypeExpr2.analyzeType(Integer.class, List.of());
     assertThat(integerExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
     var integerNode = (TypeExpr2.RefValueNode) integerExpr;
-    assertThat(integerNode.marker()).isLessThan(0);
     assertThat(integerNode.toTreeString()).isEqualTo("Integer");
   }
 
@@ -111,7 +108,6 @@ class TypeExpr2Tests {
     var stringExpr = TypeExpr2.analyzeType(String.class, List.of());
     assertThat(stringExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
     var stringNode = (TypeExpr2.RefValueNode) stringExpr;
-    assertThat(stringNode.marker()).isLessThan(0);
     assertThat(stringNode.toTreeString()).isEqualTo("String");
   }
 
@@ -130,7 +126,6 @@ class TypeExpr2Tests {
     var uuidExpr = TypeExpr2.analyzeType(UUID.class, List.of(uuidHandler));
     assertThat(uuidExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
     var uuidNode = (TypeExpr2.RefValueNode) uuidExpr;
-    assertThat(uuidNode.marker()).isEqualTo(1);
     assertThat(uuidNode.type()).isEqualTo(TypeExpr2.RefValueType.CUSTOM);
     assertThat(uuidNode.toTreeString()).isEqualTo("UUID[m=1]");
   }
@@ -141,7 +136,6 @@ class TypeExpr2Tests {
     var recordExpr = TypeExpr2.analyzeType(TestRecord.class, List.of());
     assertThat(recordExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
     var recordNode = (TypeExpr2.RefValueNode) recordExpr;
-    assertThat(recordNode.marker()).isEqualTo(0);
     assertThat(recordNode.type()).isEqualTo(TypeExpr2.RefValueType.RECORD);
     assertThat(recordNode.toTreeString()).isEqualTo("TestRecord[sig]");
 
@@ -149,7 +143,6 @@ class TypeExpr2Tests {
     var enumExpr = TypeExpr2.analyzeType(TestEnum.class, List.of());
     assertThat(enumExpr).isInstanceOf(TypeExpr2.RefValueNode.class);
     var enumNode = (TypeExpr2.RefValueNode) enumExpr;
-    assertThat(enumNode.marker()).isEqualTo(0);
     assertThat(enumNode.type()).isEqualTo(TypeExpr2.RefValueType.ENUM);
     assertThat(enumNode.toTreeString()).isEqualTo("TestEnum[sig]");
   }
@@ -645,7 +638,6 @@ class TypeExpr2Tests {
     var nextNode = (TypeExpr2.RefValueNode) nextExpr;
     assertThat(nextNode.type()).isEqualTo(TypeExpr2.RefValueType.RECORD);
     assertThat(nextNode.javaType()).isEqualTo(LinkedListNode.class);
-    assertThat(nextNode.marker()).isEqualTo(0); // Marker 0 indicates delegation via typeSignature
     assertThat(nextNode.toTreeString()).isEqualTo("LinkedListNode[sig]");
   }
 
@@ -747,7 +739,6 @@ class TypeExpr2Tests {
     var nextNode = (TypeExpr2.RefValueNode) nextExpr;
     assertThat(nextNode.type()).isEqualTo(TypeExpr2.RefValueType.INTERFACE);
     assertThat(nextNode.javaType()).isEqualTo(LinkListEmptyEnd.class);
-    assertThat(nextNode.marker()).isEqualTo(0); // Marker 0 indicates delegation via typeSignature
     assertThat(nextNode.toTreeString()).isEqualTo("LinkListEmptyEnd[sig]");
   }
 

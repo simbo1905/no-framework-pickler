@@ -77,7 +77,7 @@ public class BaselineTests {
   void testMyRecordSerialization() {
     // Arrange
     MyRecord record = new MyRecord("Hello", 42);
-    Pickler<MyRecord> pickler = Pickler.forClass(MyRecord.class);
+    Pickler<MyRecord> pickler = forClass(MyRecord.class);
     final var buffer = ByteBuffer.allocate(1024);
 
     // Act

@@ -17,7 +17,6 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-@Deprecated
 public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, RecordSerde {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
@@ -64,7 +63,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
               "or a class that is not a record was given as a key: " + k);
         });
 
-    // Resolve all reachable classes in the record hierarchy
+    // Phase 1: Discover all reachable record types
     final var recordClassHierarchy = recordClassHierarchy(clazz);
 
     // As classes may be renamed or moved, we need to ensure that the type signatures map given by the user is a reachable class
@@ -100,23 +99,158 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
       throw new IllegalArgumentException("No record classes found in hierarchy of: " + clazz);
     }
 
-    // Compute enum type signatures using streams
-    @SuppressWarnings("unchecked") final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap = legalAndIllegalClasses.get(Boolean.TRUE).stream()
-        .filter(Class::isEnum)
-        .map(cls -> (Class<Enum<?>>) cls)
-        .filter(Enum.class::isAssignableFrom)
-        .collect(Collectors.toMap(
-            enumClass -> enumClass,
-            Companion::hashEnumSignature
-        ));
+    // Phase 2: Analyze dependencies between record types
+    final var dependencies = analyzeDependencies(recordClasses.stream().collect(Collectors.toSet()));
 
-    LOGGER.fine(() -> "Creating PicklerImpl for records: " +
-        recordClasses.stream().map(Class::getName).collect(Collectors.joining(",")) +
-        " and enums: " + enumToTypeSignatureMap.keySet().stream().map(Class::getName).collect(Collectors.joining(","))
-    );
+    // Phase 3: Choose architecture based on complexity
+    if (recordClasses.size() == 1 && dependencies.get(clazz).isEmpty()) {
+      // Simple case: single record with no record/enum dependencies
+      return createSimpleRecordSerde(clazz, typeSignatures);
+    } else {
+      // Complex case: multiple records or dependencies require PicklerImpl
+      return createPicklerImpl(clazz, recordClasses.stream().collect(Collectors.toSet()), dependencies, typeSignatures);
+    }
+  }
 
-    // FIXME if there is only one Serde pickler class we can just return it and save the map lookup as long as we handle the type signature correctly
-    return new PicklerImpl<>(recordClasses, enumToTypeSignatureMap, typeSignatures);
+  /// Analyze dependencies between record types to determine delegation needs
+  private static Map<Class<?>, Set<Class<?>>> analyzeDependencies(Set<Class<?>> recordClasses) {
+    final var dependencies = new HashMap<Class<?>, Set<Class<?>>>();
+
+    for (Class<?> recordClass : recordClasses) {
+      final var deps = Arrays.stream(recordClass.getRecordComponents())
+          .map(component -> TypeExpr2.analyzeType(component.getGenericType(), List.of()))
+          .flatMap(typeExpr -> classesInAST(typeExpr).stream())
+          .filter(recordClasses::contains) // Only dependencies within our record hierarchy
+          .collect(Collectors.toSet());
+
+      dependencies.put(recordClass, deps);
+    }
+
+    return dependencies;
+  }
+
+  /// Extract all classes referenced in a TypeExpr2 AST
+  private static Set<Class<?>> classesInAST(TypeExpr2 typeExpr) {
+    final var classes = new HashSet<Class<?>>();
+
+    switch (typeExpr) {
+      case TypeExpr2.ArrayNode(var element, var componentType) -> {
+        classes.add(componentType);
+        classes.addAll(classesInAST(element));
+      }
+      case TypeExpr2.ListNode(var element) -> classes.addAll(classesInAST(element));
+      case TypeExpr2.OptionalNode(var wrapped) -> classes.addAll(classesInAST(wrapped));
+      case TypeExpr2.MapNode(var key, var value) -> {
+        classes.addAll(classesInAST(key));
+        classes.addAll(classesInAST(value));
+      }
+      case TypeExpr2.RefValueNode(var type, var javaType) -> {
+        if (javaType instanceof Class<?> cls) {
+          classes.add(cls);
+        }
+      }
+      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> {
+        if (javaType instanceof Class<?> cls) {
+          classes.add(cls);
+        }
+      }
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) -> classes.add(arrayType);
+    }
+
+    return classes;
+  }
+
+  /// Create simple RecordSerde for records with no record/enum dependencies
+  private static <T> RecordSerde<T> createSimpleRecordSerde(Class<T> clazz, Map<Class<?>, Long> typeSignatures) {
+    final var recordClasses = List.<Class<?>>of(clazz);
+    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
+    final var typeSignature = recordTypeSignatures.get(clazz);
+    final var altSignature = Optional.ofNullable(typeSignatures.get(clazz));
+
+    // No resolvers needed - all components are primitives or built-in types
+    return new RecordSerde<>(clazz, typeSignature, altSignature);
+  }
+
+  /// Create PicklerImpl for complex cases with delegation
+  private static <T> PicklerImpl<T> createPicklerImpl(
+      Class<T> rootClass,
+      Set<Class<?>> recordClasses,
+      Map<Class<?>, Set<Class<?>>> dependencies,
+      Map<Class<?>, Long> typeSignatures) {
+
+    // Create the shared resolver map that all instances will use
+    final var serdes = new HashMap<Class<?>, Pickler<?>>();
+    final var typeSignatureToSerde = new HashMap<Long, Pickler<?>>();
+
+    // Compute type signatures for all record classes
+    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses.stream().toList());
+
+    // Create resolver callbacks that delegate to the shared map
+    final SizerResolver sizerResolver = (targetClass) -> {
+      final var serde = serdes.get(targetClass);
+      if (serde == null) {
+        throw new IllegalStateException("No serde found for class: " + targetClass);
+      }
+      return obj -> {
+        @SuppressWarnings("unchecked") final var typedSerde = (Pickler<Object>) serde;
+        return typedSerde.maxSizeOf(obj);
+      };
+    };
+
+    final WriterResolver writerResolver = (targetClass) -> {
+      final var serde = serdes.get(targetClass);
+      if (serde == null) {
+        throw new IllegalStateException("No serde found for class: " + targetClass);
+      }
+      return (buffer, obj) -> {
+        @SuppressWarnings("unchecked") final var typedSerde = (Pickler<Object>) serde;
+        typedSerde.serialize(buffer, obj);
+      };
+    };
+
+    final ReaderResolver readerResolver = (typeSignature) -> {
+      final var serde = typeSignatureToSerde.get(typeSignature);
+      if (serde == null) {
+        throw new IllegalStateException("No serde found for type signature: " + typeSignature);
+      }
+      return buffer -> {
+        if (serde instanceof RecordSerde<?> recordSerde) {
+          return recordSerde.deserializeWithoutSignature(buffer);
+        } else if (serde instanceof EmptyRecordSerde<?> emptyRecordSerde) {
+          return emptyRecordSerde.deserializeWithoutSignature(buffer);
+        } else {
+          throw new IllegalStateException("Unsupported serde type: " + serde.getClass());
+        }
+      };
+    };
+
+    // Create all RecordSerde instances with the shared resolvers
+    for (Class<?> recordClass : recordClasses) {
+      final var typeSignature = recordTypeSignatures.get(recordClass);
+      final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
+
+      final Pickler<?> serde;
+      if (recordClass.getRecordComponents().length == 0) {
+        serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
+      } else {
+        serde = new RecordSerde<>(
+            recordClass,
+            typeSignature,
+            altSignature,
+            sizerResolver,
+            writerResolver,
+            readerResolver
+        );
+      }
+
+      serdes.put(recordClass, serde);
+      typeSignatureToSerde.put(typeSignature, serde);
+      if (altSignature.isPresent()) {
+        typeSignatureToSerde.put(altSignature.get(), serde);
+      }
+    }
+
+    return new PicklerImpl<>(rootClass, serdes, typeSignatureToSerde);
   }
 
   /// In order to support optional backwards compatibility, we need to be able to tell the newer pickler what is the

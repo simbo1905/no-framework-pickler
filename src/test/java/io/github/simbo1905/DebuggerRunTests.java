@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.RecordPicklerTests;
@@ -21,7 +24,6 @@ public class DebuggerRunTests {
         .selectors(DiscoverySelectors.selectClass(BaselineTests.class),
             DiscoverySelectors.selectClass(RecordPicklerTests.class),
             DiscoverySelectors.selectClass(TreeDemo.class),
-            DiscoverySelectors.selectClass(io.github.simbo1905.no.framework.TreeTypeExprTests.class),
             DiscoverySelectors.selectClass(io.github.simbo1905.no.framework.EnumConstantTests.class),
             DiscoverySelectors.selectClass(io.github.simbo1905.no.framework.ArrayInternalTests.class),
             DiscoverySelectors.selectClass(io.github.simbo1905.no.framework.ZigZagTests.class),
