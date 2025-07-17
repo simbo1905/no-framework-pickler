@@ -27,6 +27,89 @@ import static io.github.simbo1905.no.framework.TypeExpr2.PrimitiveValueType.*;
 /// This is the static helpers of the pickler
 sealed interface Companion permits Companion.Nothing {
 
+  record Nothing() implements Companion {
+  }
+
+  String SHA_256 = "SHA-256";
+  int SAMPLE_SIZE = 32;
+  byte NULL_MARKER = Byte.MIN_VALUE;
+  byte NOT_NULL_MARKER = Byte.MAX_VALUE;
+  /// FFL is a mask constant used to isolate the least significant byte (0xFF) as a long value.
+  /// When used with bitwise AND (&), it ensures that byte values are treated as unsigned
+  /// (0-255) rather than signed (-128 to 127) when converting to long. This is crucial
+  /// for the hash signature calculation where we need to treat each byte of the SHA-256
+  /// hash as an unsigned value before bit-shifting and combining them into a long.
+  long FFL = 0xFFL;
+
+  /// Discover all reachable types from a root class including sealed hierarchies and record components
+  static Set<Class<?>> recordClassHierarchy(final Class<?> current) {
+    return recordClassHierarchyInner(current, new HashSet<>()).collect(Collectors.toSet());
+  }
+
+  /// Discover all reachable types from a root class including sealed hierarchies and record components
+  static Stream<Class<?>> recordClassHierarchyInner(final Class<?> current, final Set<Class<?>> visited) {
+    if (!visited.add(current)) {
+      return Stream.empty();
+    }
+
+    // Handle array types - discover their component types
+    if (current.isArray()) {
+      Class<?> componentType = current.getComponentType();
+      LOGGER.finer(() -> "Root is array type: " + current.getSimpleName() + " with component type: " + componentType.getSimpleName());
+      // Include both the array type and its component type
+      return Stream.concat(
+          Stream.of(current),
+          recordClassHierarchyInner(componentType, visited)
+      );
+    }
+
+    return Stream.concat(
+        Stream.of(current),
+        Stream.concat(
+            current.isSealed()
+                ? Arrays.stream(current.getPermittedSubclasses())
+                : Stream.empty(),
+
+            current.isRecord()
+                ? Arrays.stream(current.getRecordComponents())
+                .flatMap(component -> {
+                  LOGGER.finer(() -> "Analyzing component " + component.getName() + " with type " + component.getGenericType());
+                  Class<?> directType = component.getType();
+
+                  // Search array to check if they contain user-defined types
+                  Stream<Class<?>> arrayStream = Stream.empty();
+                  if (directType.isArray()) {
+                    Class<?> componentType = directType.getComponentType();
+                    if (componentType.isRecord() || componentType.isEnum() || !componentType.isPrimitive()) {
+                      LOGGER.finer(() -> "Including array type: " + directType.getSimpleName());
+                      arrayStream = Stream.of(directType);
+                    }
+                  }
+
+                  TypeExpr2 structure = TypeExpr2.analyzeType(component.getGenericType(), Set.of());
+                  LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
+                      structure.toTreeString());
+                  Stream<Class<?>> structureStream = TypeExpr2.classesInAST(structure);
+                  return Stream.concat(arrayStream, structureStream);
+                })
+                : Stream.empty()
+        ).flatMap(child -> recordClassHierarchyInner(child, visited))
+    );
+  }
+
+
+  static Class<?> extractComponentType(TypeExpr2 typeExpr) {
+    // Simplified component type extraction
+    return switch (typeExpr) {
+      case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr2.OptionalNode(var ignored) -> Optional.class;
+      case TypeExpr2.ListNode(var ignored) -> List.class;
+      case TypeExpr2.ArrayNode(var ignored, var ignored2) -> Object[].class;
+      case TypeExpr2.MapNode(var ignoredKey, var ignoredValue) -> Map.class;
+      default -> Object.class;
+    };
+  }
+
   /// Get marker for a primitive type
   static int primitiveToMarker(Class<?> primitiveClass) {
     return switch (primitiveClass) {
@@ -109,7 +192,6 @@ sealed interface Companion permits Companion.Nothing {
       return marker;
     }
   }
-
 
   static Reader createArrayReader(
       Reader elementReader, Class<?> componentType, TypeExpr2 element) {
@@ -462,14 +544,14 @@ sealed interface Companion permits Companion.Nothing {
 
   static Sizer createSizerChain(TypeExpr2 typeExpr, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer2(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer2(primitiveType);
+      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
       case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (customSizers.containsKey(clazz)) {
           yield customSizers.get(clazz);
         } else {
-          yield buildValueSizer2(refValueType, javaType, typeSizerResolver);
+          yield buildValueSizer(refValueType, javaType, typeSizerResolver);
         }
       }
       case TypeExpr2.ArrayNode(var element, var componentType) -> {
@@ -501,7 +583,7 @@ sealed interface Companion permits Companion.Nothing {
   static Reader createReaderChain(TypeExpr2 typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader2(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
       case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (customReaders.containsKey(clazz)) {
@@ -512,7 +594,7 @@ sealed interface Companion permits Companion.Nothing {
       }
       case TypeExpr2.ArrayNode(var element, var componentType) -> {
         final var elementReader = createReaderChain(element, customReaders, customMarkers, typeReaderResolver);
-        final var nonNullArrayReader = createArrayReader2(elementReader, componentType, element);
+        final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         yield nullCheckAndDelegate(nonNullArrayReader);
       }
       case TypeExpr2.ListNode(var element) -> {
@@ -531,61 +613,6 @@ sealed interface Companion permits Companion.Nothing {
         final var nonNullOptionalReader = createOptionalReader(valueReader);
         yield nullCheckAndDelegate(nonNullOptionalReader);
       }
-    };
-  }
-
-  static Reader createArrayReader2(Reader elementReader, Class<?> componentType, TypeExpr2 element) {
-    LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName());
-    final int expectedMarker = switch (element) {
-      case TypeExpr2.RefValueNode(TypeExpr2.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
-        case RECORD -> Constants2.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
-        case ENUM -> Constants2.ARRAY_ENUM.marker();
-        case BOOLEAN -> Constants2.ARRAY_BOOLEAN.marker();
-        case BYTE -> Constants2.ARRAY_BYTE.marker();
-        case SHORT -> Constants2.ARRAY_SHORT.marker();
-        case CHARACTER -> Constants2.ARRAY_CHAR.marker();
-        case INTEGER -> Constants2.ARRAY_INT.marker();
-        case LONG -> Constants2.ARRAY_LONG.marker();
-        case FLOAT -> Constants2.ARRAY_FLOAT.marker();
-        case DOUBLE -> Constants2.ARRAY_DOUBLE.marker();
-        case STRING -> Constants2.ARRAY_STRING.marker();
-        case LOCAL_DATE -> Constants2.ARRAY_LOCAL_DATE.marker();
-        case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
-        case CUSTOM -> Constants2.ARRAY_RECORD.marker(); // Custom types use ARRAY_RECORD marker
-      };
-      case TypeExpr2.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr2.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
-      case TypeExpr2.MapNode(var ignored, var ignored2) -> Constants2.ARRAY_MAP.marker();
-      case TypeExpr2.OptionalNode(var ignored) -> Constants2.ARRAY_OPTIONAL.marker();
-      case TypeExpr2.PrimitiveValueNode(var ignored, var ignored2) -> Integer.MIN_VALUE; // should not happen
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored2) -> Integer.MIN_VALUE; // should not happen
-    };
-    return switch (element) {
-      case TypeExpr2.RefValueNode(TypeExpr2.RefValueType ignored, Type ignored1) -> buffer -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        if (marker != expectedMarker) {
-          throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
-        }
-        int length = ZigZagEncoding.getInt(buffer);
-        Object[] array = (Object[]) Array.newInstance(componentType, length);
-        Arrays.setAll(array, i -> elementReader.apply(buffer));
-        return array;
-      };
-      default -> buffer -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        if (marker != expectedMarker) {
-          throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
-        }
-        int length = ZigZagEncoding.getInt(buffer);
-        // Use typeExprToClass to get the correct component type for nested arrays
-        Class<?> componentTypeInner = typeExpr2ToClass(element);
-        Object array = Array.newInstance(componentTypeInner, length);
-        for (int i = 0; i < length; i++) {
-          Array.set(array, i, elementReader.apply(buffer));
-        }
-        return array;
-      };
     };
   }
 
@@ -615,7 +642,7 @@ sealed interface Companion permits Companion.Nothing {
       }
       case TypeExpr2.ArrayNode(var element, var ignored) -> {
         Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
-        yield createArrayRefWriter2(elementWriter, element);
+        yield createArrayRefWriter(elementWriter, element);
       }
       case TypeExpr2.ListNode(var element) -> {
         Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
@@ -698,51 +725,6 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  /// Create array writer for TypeExpr2
-  static Writer createArrayRefWriter2(Writer elementWriter, TypeExpr2 element) {
-    LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
-    final int marker = switch (element) {
-      case TypeExpr2.RefValueNode(var refValueType, var ignored1) -> switch (refValueType) {
-        case RECORD -> Constants2.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
-        case ENUM -> Constants2.ARRAY_ENUM.marker();
-        case BOOLEAN -> Constants2.ARRAY_BOOLEAN.marker();
-        case BYTE -> Constants2.ARRAY_BYTE.marker();
-        case SHORT -> Constants2.ARRAY_SHORT.marker();
-        case CHARACTER -> Constants2.ARRAY_CHAR.marker();
-        case INTEGER -> Constants2.ARRAY_INT.marker();
-        case LONG -> Constants2.ARRAY_LONG.marker();
-        case FLOAT -> Constants2.ARRAY_FLOAT.marker();
-        case DOUBLE -> Constants2.ARRAY_DOUBLE.marker();
-        case STRING -> Constants2.ARRAY_STRING.marker();
-        case LOCAL_DATE -> Constants2.ARRAY_LOCAL_DATE.marker();
-        case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
-        case CUSTOM -> Constants2.ARRAY_STRING.marker(); // Use STRING marker for custom types
-      };
-      case TypeExpr2.ArrayNode(var ignored1, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr2.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
-      case TypeExpr2.MapNode(var ignored1, var ignored2) -> Constants2.ARRAY_MAP.marker();
-      case TypeExpr2.OptionalNode(var ignored) -> Constants2.ARRAY_OPTIONAL.marker();
-      case TypeExpr2.PrimitiveValueNode(var ignored1, var ignored2) -> Integer.MIN_VALUE; // should not happen
-      case TypeExpr2.PrimitiveArrayNode(var ignored1, var ignored2) -> Integer.MIN_VALUE; // should not happen
-    };
-    return (buffer, value) -> {
-      Object[] array = (Object[]) value;
-      ZigZagEncoding.putInt(buffer, marker);
-      ZigZagEncoding.putInt(buffer, array.length);
-      for (Object item : array) {
-        if (item == null) {
-          LOGGER.finer(() -> "Array element is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
-          buffer.put(NULL_MARKER);
-        } else {
-          LOGGER.finer(() -> "Array element is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
-          buffer.put(NOT_NULL_MARKER);
-          elementWriter.accept(buffer, item);
-        }
-      }
-    };
-  }
-
   /// Container type markers
   enum ContainerType {
     OPTIONAL_EMPTY(-16),
@@ -760,90 +742,6 @@ sealed interface Companion permits Companion.Nothing {
     int marker() {
       return marker;
     }
-  }
-
-
-  record Nothing() implements Companion {
-  }
-
-  String SHA_256 = "SHA-256";
-  int SAMPLE_SIZE = 32;
-  byte NULL_MARKER = Byte.MIN_VALUE;
-  byte NOT_NULL_MARKER = Byte.MAX_VALUE;
-  /// FFL is a mask constant used to isolate the least significant byte (0xFF) as a long value.
-  /// When used with bitwise AND (&), it ensures that byte values are treated as unsigned 
-  /// (0-255) rather than signed (-128 to 127) when converting to long. This is crucial 
-  /// for the hash signature calculation where we need to treat each byte of the SHA-256 
-  /// hash as an unsigned value before bit-shifting and combining them into a long.
-  long FFL = 0xFFL;
-
-  /// Discover all reachable types from a root class including sealed hierarchies and record components
-  static Set<Class<?>> recordClassHierarchy(final Class<?> current) {
-    return recordClassHierarchyInner(current, new HashSet<>()).collect(Collectors.toSet());
-  }
-
-  /// Discover all reachable types from a root class including sealed hierarchies and record components
-  static Stream<Class<?>> recordClassHierarchyInner(final Class<?> current, final Set<Class<?>> visited) {
-    if (!visited.add(current)) {
-      return Stream.empty();
-    }
-
-    // Handle array types - discover their component types
-    if (current.isArray()) {
-      Class<?> componentType = current.getComponentType();
-      LOGGER.finer(() -> "Root is array type: " + current.getSimpleName() + " with component type: " + componentType.getSimpleName());
-      // Include both the array type and its component type
-      return Stream.concat(
-          Stream.of(current),
-          recordClassHierarchyInner(componentType, visited)
-      );
-    }
-
-    return Stream.concat(
-        Stream.of(current),
-        Stream.concat(
-            current.isSealed()
-                ? Arrays.stream(current.getPermittedSubclasses())
-                : Stream.empty(),
-
-            current.isRecord()
-                ? Arrays.stream(current.getRecordComponents())
-                .flatMap(component -> {
-                  LOGGER.finer(() -> "Analyzing component " + component.getName() + " with type " + component.getGenericType());
-                  Class<?> directType = component.getType();
-
-                  // Search array to check if they contain user-defined types
-                  Stream<Class<?>> arrayStream = Stream.empty();
-                  if (directType.isArray()) {
-                    Class<?> componentType = directType.getComponentType();
-                    if (componentType.isRecord() || componentType.isEnum() || !componentType.isPrimitive()) {
-                      LOGGER.finer(() -> "Including array type: " + directType.getSimpleName());
-                      arrayStream = Stream.of(directType);
-                    }
-                  }
-
-                  TypeExpr2 structure = TypeExpr2.analyzeType(component.getGenericType(), Set.of());
-                  LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
-                      structure.toTreeString());
-                  Stream<Class<?>> structureStream = TypeExpr2.classesInAST(structure);
-                  return Stream.concat(arrayStream, structureStream);
-                })
-                : Stream.empty()
-        ).flatMap(child -> recordClassHierarchyInner(child, visited))
-    );
-  }
-
-
-  static Class<?> extractComponentType(TypeExpr2 typeExpr) {
-    // Simplified component type extraction
-    return switch (typeExpr) {
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.OptionalNode(var ignored) -> Optional.class;
-      case TypeExpr2.ListNode(var ignored) -> List.class;
-      case TypeExpr2.ArrayNode(var ignored, var ignored2) -> Object[].class;
-      case TypeExpr2.MapNode(var ignoredKey, var ignoredValue) -> Map.class;
-      default -> Object.class;
-    };
   }
 
   /// Build primitive array writer for TypeExpr.PrimitiveValueType (old version)
@@ -969,7 +867,7 @@ sealed interface Companion permits Companion.Nothing {
     return sampleSize / sampleLength;
   }
 
-  /// Build primitive value writer for TypeExpr.PrimitiveValueType (old version)
+  /// Build primitive value writer for TypeExpr.PrimitiveValueType
   static @NotNull Writer buildPrimitiveValueWriter(TypeExpr2.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
@@ -1134,126 +1032,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  /// TypeExpr2 adapter methods for primitive types
-
-  static @NotNull Reader buildPrimitiveArrayReader2(TypeExpr2.PrimitiveValueType primitiveType) {
-    if (primitiveType == BOOLEAN) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.BOOLEAN.marker() : "Expected BOOLEAN marker but got: " + marker;
-        int boolLength = ZigZagEncoding.getInt(buffer);
-        boolean[] booleans = new boolean[boolLength];
-        int bytesLength = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[bytesLength];
-        buffer.get(bytes);
-        BitSet bitSet = BitSet.valueOf(bytes);
-        IntStream.range(0, boolLength).forEach(i -> booleans[i] = bitSet.get(i));
-        return booleans;
-      };
-    } else if (primitiveType == BYTE) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.BYTE.marker() : "Expected BYTE marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        return bytes;
-      };
-    } else if (primitiveType == SHORT) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.SHORT.marker() : "Expected SHORT marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        short[] shorts = new short[length];
-        IntStream.range(0, length).forEach(i -> shorts[i] = buffer.getShort());
-        return shorts;
-      };
-    } else if (primitiveType == CHARACTER) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.CHARACTER.marker() : "Expected CHARACTER marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        char[] chars = new char[length];
-        IntStream.range(0, length).forEach(i -> chars[i] = buffer.getChar());
-        return chars;
-      };
-    } else if (primitiveType == FLOAT) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.FLOAT.marker() : "Expected FLOAT marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        float[] floats = new float[length];
-        IntStream.range(0, length).forEach(i -> floats[i] = buffer.getFloat());
-        return floats;
-      };
-    } else if (primitiveType == DOUBLE) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;
-        int length = ZigZagEncoding.getInt(buffer);
-        double[] doubles = new double[length];
-        IntStream.range(0, length).forEach(i -> doubles[i] = buffer.getDouble());
-        return doubles;
-      };
-    } else if (primitiveType == TypeExpr2.PrimitiveValueType.INTEGER) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.INTEGER_VAR.marker()) {
-          int length = ZigZagEncoding.getInt(buffer);
-          int[] integers = new int[length];
-          IntStream.range(0, length).forEach(i -> integers[i] = ZigZagEncoding.getInt(buffer));
-          return integers;
-        } else if (marker == Constants2.INTEGER.marker()) {
-          int length = ZigZagEncoding.getInt(buffer);
-          int[] integers = new int[length];
-          IntStream.range(0, length).forEach(i -> integers[i] = buffer.getInt());
-          return integers;
-        } else throw new IllegalStateException("Expected INTEGER or INTEGER_VAR marker but got: " + marker);
-      };
-    } else if (primitiveType == LONG) {
-      return (buffer) -> {
-        int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.LONG_VAR.marker()) {
-          int length = ZigZagEncoding.getInt(buffer);
-          long[] longs = new long[length];
-          IntStream.range(0, length).forEach(i -> longs[i] = ZigZagEncoding.getLong(buffer));
-          return longs;
-        } else if (marker == Constants2.LONG.marker()) {
-          int length = ZigZagEncoding.getInt(buffer);
-          long[] longs = new long[length];
-          IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
-          return longs;
-        } else throw new IllegalStateException("Expected LONG or LONG_VAR marker but got: " + marker);
-      };
-    } else {
-      throw new IllegalArgumentException("Unsupported primitive type: " + primitiveType);
-    }
-  }
-
-  /// TypeExpr2 adapter methods for primitive sizers
-  static @NotNull Sizer buildPrimitiveValueSizer2(TypeExpr2.PrimitiveValueType primitiveType) {
-    if (primitiveType == BOOLEAN) {
-      return (Object record) -> Byte.BYTES;
-    } else if (primitiveType == BYTE) {
-      return (Object record) -> Byte.BYTES;
-    } else if (primitiveType == SHORT) {
-      return (Object record) -> Short.BYTES;
-    } else if (primitiveType == CHARACTER) {
-      return (Object record) -> Character.BYTES;
-    } else if (primitiveType == TypeExpr2.PrimitiveValueType.INTEGER) {
-      return (Object record) -> Integer.BYTES;
-    } else if (primitiveType == LONG) {
-      return (Object record) -> Long.BYTES;
-    } else if (primitiveType == FLOAT) {
-      return (Object record) -> Float.BYTES;
-    } else if (primitiveType == DOUBLE) {
-      return (Object record) -> Double.BYTES;
-    } else {
-      throw new IllegalArgumentException("Unsupported primitive type: " + primitiveType);
-    }
-  }
-
-  static @NotNull Sizer buildPrimitiveArraySizer2(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Sizer buildPrimitiveArraySizer(TypeExpr2.PrimitiveValueType primitiveType) {
     if (primitiveType == BOOLEAN) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Byte.BYTES;
     } else if (primitiveType == BYTE) {
@@ -1275,11 +1054,10 @@ sealed interface Companion permits Companion.Nothing {
     }
   }
 
-  static @NotNull Sizer buildValueSizer2(TypeExpr2.RefValueType refValueType, Type javaType, SizerResolver typeSizerResolver) {
+  static @NotNull Sizer buildValueSizer(TypeExpr2.RefValueType refValueType, Type javaType, SizerResolver typeSizerResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
-        case BOOLEAN -> (Object record) -> Byte.BYTES;
-        case BYTE -> (Object record) -> Byte.BYTES;
+        case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
         case SHORT -> (Object record) -> Short.BYTES;
         case CHARACTER -> (Object record) -> Character.BYTES;
         case INTEGER -> (Object record) -> Integer.BYTES;
@@ -1344,21 +1122,6 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Class<?> typeExpr2ToClass(TypeExpr2 typeExpr) {
-    return switch (typeExpr) {
-      case TypeExpr2.ArrayNode(var element, var componentType) -> {
-        Class<?> componentClass = typeExpr2ToClass(element);
-        yield Array.newInstance(componentClass, 0).getClass();
-      }
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType;
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.ListNode ignored -> List.class;
-      case TypeExpr2.MapNode ignored -> Map.class;
-      case TypeExpr2.OptionalNode ignored -> Optional.class;
-    };
-  }
-
   static Sizer extractAndDelegate(Sizer delegate, MethodHandle accessor) {
     return (Object record) -> {
       final Object value;
@@ -1376,7 +1139,6 @@ sealed interface Companion permits Companion.Nothing {
       }
     };
   }
-
 
   static Writer extractAndDelegate(Writer delegate, MethodHandle
       accessor) {
@@ -1639,7 +1401,7 @@ sealed interface Companion permits Companion.Nothing {
   /// Build value reader with callback for complex types - TypeExpr2 version
   static Reader buildValueReader2(TypeExpr2.RefValueType refValueType,
                                   ReaderResolver complexResolver) {
-    final Reader primitiveReader = buildRefValueReader2(refValueType, complexResolver);
+    final Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
     return nullCheckAndDelegate(primitiveReader);
   }
 
@@ -1706,69 +1468,6 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  /// Build ref value reader with callback for complex types - TypeExpr2 version
-  static Reader buildRefValueReader2(TypeExpr2.RefValueType refValueType,
-                                     ReaderResolver complexResolver) {
-    return switch (refValueType) {
-      case BOOLEAN -> buffer -> buffer.get() != 0;
-      case BYTE -> ByteBuffer::get;
-      case SHORT -> ByteBuffer::getShort;
-      case CHARACTER -> ByteBuffer::getChar;
-      case INTEGER -> buffer -> {
-        final var positionBefore = buffer.position();
-        LOGGER.fine(() -> "RefValueReader reading INTEGER_VAR or INTEGER marker at position: " + positionBefore);
-        final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.INTEGER_VAR.marker()) {
-          return ZigZagEncoding.getInt(buffer);
-        } else if (marker == Constants2.INTEGER.marker()) {
-          return buffer.getInt();
-        } else {
-          throw new IllegalStateException("Expected INTEGER marker but got: " + marker + " at position: " + positionBefore);
-        }
-      };
-      case LONG -> buffer -> {
-        final var positionBefore = buffer.position();
-        LOGGER.fine(() -> "RefValueReader reading LONG_VAR or LONG marker at position: " + positionBefore);
-        final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.LONG_VAR.marker()) {
-          return ZigZagEncoding.getLong(buffer);
-        } else if (marker == Constants2.LONG.marker()) {
-          return buffer.getLong();
-        } else {
-          throw new IllegalStateException("Expected LONG marker but got: " + marker + " at position: " + positionBefore);
-        }
-      };
-      case FLOAT -> ByteBuffer::getFloat;
-      case DOUBLE -> ByteBuffer::getDouble;
-      case STRING -> buffer -> {
-        final int length = ZigZagEncoding.getInt(buffer);
-        final byte[] bytes = new byte[length];
-        buffer.get(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
-      };
-      case LOCAL_DATE -> buffer -> {
-        final int year = ZigZagEncoding.getInt(buffer);
-        final int month = ZigZagEncoding.getInt(buffer);
-        final int day = ZigZagEncoding.getInt(buffer);
-        return LocalDate.of(year, month, day);
-      };
-      case LOCAL_DATE_TIME -> buffer -> {
-        final int year = ZigZagEncoding.getInt(buffer);
-        final int month = ZigZagEncoding.getInt(buffer);
-        final int day = ZigZagEncoding.getInt(buffer);
-        final int hour = ZigZagEncoding.getInt(buffer);
-        final int minute = ZigZagEncoding.getInt(buffer);
-        final int second = ZigZagEncoding.getInt(buffer);
-        final int nano = ZigZagEncoding.getInt(buffer);
-        return LocalDateTime.of(year, month, day, hour, minute, second, nano);
-      };
-      case CUSTOM, RECORD, INTERFACE, ENUM -> buffer -> {
-        final long typeSignature = buffer.getLong();
-        return complexResolver.apply(typeSignature).apply(buffer);
-      };
-    };
-  }
-
   /// Null check and delegate pattern for readers
   static Reader nullCheckAndDelegate(Reader delegate) {
     return buffer -> {
@@ -1783,17 +1482,6 @@ sealed interface Companion permits Companion.Nothing {
         throw new IllegalStateException("Invalid null marker: " + nullMarker +
             " at position " + positionBefore);
       }
-    };
-  }
-
-  /// Witness method for type-safe delegation to other picklers
-  @SuppressWarnings("unchecked")
-  static <X> int writeToWireWitness(Pickler<X> pickler, ByteBuffer buffer, Object record) {
-    return switch (pickler) {
-      case RecordSerde<X> rs -> rs.writeToWire(buffer, (X) record);
-      case EmptyRecordSerde<X> ers -> ers.serialize(buffer, (X) record);
-      default -> // Fallback for other pickler types
-          pickler.serialize(buffer, (X) record);
     };
   }
 
