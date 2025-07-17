@@ -195,7 +195,7 @@ sealed interface Companion permits Companion.Nothing {
 
   static Reader createArrayReader(
       Reader elementReader, Class<?> componentType, TypeExpr2 element) {
-    LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName());
+    LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName() + " and element: " + element.toTreeString());
     final int expectedMarker = switch (element) {
       case TypeExpr2.RefValueNode(TypeExpr2.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
         case RECORD -> Constants2.ARRAY_RECORD.marker();
@@ -218,30 +218,44 @@ sealed interface Companion permits Companion.Nothing {
       case TypeExpr2.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
       case TypeExpr2.MapNode ignored -> Constants2.ARRAY_MAP.marker();
       case TypeExpr2.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
       case TypeExpr2.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
       default -> throw new AssertionError("Unexpected value: " + element);
     };
     return switch (element) {
       case TypeExpr2.RefValueNode(TypeExpr2.RefValueType ignored, Type ignored1) -> buffer -> {
+        int posBeforeMarker = buffer.position();
         int marker = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Reading RefValueNode array marker " + marker + " at position " + posBeforeMarker + " (expected " + expectedMarker + ")");
         if (marker != expectedMarker) {
           throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
         }
+        int posBeforeLength = buffer.position();
         int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Reading array length " + length + " at position " + posBeforeLength);
         Object[] array = (Object[]) Array.newInstance(componentType, length);
-        Arrays.setAll(array, i -> elementReader.apply(buffer));
+        Arrays.setAll(array, i -> {
+          LOGGER.finer(() -> "Reading array element " + i + " at position " + buffer.position());
+          return elementReader.apply(buffer);
+        });
         return array;
       };
       default -> buffer -> {
+        int posBeforeMarker = buffer.position();
         int marker = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Reading array marker " + marker + " at position " + posBeforeMarker + " (expected " + expectedMarker + " for " + element.toTreeString() + ")");
         if (marker != expectedMarker) {
           throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
         }
+        int posBeforeLength = buffer.position();
         int length = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Reading array length " + length + " at position " + posBeforeLength);
         // Use typeExprToClass to get the correct component type for nested arrays
         Class<?> componentTypeInner = typeExprToClass(element);
         Object array = Array.newInstance(componentTypeInner, length);
         for (int i = 0; i < length; i++) {
+          final int index = i;
+          LOGGER.finer(() -> "Reading array element " + index + " at position " + buffer.position());
           Array.set(array, i, elementReader.apply(buffer));
         }
         return array;
@@ -472,22 +486,32 @@ sealed interface Companion permits Companion.Nothing {
       case TypeExpr2.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
       case TypeExpr2.MapNode ignored -> Constants2.ARRAY_MAP.marker();
       case TypeExpr2.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
       case TypeExpr2.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
       default -> throw new AssertionError("Unexpected value: " + element);
     };
     return (buffer, value) -> {
       Object[] array = (Object[]) value;
       // Write ARRAY_OBJ marker and length
+      int posBeforeMarker = buffer.position();
       ZigZagEncoding.putInt(buffer, marker);
+      LOGGER.finer(() -> "Writing array marker " + marker + " at position " + posBeforeMarker + " for element type: " + element.toTreeString());
+      int posBeforeLength = buffer.position();
       ZigZagEncoding.putInt(buffer, array.length);
+      LOGGER.finer(() -> "Writing array length " + array.length + " at position " + posBeforeLength);
       // Write each element
-      for (Object item : array) {
+      for (int i = 0; i < array.length; i++) {
+        Object item = array[i];
         if (item == null) {
-          LOGGER.finer(() -> "Array element is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
+          final int index = i;
+          int posBeforeNull = buffer.position();
           buffer.put(NULL_MARKER); // write a marker for null
+          LOGGER.finer(() -> "Writing NULL_MARKER " + NULL_MARKER + " at position " + posBeforeNull + " for array element " + index);
         } else {
-          LOGGER.finer(() -> "Array element is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
+          final int index = i;
+          int posBeforeNotNull = buffer.position();
           buffer.put(NOT_NULL_MARKER); // write a marker for non-null
+          LOGGER.finer(() -> "Writing NOT_NULL_MARKER " + NOT_NULL_MARKER + " at position " + posBeforeNotNull + " for array element " + index);
           elementWriter.accept(buffer, item);
         }
       }
@@ -583,7 +607,11 @@ sealed interface Companion permits Companion.Nothing {
   static Reader createReaderChain(TypeExpr2 typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> {
+        // Primitive arrays at the top level (e.g., int[] as a record component) need null checking
+        final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
+        yield nullCheckAndDelegate(primitiveArrayReader);
+      }
       case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (customReaders.containsKey(clazz)) {
@@ -593,7 +621,14 @@ sealed interface Companion permits Companion.Nothing {
         }
       }
       case TypeExpr2.ArrayNode(var element, var componentType) -> {
-        final var elementReader = createReaderChain(element, customReaders, customMarkers, typeReaderResolver);
+        final Reader elementReader;
+        if (element instanceof TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored2)) {
+          // For nested primitive arrays, wrap the primitive array reader with null checking
+          final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
+          elementReader = nullCheckAndDelegate(primitiveArrayReader);
+        } else {
+          elementReader = createReaderChain(element, customReaders, customMarkers, typeReaderResolver);
+        }
         final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         yield nullCheckAndDelegate(nonNullArrayReader);
       }
@@ -806,25 +841,27 @@ sealed interface Companion permits Companion.Nothing {
         }
       };
       case INTEGER -> (buffer, inner) -> {
-        LOGGER.finer(() -> "Delegating ARRAY for tag INTEGER at position " + buffer.position());
+        LOGGER.finer(() -> "Writing INTEGER array at position " + buffer.position() + " with inner type: " + inner.getClass().getSimpleName());
         final var integers = (int[]) inner;
         final var length = Array.getLength(inner);
         final var sampleAverageSize = length > 0 ? estimateAverageSizeInt(integers, length) : 1;
         // Here we must be saving one byte per integer to justify the encoding cost
         if (sampleAverageSize < Integer.BYTES - 1) {
-          LOGGER.finer(() -> "Delegating ARRAY for tag " + Constants2.INTEGER_VAR + " with length=" + Array.getLength(inner) + " at position " + buffer.position());
+          LOGGER.finer(() -> "Writing INTEGER_VAR marker " + Constants2.INTEGER_VAR.marker() + " at position " + buffer.position() + " length=" + length);
           ZigZagEncoding.putInt(buffer, Constants2.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
-          for (int i : integers) {
-            ZigZagEncoding.putInt(buffer, i);
-          }
+          IntStream.range(0, integers.length).forEach(i -> {
+            LOGGER.finer(() -> "Writing INTEGER_VAR element " + i + " value=" + integers[i] + " at position " + buffer.position());
+            ZigZagEncoding.putInt(buffer, integers[i]);
+          });
         } else {
-          LOGGER.finer(() -> "Delegating ARRAY for tag " + INTEGER + " with length=" + Array.getLength(inner) + " at position " + buffer.position());
+          LOGGER.finer(() -> "Writing INTEGER marker " + Constants2.INTEGER.marker() + " at position " + buffer.position() + " length=" + length);
           ZigZagEncoding.putInt(buffer, Constants2.INTEGER.marker());
           ZigZagEncoding.putInt(buffer, length);
-          for (int i : integers) {
-            buffer.putInt(i);
-          }
+          IntStream.range(0, integers.length).forEach(i -> {
+            LOGGER.finer(() -> "Writing INTEGER element " + i + " value=" + integers[i] + " at position " + buffer.position());
+            buffer.putInt(integers[i]);
+          });
         }
       };
       case LONG -> (buffer, inner) -> {
@@ -1002,16 +1039,28 @@ sealed interface Companion permits Companion.Nothing {
         return doubles;
       };
       case INTEGER -> (buffer) -> {
+        int positionBeforeMarker = buffer.position();
         int marker = ZigZagEncoding.getInt(buffer);
+        LOGGER.finer(() -> "Reading INTEGER array marker " + marker + " at position " + positionBeforeMarker);
         if (marker == Constants2.INTEGER_VAR.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
+          LOGGER.finer(() -> "Reading INTEGER_VAR array with length " + length + " at position " + buffer.position());
           int[] integers = new int[length];
-          IntStream.range(0, length).forEach(i -> integers[i] = ZigZagEncoding.getInt(buffer));
+          IntStream.range(0, length).forEach(i -> {
+            int positionBeforeElement = buffer.position();
+            integers[i] = ZigZagEncoding.getInt(buffer);
+            LOGGER.finer(() -> "Read INTEGER_VAR element " + i + " value=" + integers[i] + " from position " + positionBeforeElement);
+          });
           return integers;
         } else if (marker == Constants2.INTEGER.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
+          LOGGER.finer(() -> "Reading INTEGER array with length " + length + " at position " + buffer.position());
           int[] integers = new int[length];
-          IntStream.range(0, length).forEach(i -> integers[i] = buffer.getInt());
+          IntStream.range(0, length).forEach(i -> {
+            int positionBeforeElement = buffer.position();
+            integers[i] = buffer.getInt();
+            LOGGER.finer(() -> "Read INTEGER element " + i + " value=" + integers[i] + " from position " + positionBeforeElement);
+          });
           return integers;
         } else throw new IllegalStateException("Expected INTEGER or INTEGER_VAR marker but got: " + marker);
       };
@@ -1118,6 +1167,7 @@ sealed interface Companion permits Companion.Nothing {
       case TypeExpr2.ListNode ignored -> List.class;
       case TypeExpr2.MapNode ignored -> Map.class;
       case TypeExpr2.OptionalNode ignored -> Optional.class;
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var javaType) -> (Class<?>) javaType;
       default -> throw new IllegalStateException("Unexpected value: " + typeExpr);
     };
   }
@@ -1360,10 +1410,17 @@ sealed interface Companion permits Companion.Nothing {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr2.RefValueNode(var refValueType, var ignored) -> buildValueReader(refValueType, complexResolver);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
       case TypeExpr2.ArrayNode(var element, var ignored3) -> {
         final Reader nonNullArrayReader;
         if (element instanceof TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored2)) {
           nonNullArrayReader = buildPrimitiveArrayReader(primitiveType);
+        } else if (element instanceof TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored2)) {
+          // For nested primitive arrays (e.g., int[][] where element is int[])
+          final var innerArrayReader = buildPrimitiveArrayReader(primitiveType);
+          final var nullCheckedInnerReader = nullCheckAndDelegate(innerArrayReader);
+          final var componentType = extractComponentType(element);
+          nonNullArrayReader = createArrayReader(nullCheckedInnerReader, componentType, element);
         } else {
           final var elementReader = buildReaderChain(element, complexResolver);
           final var componentType = extractComponentType(element);
@@ -1472,8 +1529,9 @@ sealed interface Companion permits Companion.Nothing {
   static Reader nullCheckAndDelegate(Reader delegate) {
     return buffer -> {
       final int positionBefore = buffer.position();
-      LOGGER.finer(() -> "Reading null marker at position: " + positionBefore);
       final byte nullMarker = buffer.get();
+      LOGGER.finer(() -> "Read null marker " + nullMarker + " at position " + positionBefore + 
+                   " (NULL=" + NULL_MARKER + ", NOT_NULL=" + NOT_NULL_MARKER + ")");
       if (nullMarker == NULL_MARKER) {
         return null;
       } else if (nullMarker == NOT_NULL_MARKER) {

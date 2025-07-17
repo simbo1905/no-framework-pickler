@@ -3,7 +3,9 @@
 //
 package io.github.simbo1905.no.framework;
 
+import io.github.simbo1905.LoggingControl;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,11 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 /// Tests the internal implementation details that are not part of the public API
 public class RefValueTests {
 
+  @BeforeAll
+  static void setupLogging() {
+    LoggingControl.setupCleanLogging();
+  }
+
   public static RefValueRecord pefValueRecordNotNull =
       new RefValueRecord(true, (byte) 1, 'a', (short) 2, 3, 4L, 5.0f, 6.0);
 
   public static RefValueRecord refValueRecordNull =
       new RefValueRecord(null, null, null, null, null, null, null, null);
+
 
   @BeforeEach
   void setUp() {

@@ -4,6 +4,7 @@
 
 package io.github.simbo1905.no.framework;
 
+import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -103,11 +104,22 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     final var dependencies = analyzeDependencies(recordClasses.stream().collect(Collectors.toSet()));
 
     // Phase 3: Choose architecture based on complexity
-    if (recordClasses.size() == 1 && dependencies.get(clazz).isEmpty()) {
+    LOGGER.fine(() -> "Dispatching pickler for " + clazz.getName() + " with " + clazz.getRecordComponents().length + " components");
+    
+    // Check for empty record first
+    if (clazz.getRecordComponents().length == 0) {
+      LOGGER.fine(() -> "Creating EmptyRecordSerde for empty record: " + clazz.getName());
+      final Long typeSignature = typeSignatures.getOrDefault(clazz, 
+          Companion.hashClassSignature(clazz, new RecordComponent[0], new TypeExpr2[0]));
+      final Optional<Long> altTypeSignature = Optional.empty();
+      return new EmptyRecordSerde<>(clazz, typeSignature, altTypeSignature);
+    } else if (recordClasses.size() == 1 && dependencies.get(clazz).isEmpty()) {
       // Simple case: single record with no record/enum dependencies
+      LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
       return createSimpleRecordSerde(clazz, typeSignatures);
     } else {
       // Complex case: multiple records or dependencies require PicklerImpl
+      LOGGER.fine(() -> "Creating PicklerImpl for complex record: " + clazz.getName());
       return createPicklerImpl(clazz, recordClasses.stream().collect(Collectors.toSet()), dependencies, typeSignatures);
     }
   }
