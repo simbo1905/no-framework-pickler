@@ -82,7 +82,7 @@ final class PicklerImpl<R> implements Pickler<R> {
   }
 
   /// Resolve sizer for complex types (RECORD, INTERFACE, ENUM)
-  private ToIntFunction<Object> resolveTypeSizer(Class<?> targetClass) {
+  private Sizer resolveTypeSizer(Class<?> targetClass) {
     return obj -> {
       if (obj == null) return Byte.BYTES;
 
@@ -106,7 +106,7 @@ final class PicklerImpl<R> implements Pickler<R> {
   }
 
   /// Resolve writer for complex types
-  BiConsumer<ByteBuffer, Object> resolveTypeWriter(Class<?> targetClass) {
+  Writer resolveTypeWriter(Class<?> targetClass) {
     return (buffer, obj) -> {
       if (obj instanceof Enum<?> enumValue) {
         final var typeSignature = enumToTypeSignatureMap.get(enumValue.getClass());
@@ -130,7 +130,7 @@ final class PicklerImpl<R> implements Pickler<R> {
   }
 
   /// Resolve reader for complex types by type signature
-  private Function<ByteBuffer, Object> resolveTypeReader(Long typeSignature) {
+  private Reader resolveTypeReader(Long typeSignature) {
     return buffer -> {
       if (typeSignature == 0L) {
         return null; // null marker

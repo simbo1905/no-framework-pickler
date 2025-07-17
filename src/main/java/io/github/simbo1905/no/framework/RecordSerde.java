@@ -28,16 +28,16 @@ final class RecordSerde<T> implements Pickler<T> {
   final Optional<Long> altTypeSignature; // Optional alternative type signature for backwards compatibility
   final MethodHandle recordConstructor;
   final MethodHandle[] componentAccessors;
-  final BiConsumer<ByteBuffer, Object>[] componentWriters;
-  final Function<ByteBuffer, Object>[] componentReaders;
-  final ToIntFunction<Object>[] componentSizers;
+  final Writer[] componentWriters;
+  final Reader[] componentReaders;
+  final Sizer[] componentSizers;
   final Class<?>[] componentTypes; // Component types for the record, used for backwards compatibility defaults
   final boolean compatibilityMode;
 
   RecordSerde(Class<?> userType,
-              Function<Class<?>, ToIntFunction<Object>> sizerResolver,
-              Function<Class<?>, BiConsumer<ByteBuffer, Object>> writerResolver,
-              Function<Long, Function<ByteBuffer, Object>> readerResolver,
+              SizerResolver sizerResolver,
+              WriterResolver writerResolver,
+              ReaderResolver readerResolver,
               Optional<Long> altTypeSignature
   ) {
     assert userType.isRecord() : "User type must be a record: " + userType;
@@ -87,13 +87,13 @@ final class RecordSerde<T> implements Pickler<T> {
     // Build handlers using Companion static methods with callbacks
     final int numComponents = components.length;
     //noinspection RedundantSuppression
-    @SuppressWarnings({"unchecked", "rawtypes"}) final BiConsumer<ByteBuffer, Object>[] writers = new BiConsumer[numComponents];
+    @SuppressWarnings({"unchecked", "rawtypes"}) final Writer[] writers = new Writer[numComponents];
     componentWriters = writers;
     //noinspection RedundantSuppression
-    @SuppressWarnings({"unchecked", "rawtypes"}) final Function<ByteBuffer, Object>[] readers = new Function[numComponents];
+    @SuppressWarnings({"unchecked", "rawtypes"}) final Reader[] readers = new Reader[numComponents];
     componentReaders = readers;
     //noinspection RedundantSuppression
-    @SuppressWarnings({"unchecked", "rawtypes"}) final ToIntFunction<Object>[] sizers = new ToIntFunction[numComponents];
+    @SuppressWarnings({"unchecked", "rawtypes"}) final Sizer[] sizers = new Sizer[numComponents];
     componentSizers = sizers;
 
     IntStream.range(0, numComponents).forEach(i -> {
