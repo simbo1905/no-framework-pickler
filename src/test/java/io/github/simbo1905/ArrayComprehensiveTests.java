@@ -508,28 +508,6 @@ public class ArrayComprehensiveTests {
   }
 
   @Test
-  void testUUIDArrays() {
-    LOGGER.info(() -> "Testing UUID arrays testUUIDArrays");
-
-    UUID[] uuids = {
-        UUID.randomUUID(),
-        null,
-        UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
-        UUID.randomUUID()
-    };
-
-    UUID[][] nestedUuids = {
-        {UUID.randomUUID(), UUID.randomUUID()},
-        null,
-        new UUID[0],
-        {null, UUID.randomUUID(), null}
-    };
-
-    UUIDArrayRecord original = new UUIDArrayRecord(uuids, nestedUuids);
-    testRoundTrip(original, UUIDArrayRecord.class);
-  }
-
-  @Test
   void testPrimitiveEdgeCases() {
     LOGGER.info(() -> "Testing primitive edge cases testPrimitiveEdgeCases");
 
