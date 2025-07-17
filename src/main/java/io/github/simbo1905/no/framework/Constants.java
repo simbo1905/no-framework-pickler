@@ -5,6 +5,7 @@
 package io.github.simbo1905.no.framework;
 
 /// Enum containing constants used throughout the Pickler implementation
+@Deprecated
 enum Constants {
   // as memory in java is zeroed we do not use 0 on the wire.
   UNUSED,

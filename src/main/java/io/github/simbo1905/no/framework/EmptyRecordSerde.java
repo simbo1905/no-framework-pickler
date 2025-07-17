@@ -13,6 +13,7 @@ import java.util.Objects;
 import static io.github.simbo1905.no.framework.Companion.hashClassSignature;
 
 /// Specialized handler for records with no components (empty records)
+@Deprecated
 final class EmptyRecordSerde<T> implements Pickler<T> {
   final Class<?> userType;
   final long typeSignature;

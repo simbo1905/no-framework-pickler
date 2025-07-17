@@ -21,6 +21,7 @@ import static io.github.simbo1905.no.framework.Companion.*;
 
 /// Simplified record serialization handler focused on method handles and delegation
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+@Deprecated
 final class RecordSerde<T> implements Pickler<T> {
   final Class<?> userType;
   final long typeSignature; // Type signature is a hash of the class name and component metadata

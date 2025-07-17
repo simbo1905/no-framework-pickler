@@ -140,9 +140,9 @@ class TypeExpr2ArrayTests {
       if (type == BaselineTests.Person.class) {
         BaselineTests.Person person = (BaselineTests.Person) obj;
         return Long.BYTES + // signature
-            Byte.BYTES + ZigZagEncoding.sizeOf(TypeExpr2.referenceToMarker(String.class)) +
+            Byte.BYTES + ZigZagEncoding.sizeOf(Companion.referenceToMarker(String.class)) +
             ZigZagEncoding.sizeOf(person.name().length()) + person.name().getBytes(java.nio.charset.StandardCharsets.UTF_8).length + // name
-            ZigZagEncoding.sizeOf(TypeExpr2.primitiveToMarker(int.class)) + Integer.BYTES; // age
+            ZigZagEncoding.sizeOf(Companion.primitiveToMarker(int.class)) + Integer.BYTES; // age
       }
 
       if (type == TypeExpr2Tests.TestEnum.class) {

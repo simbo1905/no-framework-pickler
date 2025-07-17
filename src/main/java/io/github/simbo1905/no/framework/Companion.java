@@ -22,37 +22,118 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-import static io.github.simbo1905.no.framework.Constants.INTEGER;
-import static io.github.simbo1905.no.framework.Constants.INTEGER_VAR;
-import static io.github.simbo1905.no.framework.Pickler.LOGGER;
+import static io.github.simbo1905.no.framework.Pickler2.LOGGER;
 
+/// This is the static helpers of the pickler
 sealed interface Companion permits Companion.Nothing {
+
+  /// Get marker for a primitive type
+  static int primitiveToMarker(Class<?> primitiveClass) {
+    return switch (primitiveClass) {
+      case Class<?> c when c == boolean.class -> -2;
+      case Class<?> c when c == byte.class -> -3;
+      case Class<?> c when c == short.class -> -4;
+      case Class<?> c when c == char.class -> -5;
+      case Class<?> c when c == int.class -> -6;
+      case Class<?> c when c == long.class -> -8;
+      case Class<?> c when c == float.class -> -10;
+      case Class<?> c when c == double.class -> -11;
+      default -> throw new IllegalArgumentException("Not a primitive type: " + primitiveClass);
+    };
+  }
+
+  /// Get marker for built-in reference types
+  static int referenceToMarker(Class<?> refClass) {
+    return switch (refClass) {
+      case Class<?> c when c == Boolean.class -> -2;
+      case Class<?> c when c == Byte.class -> -3;
+      case Class<?> c when c == Short.class -> -4;
+      case Class<?> c when c == Character.class -> -5;
+      case Class<?> c when c == Integer.class -> -6;
+      case Class<?> c when c == Long.class -> -8;
+      case Class<?> c when c == Float.class -> -10;
+      case Class<?> c when c == Double.class -> -11;
+      case Class<?> c when c == String.class -> -12;
+      case Class<?> c when c == java.time.LocalDate.class -> -13;
+      case Class<?> c when c == java.time.LocalDateTime.class -> -14;
+      case Class<?> c when c == Enum.class -> -15;
+      default -> throw new IllegalArgumentException("Not a built-in reference type: " + refClass);
+    };
+  }
+
+  enum Constants2 {
+    BOOLEAN(-1),
+    BYTE(-2),
+    SHORT(-3),
+    CHARACTER(-4),
+    INTEGER(-5),
+    LONG(-6),
+    FLOAT(-7),
+    DOUBLE(-8),
+    STRING(-9),
+    UUID(-10),
+    LOCAL_DATE(-11),
+    LOCAL_DATE_TIME(-12),
+    OPTIONAL_EMPTY(-30),
+    OPTIONAL_OF(-31),
+    MAP(-4),
+    LIST(-5),
+    ARRAY_RECORD(-13),
+    ARRAY_INTERFACE(-14),
+    ARRAY_ENUM(-15),
+    ARRAY_BOOLEAN(-16),
+    ARRAY_BYTE(-17),
+    ARRAY_SHORT(-18),
+    ARRAY_CHAR(-19),
+    ARRAY_INT(-20),
+    ARRAY_LONG(-21),
+    ARRAY_FLOAT(-22),
+    ARRAY_DOUBLE(-23),
+    ARRAY_STRING(-24),
+    ARRAY_UUID(-25),
+    ARRAY_LOCAL_DATE(-26),
+    ARRAY_LOCAL_DATE_TIME(-27),
+    ARRAY_ARRAY(-28),
+    ARRAY_LIST(-27),
+    ARRAY_MAP(-28),
+    ARRAY_OPTIONAL(-29);
+    private final int marker;
+
+    Constants2(int marker) {
+      this.marker = marker;
+    }
+
+    public int marker() {
+      return marker;
+    }
+  }
+
 
   static Function<ByteBuffer, Object> createArrayReader(
       Function<ByteBuffer, Object> elementReader, Class<?> componentType, TypeExpr element) {
     LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName());
     final int expectedMarker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
-        case RECORD -> Constants.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
-        case ENUM -> Constants.ARRAY_ENUM.marker();
-        case BOOLEAN -> Constants.ARRAY_BOOLEAN.marker();
-        case BYTE -> Constants.ARRAY_BYTE.marker();
-        case SHORT -> Constants.ARRAY_SHORT.marker();
-        case CHARACTER -> Constants.ARRAY_CHAR.marker();
-        case INTEGER -> Constants.ARRAY_INT.marker();
-        case LONG -> Constants.ARRAY_LONG.marker();
-        case FLOAT -> Constants.ARRAY_FLOAT.marker();
-        case DOUBLE -> Constants.ARRAY_DOUBLE.marker();
-        case STRING -> Constants.ARRAY_STRING.marker();
-        case UUID -> Constants.ARRAY_UUID.marker();
-        case LOCAL_DATE -> Constants.ARRAY_LOCAL_DATE.marker();
-        case LOCAL_DATE_TIME -> Constants.ARRAY_LOCAL_DATE_TIME.marker();
+        case RECORD -> Constants2.ARRAY_RECORD.marker();
+        case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
+        case ENUM -> Constants2.ARRAY_ENUM.marker();
+        case BOOLEAN -> Constants2.ARRAY_BOOLEAN.marker();
+        case BYTE -> Constants2.ARRAY_BYTE.marker();
+        case SHORT -> Constants2.ARRAY_SHORT.marker();
+        case CHARACTER -> Constants2.ARRAY_CHAR.marker();
+        case INTEGER -> Constants2.ARRAY_INT.marker();
+        case LONG -> Constants2.ARRAY_LONG.marker();
+        case FLOAT -> Constants2.ARRAY_FLOAT.marker();
+        case DOUBLE -> Constants2.ARRAY_DOUBLE.marker();
+        case STRING -> Constants2.ARRAY_STRING.marker();
+        case UUID -> Constants2.ARRAY_UUID.marker();
+        case LOCAL_DATE -> Constants2.ARRAY_LOCAL_DATE.marker();
+        case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
       };
-      case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
-      case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
-      case TypeExpr.MapNode ignored -> Constants.ARRAY_MAP.marker();
-      case TypeExpr.OptionalNode ignored -> Constants.ARRAY_OPTIONAL.marker();
+      case TypeExpr.ArrayNode(var ignored) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Constants2.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
       case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return switch (element) {
@@ -89,9 +170,9 @@ sealed interface Companion permits Companion.Nothing {
     return (buffer, obj) -> {
       Map<?, ?> map = (Map<?, ?>) obj;
       final int positionBeforeWrite = buffer.position();
-      ZigZagEncoding.putInt(buffer, Constants.MAP.marker());
+      ZigZagEncoding.putInt(buffer, Constants2.MAP.marker());
       ZigZagEncoding.putInt(buffer, map.size());
-      LOGGER.fine(() -> "Written map marker " + Constants.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
+      LOGGER.fine(() -> "Written map marker " + Constants2.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
       map.forEach((key, value) -> {
         if (key == null) {
@@ -135,7 +216,7 @@ sealed interface Companion permits Companion.Nothing {
   static Function<ByteBuffer, Object> createListReader(Function<ByteBuffer, Object> elementReader) {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants.LIST.marker() : "Expected LIST marker";
+      assert marker == Constants2.LIST.marker() : "Expected LIST marker";
       int size = ZigZagEncoding.getInt(buffer);
       return IntStream.range(0, size)
           .mapToObj(i -> elementReader.apply(buffer))
@@ -146,9 +227,9 @@ sealed interface Companion permits Companion.Nothing {
   static Function<ByteBuffer, Object> createOptionalReader(Function<ByteBuffer, Object> valueReader) {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
-      if (marker == Constants.OPTIONAL_EMPTY.marker()) {
+      if (marker == Constants2.OPTIONAL_EMPTY.marker()) {
         return Optional.empty();
-      } else if (marker == Constants.OPTIONAL_OF.marker()) {
+      } else if (marker == Constants2.OPTIONAL_OF.marker()) {
         return Optional.of(valueReader.apply(buffer));
       } else {
         throw new IllegalStateException("Invalid optional marker: " + marker);
@@ -162,12 +243,12 @@ sealed interface Companion permits Companion.Nothing {
       Optional<?> optional = (Optional<?>) value;
       if (optional.isEmpty()) {
         LOGGER.fine(() -> "Optional is empty, writing EMPTY marker at position: " + buffer.position());
-        ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_EMPTY.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.OPTIONAL_EMPTY.marker());
       } else {
         final int positionBeforeWrite = buffer.position();
-        ZigZagEncoding.putInt(buffer, Constants.OPTIONAL_OF.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.OPTIONAL_OF.marker());
         buffer.put(NOT_NULL_MARKER);
-        LOGGER.fine(() -> "Optional is present wrote OPTIONAL_OF=" + Constants.OPTIONAL_OF.marker() + " followed by NOT_NULL_MARKER=1 at position: " + positionBeforeWrite);
+        LOGGER.fine(() -> "Optional is present wrote OPTIONAL_OF=" + Constants2.OPTIONAL_OF.marker() + " followed by NOT_NULL_MARKER=1 at position: " + positionBeforeWrite);
         valueWriter.accept(buffer, optional.get());
       }
     };
@@ -177,7 +258,7 @@ sealed interface Companion permits Companion.Nothing {
     return (buffer, value) -> {
       List<?> list = (List<?>) value;
       // Write LIST marker and size
-      ZigZagEncoding.putInt(buffer, Constants.LIST.marker());
+      ZigZagEncoding.putInt(buffer, Constants2.LIST.marker());
       ZigZagEncoding.putInt(buffer, list.size());
       // Write each element
       for (Object item : list) {
@@ -286,26 +367,26 @@ sealed interface Companion permits Companion.Nothing {
     LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
     final int marker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
-        case RECORD -> Constants.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants.ARRAY_INTERFACE.marker();
-        case ENUM -> Constants.ARRAY_ENUM.marker();
-        case BOOLEAN -> Constants.ARRAY_BOOLEAN.marker();
-        case BYTE -> Constants.ARRAY_BYTE.marker();
-        case SHORT -> Constants.ARRAY_SHORT.marker();
-        case CHARACTER -> Constants.ARRAY_CHAR.marker();
-        case INTEGER -> Constants.ARRAY_INT.marker();
-        case LONG -> Constants.ARRAY_LONG.marker();
-        case FLOAT -> Constants.ARRAY_FLOAT.marker();
-        case DOUBLE -> Constants.ARRAY_DOUBLE.marker();
-        case STRING -> Constants.ARRAY_STRING.marker();
-        case UUID -> Constants.ARRAY_UUID.marker();
-        case LOCAL_DATE -> Constants.ARRAY_LOCAL_DATE.marker();
-        case LOCAL_DATE_TIME -> Constants.ARRAY_LOCAL_DATE_TIME.marker();
+        case RECORD -> Constants2.ARRAY_RECORD.marker();
+        case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
+        case ENUM -> Constants2.ARRAY_ENUM.marker();
+        case BOOLEAN -> Constants2.ARRAY_BOOLEAN.marker();
+        case BYTE -> Constants2.ARRAY_BYTE.marker();
+        case SHORT -> Constants2.ARRAY_SHORT.marker();
+        case CHARACTER -> Constants2.ARRAY_CHAR.marker();
+        case INTEGER -> Constants2.ARRAY_INT.marker();
+        case LONG -> Constants2.ARRAY_LONG.marker();
+        case FLOAT -> Constants2.ARRAY_FLOAT.marker();
+        case DOUBLE -> Constants2.ARRAY_DOUBLE.marker();
+        case STRING -> Constants2.ARRAY_STRING.marker();
+        case UUID -> Constants2.ARRAY_UUID.marker();
+        case LOCAL_DATE -> Constants2.ARRAY_LOCAL_DATE.marker();
+        case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
       };
-      case TypeExpr.ArrayNode(var ignored) -> Constants.ARRAY_ARRAY.marker();
-      case TypeExpr.ListNode(var ignored) -> Constants.ARRAY_LIST.marker();
-      case TypeExpr.MapNode ignored -> Constants.ARRAY_MAP.marker();
-      case TypeExpr.OptionalNode ignored -> Constants.ARRAY_OPTIONAL.marker();
+      case TypeExpr.ArrayNode(var ignored) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Constants2.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
       case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return (buffer, value) -> {
@@ -377,6 +458,25 @@ sealed interface Companion permits Companion.Nothing {
 
   static Writer createComponentWriter(TypeExpr2 typeExpr, MethodHandle getter, Map<Class<?>, BiConsumer<ByteBuffer, Object>> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
     throw new AssertionError("not implemented yet");
+  }
+
+  /// Container type markers
+  enum ContainerType {
+    OPTIONAL_EMPTY(-16),
+    OPTIONAL_OF(-17),
+    ARRAY(-18),
+    MAP(-19),
+    LIST(-20);
+
+    private final int marker;
+
+    ContainerType(int marker) {
+      this.marker = marker;
+    }
+
+    int marker() {
+      return marker;
+    }
   }
 
 
@@ -463,7 +563,7 @@ sealed interface Companion permits Companion.Nothing {
       case BOOLEAN -> (buffer, inner) -> {
         final var position = buffer.position();
         final var booleans = (boolean[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.BOOLEAN.marker());
         int length = booleans.length;
         ZigZagEncoding.putInt(buffer, length);
         BitSet bitSet = new BitSet(length);
@@ -477,13 +577,13 @@ sealed interface Companion permits Companion.Nothing {
       case BYTE -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag BYTE at position " + buffer.position());
         final var bytes = (byte[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants.BYTE.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.BYTE.marker());
         ZigZagEncoding.putInt(buffer, bytes.length);
         buffer.put(bytes);
       };
       case SHORT -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag SHORT at position " + buffer.position());
-        ZigZagEncoding.putInt(buffer, Constants.SHORT.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.SHORT.marker());
         final var shorts = (short[]) inner;
         ZigZagEncoding.putInt(buffer, shorts.length);
         for (short s : shorts) {
@@ -493,7 +593,7 @@ sealed interface Companion permits Companion.Nothing {
       case CHARACTER -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag CHARACTER at position " + buffer.position());
         final var chars = (char[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants.CHARACTER.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.CHARACTER.marker());
         ZigZagEncoding.putInt(buffer, chars.length);
         for (char c : chars) {
           buffer.putChar(c);
@@ -502,7 +602,7 @@ sealed interface Companion permits Companion.Nothing {
       case FLOAT -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag FLOAT at position " + buffer.position());
         final var floats = (float[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants.FLOAT.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.FLOAT.marker());
         ZigZagEncoding.putInt(buffer, floats.length);
         for (float f : floats) {
           buffer.putFloat(f);
@@ -510,7 +610,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case DOUBLE -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag DOUBLE at position " + buffer.position());
-        ZigZagEncoding.putInt(buffer, Constants.DOUBLE.marker());
+        ZigZagEncoding.putInt(buffer, Constants2.DOUBLE.marker());
         final var doubles = (double[]) inner;
         ZigZagEncoding.putInt(buffer, doubles.length);
         for (double d : doubles) {
@@ -546,14 +646,14 @@ sealed interface Companion permits Companion.Nothing {
         final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
         if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) || (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
+          ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (long i : longs) {
             ZigZagEncoding.putLong(buffer, i);
           }
         } else {
           LOGGER.fine(() -> "Writing LONG array - position=" + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
+          ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (long i : longs) {
             buffer.putLong(i);
@@ -604,11 +704,11 @@ sealed interface Companion permits Companion.Nothing {
           final long result = (long) record;
           final var position = buffer.position();
           if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
-            ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
+            ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
             LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
             ZigZagEncoding.putLong(buffer, result);
           } else {
-            ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
+            ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
             LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
             buffer.putLong(result);
           }
@@ -645,10 +745,10 @@ sealed interface Companion permits Companion.Nothing {
         final var position = buffer.position();
         // If not enough space, read marker
         final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants.LONG_VAR.marker()) {
+        if (marker == Constants2.LONG_VAR.marker()) {
           LOGGER.finer(() -> "LONG reader: read LONG_VAR marker=" + marker + " at position=" + position);
           return ZigZagEncoding.getLong(buffer);
-        } else if (marker == Constants.LONG.marker()) {
+        } else if (marker == Constants2.LONG.marker()) {
           LOGGER.finer(() -> "LONG reader: read LONG marker=" + marker + " at position=" + position);
           return buffer.getLong();
         } else {
@@ -662,7 +762,7 @@ sealed interface Companion permits Companion.Nothing {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.BOOLEAN.marker() : "Expected BOOLEAN marker but got: " + marker;
+        assert marker == Constants2.BOOLEAN.marker() : "Expected BOOLEAN marker but got: " + marker;
         int boolLength = ZigZagEncoding.getInt(buffer);
         boolean[] booleans = new boolean[boolLength];
         int bytesLength = ZigZagEncoding.getInt(buffer);
@@ -674,7 +774,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case BYTE -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.BYTE.marker() : "Expected BYTE marker but got: " + marker;
+        assert marker == Constants2.BYTE.marker() : "Expected BYTE marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
         buffer.get(bytes);
@@ -682,7 +782,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case SHORT -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.SHORT.marker() : "Expected SHORT marker but got: " + marker;
+        assert marker == Constants2.SHORT.marker() : "Expected SHORT marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         short[] shorts = new short[length];
         IntStream.range(0, length).forEach(i -> shorts[i] = buffer.getShort());
@@ -690,7 +790,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case CHARACTER -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.CHARACTER.marker() : "Expected CHARACTER marker but got: " + marker;
+        assert marker == Constants2.CHARACTER.marker() : "Expected CHARACTER marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         char[] chars = new char[length];
         IntStream.range(0, length).forEach(i -> chars[i] = buffer.getChar());
@@ -698,7 +798,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case FLOAT -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.FLOAT.marker() : "Expected FLOAT marker but got: " + marker;
+        assert marker == Constants2.FLOAT.marker() : "Expected FLOAT marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         float[] floats = new float[length];
         IntStream.range(0, length).forEach(i -> floats[i] = buffer.getFloat());
@@ -706,7 +806,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case DOUBLE -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;
+        assert marker == Constants2.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         double[] doubles = new double[length];
         IntStream.range(0, length).forEach(i -> doubles[i] = buffer.getDouble());
@@ -728,12 +828,12 @@ sealed interface Companion permits Companion.Nothing {
       };
       case LONG -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants.LONG_VAR.marker()) {
+        if (marker == Constants2.LONG_VAR.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           long[] longs = new long[length];
           IntStream.range(0, length).forEach(i -> longs[i] = ZigZagEncoding.getLong(buffer));
           return longs;
-        } else if (marker == Constants.LONG.marker()) {
+        } else if (marker == Constants2.LONG.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           long[] longs = new long[length];
           IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
@@ -971,11 +1071,11 @@ sealed interface Companion permits Companion.Nothing {
             final long result = (long) record;
             final var position = buffer.position();
             if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
-              ZigZagEncoding.putInt(buffer, Constants.LONG_VAR.marker());
+              ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
               LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
               ZigZagEncoding.putLong(buffer, result);
             } else {
-              ZigZagEncoding.putInt(buffer, Constants.LONG.marker());
+              ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
               LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
               buffer.putLong(result);
             }
@@ -1086,9 +1186,9 @@ sealed interface Companion permits Companion.Nothing {
         final var positionBefore = buffer.position();
         LOGGER.fine(() -> "RefValueReader reading LONG_VAR or LONG marker at position: " + positionBefore);
         final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants.LONG_VAR.marker()) {
+        if (marker == Constants2.LONG_VAR.marker()) {
           return ZigZagEncoding.getLong(buffer);
-        } else if (marker == Constants.LONG.marker()) {
+        } else if (marker == Constants2.LONG.marker()) {
           return buffer.getLong();
         } else {
           throw new IllegalStateException("Expected LONG marker but got: " + marker + " at position: " + positionBefore);
@@ -1207,7 +1307,7 @@ sealed interface Companion permits Companion.Nothing {
     //      Byte Index:   0       1       2        3        4        5        6        7
     //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
     //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-    result = IntStream.range(0, Long.BYTES).mapToLong(i -> (hash[i] & 0xFFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+    result = IntStream.range(0, Long.BYTES).mapToLong(i -> (hash[i] & -FFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     return result;
   }
 

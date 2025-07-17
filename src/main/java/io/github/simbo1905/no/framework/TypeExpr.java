@@ -13,6 +13,7 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
 /// Public sealed interface for the Type Expression protocol
 /// All type expression nodes are nested within this interface to provide a clean API
+@Deprecated
 sealed interface TypeExpr permits
     TypeExpr.ArrayNode, TypeExpr.ListNode, TypeExpr.OptionalNode, TypeExpr.MapNode,
     TypeExpr.RefValueNode, TypeExpr.PrimitiveValueNode {

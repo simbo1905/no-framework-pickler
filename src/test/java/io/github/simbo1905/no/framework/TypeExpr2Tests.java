@@ -381,7 +381,7 @@ class TypeExpr2Tests {
 
     buffer.flip();
     int emptyMarker = ZigZagEncoding.getInt(buffer);
-    assertThat(emptyMarker).isEqualTo(TypeExpr2.ContainerType.OPTIONAL_EMPTY.marker());
+    assertThat(emptyMarker).isEqualTo(Companion.ContainerType.OPTIONAL_EMPTY.marker());
     assertThat(emptyMarker).isEqualTo(-16);
 
     // Test Optional.of(value) writes OPTIONAL_OF marker
@@ -391,7 +391,7 @@ class TypeExpr2Tests {
 
     buffer.flip();
     int valueMarker = ZigZagEncoding.getInt(buffer);
-    assertThat(valueMarker).isEqualTo(TypeExpr2.ContainerType.OPTIONAL_OF.marker());
+    assertThat(valueMarker).isEqualTo(Companion.ContainerType.OPTIONAL_OF.marker());
     assertThat(valueMarker).isEqualTo(-17);
   }
 
@@ -1160,7 +1160,7 @@ class TypeExpr2Tests {
             buffer.putLong(sig);
             if (obj instanceof ItemString str) {
               LOGGER.fine(() -> "WriterResolver: Writing ItemString value: " + str.value());
-              ZigZagEncoding.putInt(buffer, TypeExpr2.referenceToMarker(String.class));
+              ZigZagEncoding.putInt(buffer, Companion.referenceToMarker(String.class));
               byte[] bytes = str.value().getBytes(java.nio.charset.StandardCharsets.UTF_8);
               ZigZagEncoding.putInt(buffer, bytes.length);
               buffer.put(bytes);
@@ -1173,7 +1173,7 @@ class TypeExpr2Tests {
           if (signature == 1L) {
             LOGGER.fine(() -> "ReaderResolver: Reading ItemString from signature " + Long.toHexString(signature));
             int marker = ZigZagEncoding.getInt(buffer);
-            if (marker != TypeExpr2.referenceToMarker(String.class)) {
+            if (marker != Companion.referenceToMarker(String.class)) {
               throw new IllegalStateException("Expected STRING marker");
             }
             int length = ZigZagEncoding.getInt(buffer);

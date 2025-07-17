@@ -19,6 +19,7 @@ import static io.github.simbo1905.no.framework.Companion.computeRecordTypeSignat
 import static io.github.simbo1905.no.framework.Companion.writeToWireWitness;
 
 /// Main coordinator for multiple record types using static analysis and callback delegation
+@Deprecated
 final class PicklerImpl<R> implements Pickler<R> {
   final List<Class<?>> userTypes;
   final Map<Long, Pickler<?>> typeSignatureToPicklerMap;

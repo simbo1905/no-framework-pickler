@@ -17,62 +17,9 @@ sealed interface TypeExpr2 permits
     TypeExpr2.ArrayNode, TypeExpr2.ListNode, TypeExpr2.OptionalNode, TypeExpr2.MapNode,
     TypeExpr2.RefValueNode, TypeExpr2.PrimitiveValueNode, TypeExpr2.PrimitiveArrayNode {
 
-  /// Get marker for a primitive type
-  static int primitiveToMarker(Class<?> primitiveClass) {
-    return switch (primitiveClass) {
-      case Class<?> c when c == boolean.class -> -2;
-      case Class<?> c when c == byte.class -> -3;
-      case Class<?> c when c == short.class -> -4;
-      case Class<?> c when c == char.class -> -5;
-      case Class<?> c when c == int.class -> -6;
-      case Class<?> c when c == long.class -> -8;
-      case Class<?> c when c == float.class -> -10;
-      case Class<?> c when c == double.class -> -11;
-      default -> throw new IllegalArgumentException("Not a primitive type: " + primitiveClass);
-    };
-  }
-
-  /// Get marker for built-in reference types
-  static int referenceToMarker(Class<?> refClass) {
-    return switch (refClass) {
-      case Class<?> c when c == Boolean.class -> -2;
-      case Class<?> c when c == Byte.class -> -3;
-      case Class<?> c when c == Short.class -> -4;
-      case Class<?> c when c == Character.class -> -5;
-      case Class<?> c when c == Integer.class -> -6;
-      case Class<?> c when c == Long.class -> -8;
-      case Class<?> c when c == Float.class -> -10;
-      case Class<?> c when c == Double.class -> -11;
-      case Class<?> c when c == String.class -> -12;
-      case Class<?> c when c == java.time.LocalDate.class -> -13;
-      case Class<?> c when c == java.time.LocalDateTime.class -> -14;
-      case Class<?> c when c == Enum.class -> -15;
-      default -> throw new IllegalArgumentException("Not a built-in reference type: " + refClass);
-    };
-  }
-
   /// A special marker for user-defined types that are serialized using a type signature.
   /// This marker should never be written to the wire due to static analysis knowing we are dealing with a user type.
   int VOID_MARKER = 0;
-
-  /// Container type markers
-  enum ContainerType {
-    OPTIONAL_EMPTY(-16),
-    OPTIONAL_OF(-17),
-    ARRAY(-18),
-    MAP(-19),
-    LIST(-20);
-
-    private final int marker;
-
-    ContainerType(int marker) {
-      this.marker = marker;
-    }
-
-    int marker() {
-      return marker;
-    }
-  }
 
   /// Recursive descent parser for Java types - builds tree bottom-up with markers
   static TypeExpr2 analyzeType(Type type, Collection<SerdeHandler> customHandlers) {
@@ -115,7 +62,7 @@ sealed interface TypeExpr2 permits
           if (refType == RefValueType.RECORD || refType == RefValueType.ENUM || refType == RefValueType.INTERFACE) {
             marker = VOID_MARKER; // Due to static analysis we never write VOID_MARKER we write the user type signature
           } else {
-            marker = referenceToMarker(clazz);
+            marker = Companion.referenceToMarker(clazz);
           }
           return new RefValueNode(refType, clazz, marker);
         }
@@ -326,7 +273,7 @@ sealed interface TypeExpr2 permits
     @Override
     public int marker() {
       // Array has its own marker
-      return ContainerType.ARRAY.marker();
+      return Companion.ContainerType.ARRAY.marker();
     }
 
     @Override
@@ -352,7 +299,7 @@ sealed interface TypeExpr2 permits
 
     @Override
     public int marker() {
-      return ContainerType.ARRAY.marker();
+      return Companion.ContainerType.ARRAY.marker();
     }
 
     @Override
@@ -374,7 +321,7 @@ sealed interface TypeExpr2 permits
 
     @Override
     public int marker() {
-      return ContainerType.LIST.marker();
+      return Companion.ContainerType.LIST.marker();
     }
 
     @Override
@@ -398,7 +345,7 @@ sealed interface TypeExpr2 permits
     public int marker() {
       // Optional has two markers: EMPTY and OF
       // This is the container marker, actual wire format uses OPTIONAL_EMPTY/OPTIONAL_OF
-      return ContainerType.OPTIONAL_OF.marker();
+      return Companion.ContainerType.OPTIONAL_OF.marker();
     }
 
     @Override
@@ -421,7 +368,7 @@ sealed interface TypeExpr2 permits
 
     @Override
     public int marker() {
-      return ContainerType.MAP.marker();
+      return Companion.ContainerType.MAP.marker();
     }
 
     @Override
