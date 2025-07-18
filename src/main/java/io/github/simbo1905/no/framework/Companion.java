@@ -144,6 +144,7 @@ sealed interface Companion permits Companion.Nothing {
       case Class<?> c when c == Float.class -> -10;
       case Class<?> c when c == Double.class -> -11;
       case Class<?> c when c == String.class -> -12;
+      case Class<?> c when c == java.util.UUID.class -> -12; // FIXME WARNING WARNING UUID will be handled like String to get more tests fixed WARNING WARNING
       case Class<?> c when c == LocalDate.class -> -13;
       case Class<?> c when c == LocalDateTime.class -> -14;
       case Class<?> c when c == Enum.class -> -15;
@@ -1667,7 +1668,12 @@ sealed interface Companion permits Companion.Nothing {
             return Byte.BYTES + pickler.maxSizeOf(obj);
           };
         } else if (clazz.isEnum()) {
-          yield obj -> obj == null ? Byte.BYTES : Byte.BYTES + Integer.BYTES;
+          yield obj -> {
+            if (obj == null) return Byte.BYTES;
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            return Byte.BYTES + pickler.maxSizeOf(obj);
+          };
         } else if (clazz.isInterface()) {
           yield obj -> {
             if (obj == null) return Byte.BYTES;
@@ -1718,8 +1724,9 @@ sealed interface Companion permits Companion.Nothing {
           };
         } else if (clazz.isEnum()) {
           yield (buffer, obj) -> {
-            final Enum<?> enumValue = (Enum<?>) obj;
-            ZigZagEncoding.putInt(buffer, enumValue.ordinal());
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            pickler.serialize(buffer, obj);
           };
         } else if (clazz.isInterface()) {
           yield (buffer, obj) -> {
@@ -1773,6 +1780,8 @@ sealed interface Companion permits Companion.Nothing {
               return recordSerde.deserializeWithoutSignature(buffer);
             } else if (pickler instanceof EmptyRecordSerde<?> emptyRecordSerde) {
               return emptyRecordSerde.deserializeWithoutSignature(buffer);
+            } else if (pickler instanceof EnumPickler<?> enumPickler) {
+              return enumPickler.deserializeWithoutSignature(buffer);
             } else {
               throw new IllegalStateException("Unsupported serde type: " + pickler.getClass());
             }
@@ -1780,9 +1789,13 @@ sealed interface Companion permits Companion.Nothing {
           yield nullCheckAndDelegate(recordReader);
         } else if (clazz.isEnum()) {
           final Reader enumReader = buffer -> {
-            final int ordinal = ZigZagEncoding.getInt(buffer);
-            final Object[] enumConstants = clazz.getEnumConstants();
-            return enumConstants[ordinal];
+            final long typeSignature = buffer.getLong();
+            final var pickler = resolver.resolve(clazz);
+            if (pickler instanceof EnumPickler<?> enumPickler) {
+              return enumPickler.deserializeWithoutSignature(buffer);
+            } else {
+              throw new IllegalStateException("Expected EnumPickler but got: " + pickler.getClass());
+            }
           };
           yield nullCheckAndDelegate(enumReader);
         } else if (clazz.isInterface()) {

@@ -18,7 +18,7 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, RecordSerde {
+public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, PicklerImpl, RecordSerde {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -99,6 +99,11 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     if (recordClasses.isEmpty()) {
       throw new IllegalArgumentException("No record classes found in hierarchy of: " + clazz);
     }
+    
+    // Get all classes that need picklers (records and enums)
+    final var allPicklerClasses = legalAndIllegalClasses.get(Boolean.TRUE).stream()
+        .filter(cls -> cls.isRecord() || cls.isEnum())
+        .collect(Collectors.toSet());
 
     // Build enum-to-signature mapping
     @SuppressWarnings("unchecked") final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap = legalAndIllegalClasses.get(Boolean.TRUE).stream()
@@ -119,6 +124,14 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
           Companion.hashClassSignature(clazz, new RecordComponent[0], new TypeExpr2[0]));
       final Optional<Long> altTypeSignature = Optional.empty();
       return new EmptyRecordSerde<>(clazz, typeSignature, altTypeSignature);
+    } else if (clazz.isEnum()) {
+      LOGGER.fine(() -> "Creating EnumPickler for enum: " + clazz.getName());
+      final Long typeSignature = typeSignatures.getOrDefault(clazz,
+          Companion.hashEnumSignature(clazz));
+      final Optional<Long> altTypeSignature = Optional.empty();
+      @SuppressWarnings({"unchecked", "rawtypes"})
+      final var enumClass = (Class) clazz;
+      return new EnumPickler(enumClass, typeSignature, altTypeSignature);
     } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
@@ -126,7 +139,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     } else {
       // Complex case: multiple records or dependencies require PicklerImpl
       LOGGER.fine(() -> "Creating PicklerImpl for complex record: " + clazz.getName());
-      return createPicklerImpl(clazz, new HashSet<>(recordClasses), typeSignatures);
+      return createPicklerImpl(clazz, allPicklerClasses, typeSignatures);
     }
   }
 
@@ -261,7 +274,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
   /// Create PicklerImpl for complex cases with delegation
   private static <T> PicklerImpl<T> createPicklerImpl(
       Class<T> rootClass,
-      Set<Class<?>> recordClasses,
+      Set<Class<?>> allClasses,
       Map<Class<?>, Long> typeSignatures) {
 
     // Create the shared resolver map that all instances will use
@@ -269,7 +282,10 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     final var typeSignatureToSerde = new HashMap<Long, Pickler<?>>();
 
     // Compute type signatures for all record classes
-    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses.stream().toList());
+    final var recordClasses = allClasses.stream()
+        .filter(Class::isRecord)
+        .toList();
+    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
 
     // Create dependency resolver callback
     final Companion.DependencyResolver resolver = targetClass -> {
@@ -281,8 +297,8 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     };
 
     // Create EmptyRecordSerde instances first since they have no dependencies
-    for (Class<?> recordClass : recordClasses) {
-      if (recordClass.getRecordComponents().length == 0) {
+    for (Class<?> recordClass : allClasses) {
+      if (recordClass.isRecord() && recordClass.getRecordComponents().length == 0) {
         final var typeSignature = recordTypeSignatures.get(recordClass);
         final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
         final var serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
@@ -293,9 +309,24 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
       }
     }
 
+    // Create EnumPickler instances for all enum classes
+    for (Class<?> enumClass : allClasses) {
+      if (enumClass.isEnum()) {
+        LOGGER.fine(() -> "Creating EnumPickler for enum in PicklerImpl: " + enumClass.getName());
+        final var typeSignature = Companion.hashEnumSignature(enumClass);
+        final var altSignature = Optional.<Long>empty();
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        final var enumSerde = new EnumPickler(enumClass, typeSignature, altSignature);
+
+        serdes.put(enumClass, enumSerde);
+        typeSignatureToSerde.put(typeSignature, enumSerde);
+        LOGGER.fine(() -> "Added EnumPickler to serdes map for: " + enumClass.getName() + " with signature: 0x" + Long.toHexString(typeSignature));
+      }
+    }
+
     // Build all non-empty RecordSerde instances in single pass using callback
-    for (Class<?> recordClass : recordClasses) {
-      if (recordClass.getRecordComponents().length > 0) {
+    for (Class<?> recordClass : allClasses) {
+      if (recordClass.isRecord() && recordClass.getRecordComponents().length > 0) {
         final var typeSignature = recordTypeSignatures.get(recordClass);
         final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
 

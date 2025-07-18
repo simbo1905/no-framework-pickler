@@ -49,6 +49,9 @@ final class PicklerImpl<R> implements Pickler<R> {
     } else if (serde instanceof EmptyRecordSerde<?> emptyRecordSerde) {
       //noinspection unchecked
       result = (R) emptyRecordSerde.deserializeWithoutSignature(buffer);
+    } else if (serde instanceof EnumPickler<?> enumPickler) {
+      //noinspection unchecked
+      result = (R) enumPickler.deserializeWithoutSignature(buffer);
     } else {
       throw new IllegalStateException("Unsupported serde type: " + serde.getClass());
     }
