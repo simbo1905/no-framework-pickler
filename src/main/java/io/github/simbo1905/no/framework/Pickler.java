@@ -119,7 +119,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
           Companion.hashClassSignature(clazz, new RecordComponent[0], new TypeExpr2[0]));
       final Optional<Long> altTypeSignature = Optional.empty();
       return new EmptyRecordSerde<>(clazz, typeSignature, altTypeSignature);
-    } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty()) {
+    } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
       return createSimpleRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);

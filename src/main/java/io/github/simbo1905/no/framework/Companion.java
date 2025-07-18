@@ -1666,6 +1666,15 @@ sealed interface Companion permits Companion.Nothing {
             final var pickler = (Pickler<Object>) resolver.resolve(clazz);
             return Byte.BYTES + pickler.maxSizeOf(obj);
           };
+        } else if (clazz.isEnum()) {
+          yield obj -> obj == null ? Byte.BYTES : Byte.BYTES + Integer.BYTES;
+        } else if (clazz.isInterface()) {
+          yield obj -> {
+            if (obj == null) return Byte.BYTES;
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(obj.getClass());
+            return Byte.BYTES + pickler.maxSizeOf(obj);
+          };
         } else {
           yield buildValueSizerInner(refValueType, javaType, cls -> {
             @SuppressWarnings("unchecked")
@@ -1705,6 +1714,17 @@ sealed interface Companion permits Companion.Nothing {
           yield (buffer, obj) -> {
             @SuppressWarnings("unchecked")
             final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            pickler.serialize(buffer, obj);
+          };
+        } else if (clazz.isEnum()) {
+          yield (buffer, obj) -> {
+            final Enum<?> enumValue = (Enum<?>) obj;
+            ZigZagEncoding.putInt(buffer, enumValue.ordinal());
+          };
+        } else if (clazz.isInterface()) {
+          yield (buffer, obj) -> {
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(obj.getClass());
             pickler.serialize(buffer, obj);
           };
         } else {
@@ -1758,6 +1778,20 @@ sealed interface Companion permits Companion.Nothing {
             }
           };
           yield nullCheckAndDelegate(recordReader);
+        } else if (clazz.isEnum()) {
+          final Reader enumReader = buffer -> {
+            final int ordinal = ZigZagEncoding.getInt(buffer);
+            final Object[] enumConstants = clazz.getEnumConstants();
+            return enumConstants[ordinal];
+          };
+          yield nullCheckAndDelegate(enumReader);
+        } else if (clazz.isInterface()) {
+          final Reader interfaceReader = buffer -> {
+            final long typeSignature = buffer.getLong();
+            // For interfaces, we need to resolve the concrete type at runtime
+            throw new UnsupportedOperationException("Interface type signature resolution not yet implemented");
+          };
+          yield nullCheckAndDelegate(interfaceReader);
         } else {
           yield buildValueReader(refValueType, typeSignature -> {
             // For non-record types, use the existing buildRefValueReader approach
