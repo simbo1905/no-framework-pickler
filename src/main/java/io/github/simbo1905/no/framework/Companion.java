@@ -31,9 +31,13 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Callback interface for circular dependency resolution
-  @FunctionalInterface
   interface DependencyResolver {
     Pickler<?> resolve(Class<?> targetClass);
+
+    /// Resolve pickler by type signature for interface deserialization
+    default Pickler<?> resolveBySignature(long typeSignature) {
+      throw new UnsupportedOperationException("Type signature resolution not implemented");
+    }
   }
 
   String SHA_256 = "SHA-256";
@@ -144,7 +148,8 @@ sealed interface Companion permits Companion.Nothing {
       case Class<?> c when c == Float.class -> -10;
       case Class<?> c when c == Double.class -> -11;
       case Class<?> c when c == String.class -> -12;
-      case Class<?> c when c == java.util.UUID.class -> -12; // FIXME WARNING WARNING UUID will be handled like String to get more tests fixed WARNING WARNING
+      case Class<?> c when c == java.util.UUID.class ->
+          -12; // FIXME WARNING WARNING UUID will be handled like String to get more tests fixed WARNING WARNING
       case Class<?> c when c == LocalDate.class -> -13;
       case Class<?> c when c == LocalDateTime.class -> -14;
       case Class<?> c when c == Enum.class -> -15;
@@ -1602,7 +1607,7 @@ sealed interface Companion permits Companion.Nothing {
                 Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName()))))
         .collect(Collectors.joining("!"));
     final var signature = hashSignature(input);
-    LOGGER.fine(() -> "Signature for " + clazz.getName() + " input '" + input + "' -> 0x" + Long.toHexString(signature));
+    LOGGER.fine(() -> "RECORD Signature for " + clazz.getName() + " input '" + input + "' -> 0x" + Long.toHexString(signature));
     return signature;
   }
 
@@ -1611,7 +1616,9 @@ sealed interface Companion permits Companion.Nothing {
     Object[] enumConstants = enumClass.getEnumConstants();
     assert enumConstants != null : "Not an enum class: " + enumClass;
     String input = Stream.concat(Stream.of(enumClass.getName()), Arrays.stream(enumConstants).map(e -> ((Enum<?>) e).name())).collect(Collectors.joining("!"));
-    return hashSignature(input);
+    final var signature = hashSignature(input);
+    LOGGER.fine(() -> "ENUM Signature for " + enumClass.getName() + " input '" + input + "' -> 0x" + Long.toHexString(signature));
+    return signature;
   }
 
   /// This method computes a 64 bit signature from a unique string representation by hashing it using SHA-256
@@ -1663,28 +1670,24 @@ sealed interface Companion permits Companion.Nothing {
         if (clazz.isRecord()) {
           yield obj -> {
             if (obj == null) return Byte.BYTES;
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(clazz);
             return Byte.BYTES + pickler.maxSizeOf(obj);
           };
         } else if (clazz.isEnum()) {
           yield obj -> {
             if (obj == null) return Byte.BYTES;
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(clazz);
             return Byte.BYTES + pickler.maxSizeOf(obj);
           };
         } else if (clazz.isInterface()) {
           yield obj -> {
             if (obj == null) return Byte.BYTES;
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(obj.getClass());
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(obj.getClass());
             return Byte.BYTES + pickler.maxSizeOf(obj);
           };
         } else {
           yield buildValueSizerInner(refValueType, javaType, cls -> {
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(cls);
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(cls);
             return pickler::maxSizeOf;
           });
         }
@@ -1713,31 +1716,28 @@ sealed interface Companion permits Companion.Nothing {
   static Writer createLazyWriterChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
+          buildPrimitiveArrayWriterInner(primitiveType);
       case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.isRecord()) {
           yield (buffer, obj) -> {
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(clazz);
             pickler.serialize(buffer, obj);
           };
         } else if (clazz.isEnum()) {
           yield (buffer, obj) -> {
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(clazz);
             pickler.serialize(buffer, obj);
           };
         } else if (clazz.isInterface()) {
           yield (buffer, obj) -> {
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(obj.getClass());
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(obj.getClass());
             pickler.serialize(buffer, obj);
           };
         } else {
           yield buildValueWriter(refValueType, javaType, cls -> {
-            @SuppressWarnings("unchecked")
-            final var pickler = (Pickler<Object>) resolver.resolve(cls);
+            @SuppressWarnings("unchecked") final var pickler = (Pickler<Object>) resolver.resolve(cls);
             return pickler::serialize;
           });
         }
@@ -1802,7 +1802,16 @@ sealed interface Companion permits Companion.Nothing {
           final Reader interfaceReader = buffer -> {
             final long typeSignature = buffer.getLong();
             // For interfaces, we need to resolve the concrete type at runtime
-            throw new UnsupportedOperationException("Interface type signature resolution not yet implemented");
+            final var pickler = resolver.resolveBySignature(typeSignature);
+            if (pickler instanceof RecordSerde<?> recordSerde) {
+              return recordSerde.deserializeWithoutSignature(buffer);
+            } else if (pickler instanceof EmptyRecordSerde<?> emptyRecordSerde) {
+              return emptyRecordSerde.deserializeWithoutSignature(buffer);
+            } else if (pickler instanceof EnumPickler<?> enumPickler) {
+              return enumPickler.deserializeWithoutSignature(buffer);
+            } else {
+              throw new IllegalStateException("Unsupported serde type: " + pickler.getClass());
+            }
           };
           yield nullCheckAndDelegate(interfaceReader);
         } else {

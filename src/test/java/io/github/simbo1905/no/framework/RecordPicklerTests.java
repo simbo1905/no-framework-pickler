@@ -3,10 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import io.github.simbo1905.LoggingControl;
+import org.junit.jupiter.api.*;
 
 import java.nio.ByteBuffer;
 
@@ -14,6 +12,11 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class RecordPicklerTests {
+
+  @BeforeAll
+  static void setupLogging() {
+    LoggingControl.setupCleanLogging();
+  }
 
   public record SimpleLinkedList(int value, SimpleLinkedList next) {
     public SimpleLinkedList(int value) {

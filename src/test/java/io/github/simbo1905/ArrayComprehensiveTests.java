@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.logging.*;
 import java.util.stream.IntStream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
@@ -26,27 +25,7 @@ public class ArrayComprehensiveTests {
 
   @BeforeAll
   static void setupLogging() {
-    // Copy LoggingControl code inline
-    String logLevel = System.getProperty("java.util.logging.ConsoleHandler.level");
-    Level level = (logLevel != null) ? Level.parse(logLevel) : Level.WARNING;
-
-    Logger rootLogger = Logger.getLogger("");
-
-    for (Handler handler : rootLogger.getHandlers()) {
-      rootLogger.removeHandler(handler);
-    }
-
-    ConsoleHandler consoleHandler = new ConsoleHandler();
-    consoleHandler.setLevel(level);
-    consoleHandler.setFormatter(new java.util.logging.Formatter() {
-      @Override
-      public String format(LogRecord record) {
-        return String.format("%-7s %s - %s%n", record.getLevel(), record.getLoggerName(), record.getMessage());
-      }
-    });
-
-    rootLogger.addHandler(consoleHandler);
-    rootLogger.setLevel(level);
+    LoggingControl.setupCleanLogging();
   }
 
   // Test data types

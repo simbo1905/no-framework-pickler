@@ -287,13 +287,25 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
         .toList();
     final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
 
-    // Create dependency resolver callback
-    final Companion.DependencyResolver resolver = targetClass -> {
-      final var serde = serdes.get(targetClass);
-      if (serde == null) {
-        throw new IllegalStateException("No serde found for class: " + targetClass);
+    // Create dependency resolver callback with type signature resolution
+    final Companion.DependencyResolver resolver = new Companion.DependencyResolver() {
+      @Override
+      public Pickler<?> resolve(Class<?> targetClass) {
+        final var serde = serdes.get(targetClass);
+        if (serde == null) {
+          throw new IllegalStateException("No serde found for class: " + targetClass);
+        }
+        return serde;
       }
-      return serde;
+      
+      @Override
+      public Pickler<?> resolveBySignature(long typeSignature) {
+        final var serde = typeSignatureToSerde.get(typeSignature);
+        if (serde == null) {
+          throw new IllegalStateException("No serde found for type signature: 0x" + Long.toHexString(typeSignature));
+        }
+        return serde;
+      }
     };
 
     // Create EmptyRecordSerde instances first since they have no dependencies

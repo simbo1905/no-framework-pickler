@@ -3,6 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
+import io.github.simbo1905.LoggingControl;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -28,6 +30,11 @@ public class NestedMapTests {
   }
 
   public record MapOfLists(Map<String, List<Integer>> mapOfLists) {
+  }
+
+  @BeforeAll
+  static void setupLogging() {
+    LoggingControl.setupCleanLogging();
   }
 
   @Test
