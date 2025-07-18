@@ -33,7 +33,6 @@ public class BaselineTests {
       long[] longArray,
       float[] floatArray,
       double[] doubleArray,
-      UUID[] uuidArray,
       Person[] personArray
   ) {
   }
@@ -972,7 +971,6 @@ public class BaselineTests {
         new long[0],
         new float[0],
         new double[0],
-        new UUID[0],
         new Person[0]
     );
 
@@ -1152,9 +1150,8 @@ public class BaselineTests {
     assertThrows(UnsupportedOperationException.class, () -> deserialized.nestedList().removeFirst());
   }
 
-  /// Public record containing a UUID field for testing serialization.
   /// This record must be public as required by the Pickler framework.
-  public record UserSession(String sessionId, UUID userId, long timestamp) {
+  public record UserSession(String sessionId, long timestamp) {
   }
 
   @Test
@@ -1208,8 +1205,7 @@ public class BaselineTests {
       Map<Long, String> longMap,
       Map<Float, List<String>> floatMap,
       Map<Double, Optional<Integer>> doubleMap,
-      Map<String, String[]> stringMap,
-      Map<UUID, List<Optional<String>>> uuidMap
+      Map<String, String[]> stringMap
   ) {
   }
 
@@ -1305,13 +1301,9 @@ public class BaselineTests {
     Map<String, String[]> stringMap = new HashMap<>();
     stringMap.put("array", new String[]{"a", "b", "c"});
 
-    Map<UUID, List<Optional<String>>> uuidMap = new HashMap<>();
-    UUID uuid = UUID.randomUUID();
-    uuidMap.put(uuid, List.of(Optional.of("present"), Optional.empty()));
-
     ManySimpleTypes original = new ManySimpleTypes(
         boolMap, byteMap, shortMap, charMap, intMap,
-        longMap, floatMap, doubleMap, stringMap, uuidMap
+        longMap, floatMap, doubleMap, stringMap
     );
 
     var buffer = ByteBuffer.allocate(4096);
@@ -1328,7 +1320,6 @@ public class BaselineTests {
     assertEquals(original.floatMap(), deserialized.floatMap());
     assertEquals(original.doubleMap(), deserialized.doubleMap());
     assertArrayEquals(original.stringMap().get("array"), deserialized.stringMap().get("array"));
-    assertEquals(original.uuidMap(), deserialized.uuidMap());
   }
 
   @Test

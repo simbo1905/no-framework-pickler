@@ -1602,7 +1602,8 @@ sealed interface Companion permits Companion.Nothing {
 
   /// Compute a type signature from full class name, the component types, and component name
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr2[] componentTypes) {
-    String input = Stream.concat(Stream.of(clazz.getName()),
+    String input = Stream.concat(
+            Stream.concat(Stream.of(clazz.getName()), Stream.of(String.valueOf(components.length))),
             IntStream.range(0, components.length).boxed().flatMap(i ->
                 Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName()))))
         .collect(Collectors.joining("!"));
@@ -1632,14 +1633,17 @@ sealed interface Companion permits Companion.Nothing {
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(e.getMessage(), e);
     }
+    byte[] b = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
+    long l1 = bytesToLong(b, 0);
+    long l2 = bytesToLong(b, 8);
+    return l1 ^ l2;
+  }
 
-    byte[] hash = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
-
-    // Convert first CLASS_SIG_BYTES to long
-    //      Byte Index:   0       1       2        3        4        5        6        7
-    //      Bits:      [56-63] [48-55] [40-47] [32-39] [24-31] [16-23] [ 8-15] [ 0-7]
-    //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
-    result = IntStream.range(0, Long.BYTES).mapToLong(i -> (hash[i] & -FFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
+  static long bytesToLong(byte[] b, int offset) {
+    long result = 0;
+    for (int i = 0; i < 8; i++) {
+      result |= ((long) b[offset + i] & 0xff) << (56 - (i * 8));
+    }
     return result;
   }
 
@@ -1863,5 +1867,18 @@ sealed interface Companion permits Companion.Nothing {
           }
         })
         .toArray(MethodHandle[]::new);
+  }
+
+}
+
+class Debug {
+  public static void main(String[] args) {
+    String input = "io.github.simbo1905.no.framework.RecordPicklerTests$InnerRecordNullEndLinkedList!2!Inner!inner!InnerRecordNullEndLinkedList!next";
+    var hash = Companion.hashSignature(input);
+    LOGGER.info("input -> " + hash);
+    String input2 = "io.github.simbo1905.no.framework.RecordPicklerTests$LinkListEmptyEnd$LinkEnd!0";
+    var hash2 = Companion.hashSignature(input2);
+    LOGGER.info("input2 -> " + hash2);
+
   }
 }

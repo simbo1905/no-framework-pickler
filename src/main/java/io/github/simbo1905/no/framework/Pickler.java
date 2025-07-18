@@ -316,6 +316,10 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
         final var serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
 
         serdes.put(recordClass, serde);
+        LOGGER.fine(() -> "Registering EmptyRecordSerde " + recordClass.getName() + " with signature 0x" + Long.toHexString(typeSignature));
+        if (typeSignatureToSerde.containsKey(typeSignature)) {
+          LOGGER.severe(() -> "COLLISION: signature 0x" + Long.toHexString(typeSignature) + " already mapped to " + typeSignatureToSerde.get(typeSignature).getClass().getName());
+        }
         typeSignatureToSerde.put(typeSignature, serde);
         altSignature.ifPresent(aLong -> typeSignatureToSerde.put(aLong, serde));
       }
@@ -350,6 +354,10 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
 
         final var serde = new RecordSerde<>(recordClass, typeSignature, altSignature, sizers, writers, readers);
         serdes.put(recordClass, serde);
+        LOGGER.fine(() -> "Registering RecordSerde " + recordClass.getName() + " with signature 0x" + Long.toHexString(typeSignature));
+        if (typeSignatureToSerde.containsKey(typeSignature)) {
+          LOGGER.severe(() -> "COLLISION: signature 0x" + Long.toHexString(typeSignature) + " already mapped to " + typeSignatureToSerde.get(typeSignature).getClass().getName());
+        }
         typeSignatureToSerde.put(typeSignature, serde);
         altSignature.ifPresent(aLong -> typeSignatureToSerde.put(aLong, serde));
       }
