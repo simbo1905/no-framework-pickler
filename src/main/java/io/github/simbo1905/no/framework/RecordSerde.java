@@ -10,7 +10,6 @@ import java.lang.reflect.RecordComponent;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.IntStream;
@@ -31,37 +30,16 @@ final class RecordSerde<T> implements Pickler<T> {
 
   RecordSerde(Class<?> userType,
               long typeSignature,
-              Optional<Long> altTypeSignature
-  ) {
-    this(userType, typeSignature, altTypeSignature, null, null, null);
-  }
-
-  RecordSerde(Class<?> userType,
-              long typeSignature,
               Optional<Long> altTypeSignature,
-              SizerResolver sizerResolver,
-              WriterResolver writerResolver,
-              ReaderResolver readerResolver
-  ) {
+              Sizer[] sizers, Writer[] writers, Reader[] readers) {
     assert userType.isRecord() : "User type must be a record: " + userType;
     compatibilityMode = CompatibilityMode.current() == CompatibilityMode.ENABLED;
     this.userType = userType;
     this.typeSignature = typeSignature;
     this.altTypeSignature = altTypeSignature;
-
-    // Create component serdes directly without external resolvers
-    final var customHandlers = List.<SerdeHandler>of();
-    final var componentSerdes = Companion.buildComponentSerdes(
-        userType,
-        customHandlers,
-        sizerResolver != null ? sizerResolver : this::resolveTypeSizer,
-        writerResolver != null ? writerResolver : this::resolveTypeWriter,
-        readerResolver != null ? readerResolver : this::resolveTypeReader
-    );
-
-    this.sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Sizer[]::new);
-    this.writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Writer[]::new);
-    this.readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Reader[]::new);
+    this.sizers = sizers;
+    this.writers = writers;
+    this.readers = readers;
 
     final RecordComponent[] components = userType.getRecordComponents();
     assert components != null && components.length > 0 : "Record must have components: " + userType;
@@ -94,11 +72,8 @@ final class RecordSerde<T> implements Pickler<T> {
       final RecordComponent rc = components[i];
       componentTypes[i] = rc.getType();
     });
-
-    LOGGER.fine(() -> "RecordSerde " + userType.getSimpleName() + " construction complete with compatibility mode " + compatibilityMode +
-        ", type signature 0x" + Long.toHexString(typeSignature) +
-        ", alt type signature 0x" + altTypeSignature.map(Long::toHexString).orElse("none"));
   }
+
 
   @Override
   public int serialize(ByteBuffer buffer, T record) {

@@ -127,7 +127,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     } else {
       // Complex case: multiple records or dependencies require PicklerImpl
       LOGGER.fine(() -> "Creating PicklerImpl for complex record: " + clazz.getName());
-      return createPicklerImpl(clazz, recordClasses.stream().collect(Collectors.toSet()), dependencies, typeSignatures, enumToTypeSignatureMap);
+      return createPicklerImpl(clazz, new HashSet<>(recordClasses), dependencies, typeSignatures, enumToTypeSignatureMap);
     }
   }
 
@@ -231,18 +231,32 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
   }
 
   /// Create RecordSerde
-  private static <T> RecordSerde<T> createSimpleRecordSerde(Class<T> clazz, Map<Class<?>, Long> typeSignatures, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    final var recordClasses = List.<Class<?>>of(clazz);
+  private static <T> RecordSerde<T> createSimpleRecordSerde(Class<T> userType, Map<Class<?>, Long> typeSignatures, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+    final var recordClasses = List.<Class<?>>of(userType);
     final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
-    final var typeSignature = recordTypeSignatures.get(clazz);
-    final var altSignature = Optional.ofNullable(typeSignatures.get(clazz));
+    final var typeSignature = recordTypeSignatures.get(userType);
+    final var altSignature = Optional.ofNullable(typeSignatures.get(userType));
 
     // Create resolvers that handle enum types
     final SizerResolver sizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
     final WriterResolver writerResolver = createEnumWriterResolver(enumToTypeSignatureMap);
     final ReaderResolver readerResolver = createEnumReaderResolver(enumToTypeSignatureMap);
 
-    return new RecordSerde<>(clazz, typeSignature, altSignature, sizerResolver, writerResolver, readerResolver);
+    // Create component serdes directly without external resolvers
+    final var customHandlers = List.<SerdeHandler>of();
+    final var componentSerdes = Companion.buildComponentSerdes(
+        userType,
+        customHandlers,
+        sizerResolver,
+        writerResolver,
+        readerResolver
+    );
+
+    final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Sizer[]::new);
+    final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Writer[]::new);
+    final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Reader[]::new);
+
+    return new RecordSerde<>(userType, typeSignature, altSignature, sizers, writers, readers);
   }
 
   /// Create PicklerImpl for complex cases with delegation
@@ -328,16 +342,14 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
         final var typeSignature = recordTypeSignatures.get(recordClass);
         final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
         final var serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
-        
+
         serdes.put(recordClass, serde);
         typeSignatureToSerde.put(typeSignature, serde);
-        if (altSignature.isPresent()) {
-          typeSignatureToSerde.put(altSignature.get(), serde);
-        }
+        altSignature.ifPresent(aLong -> typeSignatureToSerde.put(aLong, serde));
       }
     }
 
-    // Create RecordSerde instances after dependencies are available
+    // Create placeholder RecordSerde instances first
     for (Class<?> recordClass : recordClasses) {
       if (recordClass.getRecordComponents().length > 0) {
         final var typeSignature = recordTypeSignatures.get(recordClass);
@@ -346,16 +358,39 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
             recordClass,
             typeSignature,
             altSignature,
+            null,
+            null,
+            null
+        );
+
+        serdes.put(recordClass, serde);
+        typeSignatureToSerde.put(typeSignature, serde);
+        altSignature.ifPresent(aLong -> typeSignatureToSerde.put(aLong, serde));
+      }
+    }
+
+    // Initialize all RecordSerde instances with resolvers
+    for (Class<?> recordClass : recordClasses) {
+      if (recordClass.getRecordComponents().length > 0) {
+        final var serde = (RecordSerde<?>) serdes.get(recordClass);
+        final var customHandlers = List.<SerdeHandler>of();
+        final var componentSerdes = Companion.buildComponentSerdes(
+            recordClass,
+            customHandlers,
             sizerResolver,
             writerResolver,
             readerResolver
         );
 
-        serdes.put(recordClass, serde);
-        typeSignatureToSerde.put(typeSignature, serde);
-        if (altSignature.isPresent()) {
-          typeSignatureToSerde.put(altSignature.get(), serde);
-        }
+        final var newSizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Sizer[]::new);
+        final var newWriters = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Writer[]::new);
+        final var newReaders = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Reader[]::new);
+
+        System.arraycopy(newSizers, 0, serde.sizers, 0, newSizers.length);
+        System.arraycopy(newWriters, 0, serde.writers, 0, newWriters.length);
+        System.arraycopy(newReaders, 0, serde.readers, 0, newReaders.length);
+
+        LOGGER.fine(() -> "RecordSerde " + recordClass.getSimpleName() + " initialization complete");
       }
     }
 
