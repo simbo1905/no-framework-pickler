@@ -30,6 +30,12 @@ sealed interface Companion permits Companion.Nothing {
   record Nothing() implements Companion {
   }
 
+  /// Callback interface for circular dependency resolution
+  @FunctionalInterface
+  interface DependencyResolver {
+    Pickler<?> resolve(Class<?> targetClass);
+  }
+
   String SHA_256 = "SHA-256";
   int SAMPLE_SIZE = 32;
   /// NULL_MARKER is used as a sentinel value to indicate null when we need to distinguish between null and a positive value (e.g., enum ordinals)
@@ -556,6 +562,33 @@ sealed interface Companion permits Companion.Nothing {
           Writer writer = createComponentWriter(typeExpr, getter, customWriters, customMarkers, typeWriterResolver);
           Reader reader = createComponentReader(typeExpr, customReaders, customMarkers, typeReaderResolver);
           Sizer sizer = createComponentSizer(typeExpr, getter, customSizers, customMarkers, typeSizerResolver);
+
+          return new ComponentSerde(writer, reader, sizer);
+        })
+        .toArray(ComponentSerde[]::new);
+  }
+
+  /// Build component serdes with lazy callback resolution
+  static ComponentSerde[] buildComponentSerdesWithCallback(
+      Class<?> recordClass,
+      DependencyResolver resolver
+  ) {
+    LOGGER.fine(() -> "Building ComponentSerde[] with callback for record: " + recordClass.getName());
+
+    RecordComponent[] components = recordClass.getRecordComponents();
+    MethodHandle[] getters = resolveGetters(recordClass, components);
+
+    return IntStream.range(0, components.length)
+        .mapToObj(i -> {
+          RecordComponent component = components[i];
+          MethodHandle getter = getters[i];
+          TypeExpr2 typeExpr = TypeExpr2.analyzeType(component.getGenericType(), List.of());
+
+          LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
+
+          Sizer sizer = createLazySizer(typeExpr, getter, resolver);
+          Writer writer = createLazyWriter(typeExpr, getter, resolver);
+          Reader reader = createLazyReader(typeExpr, resolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
@@ -1600,6 +1633,166 @@ sealed interface Companion permits Companion.Nothing {
     //      Shift:      <<56   <<48   <<40    <<32    <<24    <<16    <<8     <<0
     result = IntStream.range(0, Long.BYTES).mapToLong(i -> (hash[i] & -FFL) << (56 - i * 8)).reduce(0L, (a, b) -> a | b);
     return result;
+  }
+
+  /// Create lazy sizer that uses callback for record types
+  static Sizer createLazySizer(TypeExpr2 typeExpr, MethodHandle getter, DependencyResolver resolver) {
+    final Sizer sizerChain = createLazySizerChain(typeExpr, resolver);
+    return extractAndDelegate(sizerChain, getter);
+  }
+
+  /// Create lazy writer that uses callback for record types
+  static Writer createLazyWriter(TypeExpr2 typeExpr, MethodHandle getter, DependencyResolver resolver) {
+    final Writer writerChain = createLazyWriterChain(typeExpr, resolver);
+    return extractAndDelegateWriter(writerChain, getter);
+  }
+
+  /// Create lazy reader that uses callback for record types
+  static Reader createLazyReader(TypeExpr2 typeExpr, DependencyResolver resolver) {
+    return createLazyReaderChain(typeExpr, resolver);
+  }
+
+  /// Create lazy sizer chain with callback delegation
+  static Sizer createLazySizerChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
+    return switch (typeExpr) {
+      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
+      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+        Class<?> clazz = (Class<?>) javaType;
+        if (clazz.isRecord()) {
+          yield obj -> {
+            if (obj == null) return Byte.BYTES;
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            return Byte.BYTES + pickler.maxSizeOf(obj);
+          };
+        } else {
+          yield buildValueSizerInner(refValueType, javaType, cls -> {
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(cls);
+            return pickler::maxSizeOf;
+          });
+        }
+      }
+      case TypeExpr2.ArrayNode(var element, var ignored) -> {
+        final var elementSizer = createLazySizerChain(element, resolver);
+        yield createArraySizerInner(elementSizer);
+      }
+      case TypeExpr2.ListNode(var element) -> {
+        final var elementSizer = createLazySizerChain(element, resolver);
+        yield createListSizerInner(elementSizer);
+      }
+      case TypeExpr2.MapNode(var key, var value) -> {
+        final var keySizer = createLazySizerChain(key, resolver);
+        final var valueSizer = createLazySizerChain(value, resolver);
+        yield createMapSizerInner(keySizer, valueSizer);
+      }
+      case TypeExpr2.OptionalNode(var wrapped) -> {
+        final var valueSizer = createLazySizerChain(wrapped, resolver);
+        yield createOptionalSizerInner(valueSizer);
+      }
+    };
+  }
+
+  /// Create lazy writer chain with callback delegation
+  static Writer createLazyWriterChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
+    return switch (typeExpr) {
+      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
+      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+        Class<?> clazz = (Class<?>) javaType;
+        if (clazz.isRecord()) {
+          yield (buffer, obj) -> {
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(clazz);
+            pickler.serialize(buffer, obj);
+          };
+        } else {
+          yield buildValueWriter(refValueType, javaType, cls -> {
+            @SuppressWarnings("unchecked")
+            final var pickler = (Pickler<Object>) resolver.resolve(cls);
+            return pickler::serialize;
+          });
+        }
+      }
+      case TypeExpr2.ArrayNode(var element, var ignored) -> {
+        final var elementWriter = createLazyWriterChain(element, resolver);
+        yield createArrayRefWriter(elementWriter, element);
+      }
+      case TypeExpr2.ListNode(var element) -> {
+        final var elementWriter = createLazyWriterChain(element, resolver);
+        yield createListWriterInner(elementWriter);
+      }
+      case TypeExpr2.MapNode(var key, var value) -> {
+        final var keyWriter = createLazyWriterChain(key, resolver);
+        final var valueWriter = createLazyWriterChain(value, resolver);
+        yield createMapWriterInner(keyWriter, valueWriter);
+      }
+      case TypeExpr2.OptionalNode(var wrapped) -> {
+        final var valueWriter = createLazyWriterChain(wrapped, resolver);
+        yield createOptionalWriterInner(valueWriter);
+      }
+    };
+  }
+
+  /// Create lazy reader chain with callback delegation
+  static Reader createLazyReaderChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
+    return switch (typeExpr) {
+      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
+      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> {
+        final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
+        yield nullCheckAndDelegate(primitiveArrayReader);
+      }
+      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+        Class<?> clazz = (Class<?>) javaType;
+        if (clazz.isRecord()) {
+          final Reader recordReader = buffer -> {
+            final long typeSignature = buffer.getLong();
+            final var pickler = resolver.resolve(clazz);
+            if (pickler instanceof RecordSerde<?> recordSerde) {
+              return recordSerde.deserializeWithoutSignature(buffer);
+            } else if (pickler instanceof EmptyRecordSerde<?> emptyRecordSerde) {
+              return emptyRecordSerde.deserializeWithoutSignature(buffer);
+            } else {
+              throw new IllegalStateException("Unsupported serde type: " + pickler.getClass());
+            }
+          };
+          yield nullCheckAndDelegate(recordReader);
+        } else {
+          yield buildValueReader(refValueType, typeSignature -> {
+            // For non-record types, use the existing buildRefValueReader approach
+            throw new UnsupportedOperationException("Type signature resolution not supported for non-record types");
+          });
+        }
+      }
+      case TypeExpr2.ArrayNode(var element, var componentType) -> {
+        final Reader elementReader;
+        if (element instanceof TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored2)) {
+          final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
+          elementReader = nullCheckAndDelegate(primitiveArrayReader);
+        } else {
+          elementReader = createLazyReaderChain(element, resolver);
+        }
+        final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
+        yield nullCheckAndDelegate(nonNullArrayReader);
+      }
+      case TypeExpr2.ListNode(var element) -> {
+        final var elementReader = createLazyReaderChain(element, resolver);
+        final var nonNullListReader = createListReader(elementReader);
+        yield nullCheckAndDelegate(nonNullListReader);
+      }
+      case TypeExpr2.MapNode(var key, var value) -> {
+        final var keyReader = createLazyReaderChain(key, resolver);
+        final var valueReader = createLazyReaderChain(value, resolver);
+        final var nonNullMapReader = createMapReader(keyReader, valueReader);
+        yield nullCheckAndDelegate(nonNullMapReader);
+      }
+      case TypeExpr2.OptionalNode(var wrapped) -> {
+        final var valueReader = createLazyReaderChain(wrapped, resolver);
+        final var nonNullOptionalReader = createOptionalReader(valueReader);
+        yield nullCheckAndDelegate(nonNullOptionalReader);
+      }
+    };
   }
 
   /// Resolve getters for record components

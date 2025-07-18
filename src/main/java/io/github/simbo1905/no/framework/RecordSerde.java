@@ -34,15 +34,17 @@ final class RecordSerde<T> implements Pickler<T> {
               Sizer[] sizers, Writer[] writers, Reader[] readers) {
     assert userType.isRecord() : "User type must be a record: " + userType;
     compatibilityMode = CompatibilityMode.current() == CompatibilityMode.ENABLED;
-    this.userType = userType;
+    this.userType = Objects.requireNonNull(userType);
     this.typeSignature = typeSignature;
-    this.altTypeSignature = altTypeSignature;
-    this.sizers = sizers;
-    this.writers = writers;
-    this.readers = readers;
+    this.altTypeSignature = Objects.requireNonNull(altTypeSignature);
+    this.sizers = Objects.requireNonNull(sizers);
+    this.writers = Objects.requireNonNull(writers);
+    this.readers = Objects.requireNonNull(readers);
 
     final RecordComponent[] components = userType.getRecordComponents();
     assert components != null && components.length > 0 : "Record must have components: " + userType;
+    assert sizers.length == writers.length && writers.length == readers.length : 
+        "Sizers, writers, and readers arrays must have the same length";
 
     // Create method handles
     try {
