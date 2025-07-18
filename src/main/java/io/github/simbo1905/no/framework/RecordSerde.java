@@ -284,10 +284,12 @@ final class RecordSerde<T> implements Pickler<T> {
   }
 
   @SuppressWarnings("unchecked")
+  /// Sizer provides worst-case size estimates without performing computations for compression
+  /// FIXME try to hoist any such logic up to the factory method Pickler.forClass and delegate to that only
   Sizer resolveTypeSizer(Class<?> targetClass) {
     return obj -> {
       if (obj == null) return Byte.BYTES;
-      if (userType.isAssignableFrom(targetClass)) {
+      else if (userType.isAssignableFrom(targetClass)) {
         return this.maxSizeOf((T) obj);
       }
       throw new UnsupportedOperationException("Unhandled type: " + targetClass);
@@ -295,6 +297,8 @@ final class RecordSerde<T> implements Pickler<T> {
   }
 
   @SuppressWarnings("unchecked")
+  /// Writer handles serialization including compression computations for wire format
+  /// FIXME try to hoist any such logic up to the factory method Pickler.forClass and delegate to that only
   Writer resolveTypeWriter(Class<?> targetClass) {
     return (buffer, obj) -> {
       if (userType.isAssignableFrom(targetClass)) {
@@ -305,14 +309,17 @@ final class RecordSerde<T> implements Pickler<T> {
     };
   }
 
+  /// Reader handles deserialization including decompression computations from wire format
+  /// FIXME try to hoist any such logic up to the factory method Pickler.forClass and delegate to that only
   Reader resolveTypeReader(Long typeSignature) {
     return buffer -> {
       if (typeSignature == 0L) return null;
-      if (typeSignature == this.typeSignature) {
+      else if (typeSignature == this.typeSignature) {
         // When called via Companion's type resolution, the signature has already been read
         return this.deserializeWithoutSignature(buffer);
+      } else {
+        throw new UnsupportedOperationException("Type signature not supported by this record serde: " + typeSignature + " (expected: " + this.typeSignature + ")");
       }
-      throw new UnsupportedOperationException("Unhandled type signature: " + typeSignature);
     };
   }
 

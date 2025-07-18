@@ -3,6 +3,8 @@
 //
 package io.github.simbo1905.no.framework;
 
+import io.github.simbo1905.LoggingControl;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -12,22 +14,36 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /// Tests for enum constants in sealed interfaces - reproduces Paxos benchmark bug
 public class EnumConstantTests {
+  @BeforeAll
+  static void setupLogging() {
+    LoggingControl.setupCleanLogging();
+  }
 
   /// Simple enum to test serialization
-  enum Operation {
+  public enum Operation {
     NOOP, READ
   }
 
+  /// Another enum type to test multiple enums
+  public enum Priority {
+    LOW, MEDIUM, HIGH
+  }
+
   /// Sealed interface with enum constant (reproduces bug pattern)
-  sealed interface Command permits NoOperation, DataCommand {
+  public sealed interface Command permits NoOperation, DataCommand {
   }
 
   /// Record implementing sealed interface with enum constant
-  record NoOperation(Operation op) implements Command {
+  public record NoOperation(Operation op) implements Command {
   }
 
   /// Record with data implementing sealed interface
-  record DataCommand(byte[] data, Operation op) implements Command {
+  public record DataCommand(byte[] data, Operation op) implements Command {
+
+  }
+
+  /// Record with multiple enum types
+  public record MultiEnumRecord(Operation op, Priority priority) {
 
   }
 
@@ -55,5 +71,20 @@ public class EnumConstantTests {
       final var buffer = ByteBuffer.allocate(256);
       pickler.serialize(buffer, operation);
     }, "Enum in record serialization should work");
+  }
+
+  @Test
+  void testMultipleEnumsInRecord() {
+    final var pickler = Pickler.forClass(MultiEnumRecord.class);
+    final var record = new MultiEnumRecord(Operation.READ, Priority.HIGH);
+
+    final var buffer = ByteBuffer.allocate(256);
+    pickler.serialize(buffer, record);
+    buffer.flip();
+    
+    final var deserialized = pickler.deserialize(buffer);
+    assertThat(deserialized).isEqualTo(record);
+    assertThat(deserialized.op()).isEqualTo(Operation.READ);
+    assertThat(deserialized.priority()).isEqualTo(Priority.HIGH);
   }
 }

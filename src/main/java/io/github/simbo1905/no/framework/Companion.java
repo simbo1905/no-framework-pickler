@@ -32,6 +32,7 @@ sealed interface Companion permits Companion.Nothing {
 
   String SHA_256 = "SHA-256";
   int SAMPLE_SIZE = 32;
+  /// NULL_MARKER is used as a sentinel value to indicate null when we need to distinguish between null and a positive value (e.g., enum ordinals)
   byte NULL_MARKER = Byte.MIN_VALUE;
   byte NOT_NULL_MARKER = Byte.MAX_VALUE;
   /// FFL is a mask constant used to isolate the least significant byte (0xFF) as a long value.
@@ -270,6 +271,7 @@ sealed interface Companion permits Companion.Nothing {
       Map<?, ?> map = (Map<?, ?>) obj;
       final int positionBeforeWrite = buffer.position();
       ZigZagEncoding.putInt(buffer, Constants2.MAP.marker());
+      /// TODO do not write NULL_MARKER if we can use NOT_NULL_MARKER as a sentinel - for maps we could write NULL_MARKER as the size when map is null
       ZigZagEncoding.putInt(buffer, map.size());
       LOGGER.fine(() -> "Written map marker " + Constants2.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
@@ -358,6 +360,7 @@ sealed interface Companion permits Companion.Nothing {
       List<?> list = (List<?>) value;
       // Write LIST marker and size
       ZigZagEncoding.putInt(buffer, Constants2.LIST.marker());
+      /// TODO do not write NULL_MARKER if we can use NOT_NULL_MARKER as a sentinel - for lists we could write NULL_MARKER as the size when list is null
       ZigZagEncoding.putInt(buffer, list.size());
       // Write each element
       for (Object item : list) {
@@ -497,6 +500,7 @@ sealed interface Companion permits Companion.Nothing {
       ZigZagEncoding.putInt(buffer, marker);
       LOGGER.finer(() -> "Writing array marker " + marker + " at position " + posBeforeMarker + " for element type: " + element.toTreeString());
       int posBeforeLength = buffer.position();
+      /// TODO do not write NULL_MARKER if we can use NOT_NULL_MARKER as a sentinel - for arrays we could write NULL_MARKER as the length when array is null
       ZigZagEncoding.putInt(buffer, array.length);
       LOGGER.finer(() -> "Writing array length " + array.length + " at position " + posBeforeLength);
       // Write each element
@@ -617,7 +621,7 @@ sealed interface Companion permits Companion.Nothing {
         if (customReaders.containsKey(clazz)) {
           yield customReaders.get(clazz);
         } else {
-          yield buildValueReader2(refValueType, typeReaderResolver);
+          yield buildValueReader(refValueType, typeReaderResolver);
         }
       }
       case TypeExpr2.ArrayNode(var element, var componentType) -> {
@@ -1206,6 +1210,9 @@ sealed interface Companion permits Companion.Nothing {
         delegate.accept(buffer, value);
       };
     } else {
+      /// FIXME this is not being smart enough to see that if it is an array or enum we can use the NULL_MARKER sentinel trick
+      ///  to not need to write the NOT_NULL_MARKER we should be able to see from static analysis if it is a top level enum of array
+      ///  to do that optimisation
       return (buffer, record) -> {
         LOGGER.fine(() -> "Extracting ref value then will NULL check using accessor: " + accessor + " for record: " + record);
         final Object value;
@@ -1220,7 +1227,7 @@ sealed interface Companion permits Companion.Nothing {
           buffer.put(NULL_MARKER); // write a marker for null
         } else {
           LOGGER.finer(() -> "Writing NOT_NULL_MARKER=1 marker then delegating to writer for value at position: " + positionBefore);
-          buffer.put(NOT_NULL_MARKER); // write a marker for null
+          buffer.put(NOT_NULL_MARKER); // write a marker for not-null
           delegate.accept(buffer, value);
         }
       };
@@ -1455,13 +1462,6 @@ sealed interface Companion permits Companion.Nothing {
     return nullCheckAndDelegate(primitiveReader);
   }
 
-  /// Build value reader with callback for complex types - TypeExpr2 version
-  static Reader buildValueReader2(TypeExpr2.RefValueType refValueType,
-                                  ReaderResolver complexResolver) {
-    final Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
-    return nullCheckAndDelegate(primitiveReader);
-  }
-
   /// Build ref value reader with callback for complex types
   static Reader buildRefValueReader(TypeExpr2.RefValueType refValueType,
                                     ReaderResolver complexResolver) {
@@ -1530,8 +1530,8 @@ sealed interface Companion permits Companion.Nothing {
     return buffer -> {
       final int positionBefore = buffer.position();
       final byte nullMarker = buffer.get();
-      LOGGER.finer(() -> "Read null marker " + nullMarker + " at position " + positionBefore + 
-                   " (NULL=" + NULL_MARKER + ", NOT_NULL=" + NOT_NULL_MARKER + ")");
+      LOGGER.finer(() -> "Read null marker " + nullMarker + " at position " + positionBefore +
+          " (NULL=" + NULL_MARKER + ", NOT_NULL=" + NOT_NULL_MARKER + ")");
       if (nullMarker == NULL_MARKER) {
         return null;
       } else if (nullMarker == NOT_NULL_MARKER) {

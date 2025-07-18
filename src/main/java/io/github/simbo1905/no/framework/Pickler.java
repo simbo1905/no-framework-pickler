@@ -100,27 +100,34 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
       throw new IllegalArgumentException("No record classes found in hierarchy of: " + clazz);
     }
 
+    // Build enum-to-signature mapping
+    @SuppressWarnings("unchecked") final Map<Class<Enum<?>>, Long> enumToTypeSignatureMap = legalAndIllegalClasses.get(Boolean.TRUE).stream()
+        .filter(Class::isEnum)
+        .map(cls -> (Class<Enum<?>>) cls)
+        .filter(Enum.class::isAssignableFrom)
+        .collect(Collectors.toMap(
+            enumClass -> enumClass,
+            Companion::hashEnumSignature
+        ));
+
     // Phase 2: Analyze dependencies between record types
     final var dependencies = analyzeDependencies(recordClasses.stream().collect(Collectors.toSet()));
 
-    // Phase 3: Choose architecture based on complexity
-    LOGGER.fine(() -> "Dispatching pickler for " + clazz.getName() + " with " + clazz.getRecordComponents().length + " components");
-    
     // Check for empty record first
-    if (clazz.getRecordComponents().length == 0) {
+    if (clazz.isRecord() && clazz.getRecordComponents().length == 0) {
       LOGGER.fine(() -> "Creating EmptyRecordSerde for empty record: " + clazz.getName());
-      final Long typeSignature = typeSignatures.getOrDefault(clazz, 
+      final Long typeSignature = typeSignatures.getOrDefault(clazz,
           Companion.hashClassSignature(clazz, new RecordComponent[0], new TypeExpr2[0]));
       final Optional<Long> altTypeSignature = Optional.empty();
       return new EmptyRecordSerde<>(clazz, typeSignature, altTypeSignature);
-    } else if (recordClasses.size() == 1 && dependencies.get(clazz).isEmpty()) {
+    } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
-      return createSimpleRecordSerde(clazz, typeSignatures);
+      return createSimpleRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);
     } else {
       // Complex case: multiple records or dependencies require PicklerImpl
       LOGGER.fine(() -> "Creating PicklerImpl for complex record: " + clazz.getName());
-      return createPicklerImpl(clazz, recordClasses.stream().collect(Collectors.toSet()), dependencies, typeSignatures);
+      return createPicklerImpl(clazz, recordClasses.stream().collect(Collectors.toSet()), dependencies, typeSignatures, enumToTypeSignatureMap);
     }
   }
 
@@ -172,15 +179,70 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     return classes;
   }
 
-  /// Create simple RecordSerde for records with no record/enum dependencies
-  private static <T> RecordSerde<T> createSimpleRecordSerde(Class<T> clazz, Map<Class<?>, Long> typeSignatures) {
+  /// Create sizer resolver that handles enum types
+  private static SizerResolver createEnumSizerResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+    return targetClass -> {
+      if (targetClass.isEnum() && enumToTypeSignatureMap.containsKey(targetClass)) {
+        // Enum size is constant: type signature + worst-case ordinal (no separate null marker needed)
+        return obj -> Long.BYTES + Integer.BYTES;
+      }
+      return null; // Let RecordSerde handle its own types
+    };
+  }
+
+  /// Create writer resolver that handles enum types
+  private static WriterResolver createEnumWriterResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+    return targetClass -> {
+      if (targetClass.isEnum() && enumToTypeSignatureMap.containsKey(targetClass)) {
+        final Long enumTypeSignature = enumToTypeSignatureMap.get(targetClass);
+        return (buffer, obj) -> {
+          buffer.putLong(enumTypeSignature);
+          if (obj == null) {
+            ZigZagEncoding.putInt(buffer, Companion.NULL_MARKER); // -128 as sentinel for null enum
+          } else {
+            Enum<?> enumValue = (Enum<?>) obj;
+            ZigZagEncoding.putInt(buffer, enumValue.ordinal()); // ZigZag encode the ordinal
+          }
+        };
+      }
+      return null; // Let RecordSerde handle its own types
+    };
+  }
+
+  /// Create reader resolver that handles enum types
+  private static ReaderResolver createEnumReaderResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+    // Reverse mapping: signature -> enum class
+    final Map<Long, Class<Enum<?>>> signatureToEnumClass = enumToTypeSignatureMap.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
+    return typeSignature -> {
+      final Class<Enum<?>> enumClass = signatureToEnumClass.get(typeSignature);
+      if (enumClass != null) {
+        return buffer -> {
+          final int value = ZigZagEncoding.getInt(buffer);
+          if (value < 0) { // Negative value is the NULL_MARKER sentinel
+            return null;
+          }
+          return enumClass.getEnumConstants()[value];
+        };
+      }
+      return null; // Let RecordSerde handle its own types
+    };
+  }
+
+  /// Create RecordSerde
+  private static <T> RecordSerde<T> createSimpleRecordSerde(Class<T> clazz, Map<Class<?>, Long> typeSignatures, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     final var recordClasses = List.<Class<?>>of(clazz);
     final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
     final var typeSignature = recordTypeSignatures.get(clazz);
     final var altSignature = Optional.ofNullable(typeSignatures.get(clazz));
 
-    // No resolvers needed - all components are primitives or built-in types
-    return new RecordSerde<>(clazz, typeSignature, altSignature);
+    // Create resolvers that handle enum types
+    final SizerResolver sizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
+    final WriterResolver writerResolver = createEnumWriterResolver(enumToTypeSignatureMap);
+    final ReaderResolver readerResolver = createEnumReaderResolver(enumToTypeSignatureMap);
+
+    return new RecordSerde<>(clazz, typeSignature, altSignature, sizerResolver, writerResolver, readerResolver);
   }
 
   /// Create PicklerImpl for complex cases with delegation
@@ -188,7 +250,8 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
       Class<T> rootClass,
       Set<Class<?>> recordClasses,
       Map<Class<?>, Set<Class<?>>> dependencies,
-      Map<Class<?>, Long> typeSignatures) {
+      Map<Class<?>, Long> typeSignatures,
+      Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
 
     // Create the shared resolver map that all instances will use
     final var serdes = new HashMap<Class<?>, Pickler<?>>();
@@ -197,8 +260,19 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     // Compute type signatures for all record classes
     final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses.stream().toList());
 
+    // Create enum resolvers
+    final SizerResolver enumSizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
+    final WriterResolver enumWriterResolver = createEnumWriterResolver(enumToTypeSignatureMap);
+    final ReaderResolver enumReaderResolver = createEnumReaderResolver(enumToTypeSignatureMap);
+
     // Create resolver callbacks that delegate to the shared map
     final SizerResolver sizerResolver = (targetClass) -> {
+      // First check if enum resolver can handle it
+      final Sizer enumSizer = enumSizerResolver.apply(targetClass);
+      if (enumSizer != null) {
+        return enumSizer;
+      }
+
       final var serde = serdes.get(targetClass);
       if (serde == null) {
         throw new IllegalStateException("No serde found for class: " + targetClass);
@@ -210,6 +284,12 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     };
 
     final WriterResolver writerResolver = (targetClass) -> {
+      // First check if enum resolver can handle it
+      final Writer enumWriter = enumWriterResolver.apply(targetClass);
+      if (enumWriter != null) {
+        return enumWriter;
+      }
+
       final var serde = serdes.get(targetClass);
       if (serde == null) {
         throw new IllegalStateException("No serde found for class: " + targetClass);
@@ -221,6 +301,12 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
     };
 
     final ReaderResolver readerResolver = (typeSignature) -> {
+      // First check if enum resolver can handle it
+      final Reader enumReader = enumReaderResolver.apply(typeSignature);
+      if (enumReader != null) {
+        return enumReader;
+      }
+
       final var serde = typeSignatureToSerde.get(typeSignature);
       if (serde == null) {
         throw new IllegalStateException("No serde found for type signature: " + typeSignature);
