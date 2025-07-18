@@ -187,7 +187,7 @@ final class RecordSerde<T> implements Pickler<T> {
     LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read %d components at position %d/%d",
         userType.getSimpleName(), readers.length, buffer.position(), buffer.limit()));
 
-    IntStream.range(0, readers.length).forEach(i -> {
+    IntStream.range(0, Math.min(wireCount, readers.length)).forEach(i -> {
       final int componentIndex = i;
       final int readPosition = buffer.position();
       final int readLimit = buffer.limit();
