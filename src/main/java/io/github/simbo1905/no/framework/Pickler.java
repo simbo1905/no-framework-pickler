@@ -322,16 +322,27 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
       };
     };
 
-    // Create all RecordSerde instances with the shared resolvers
+    // Create EmptyRecordSerde instances first since they have no dependencies
     for (Class<?> recordClass : recordClasses) {
-      final var typeSignature = recordTypeSignatures.get(recordClass);
-      final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
-
-      final Pickler<?> serde;
       if (recordClass.getRecordComponents().length == 0) {
-        serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
-      } else {
-        serde = new RecordSerde<>(
+        final var typeSignature = recordTypeSignatures.get(recordClass);
+        final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
+        final var serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
+        
+        serdes.put(recordClass, serde);
+        typeSignatureToSerde.put(typeSignature, serde);
+        if (altSignature.isPresent()) {
+          typeSignatureToSerde.put(altSignature.get(), serde);
+        }
+      }
+    }
+
+    // Create RecordSerde instances after dependencies are available
+    for (Class<?> recordClass : recordClasses) {
+      if (recordClass.getRecordComponents().length > 0) {
+        final var typeSignature = recordTypeSignatures.get(recordClass);
+        final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
+        final var serde = new RecordSerde<>(
             recordClass,
             typeSignature,
             altSignature,
@@ -339,12 +350,12 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, PicklerImpl, Record
             writerResolver,
             readerResolver
         );
-      }
 
-      serdes.put(recordClass, serde);
-      typeSignatureToSerde.put(typeSignature, serde);
-      if (altSignature.isPresent()) {
-        typeSignatureToSerde.put(altSignature.get(), serde);
+        serdes.put(recordClass, serde);
+        typeSignatureToSerde.put(typeSignature, serde);
+        if (altSignature.isPresent()) {
+          typeSignatureToSerde.put(altSignature.get(), serde);
+        }
       }
     }
 

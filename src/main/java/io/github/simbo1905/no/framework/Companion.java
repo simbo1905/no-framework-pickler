@@ -1546,6 +1546,7 @@ sealed interface Companion permits Companion.Nothing {
   /// Compute type signatures for all record classes using streams using the generic type information
   static Map<Class<?>, Long> computeRecordTypeSignatures(List<Class<?>> recordClasses) {
     return recordClasses.stream()
+        .filter(Class::isRecord) // Only process actual record classes
         .collect(Collectors.toMap(
             clz -> clz,
             clz -> {
@@ -1553,18 +1554,22 @@ sealed interface Companion permits Companion.Nothing {
               final var typeExprs = Arrays.stream(components)
                   .map(comp -> TypeExpr2.analyzeType(comp.getGenericType(), Set.of()))
                   .toArray(TypeExpr2[]::new);
-              return hashClassSignature(clz, components, typeExprs);
+              final var signature = hashClassSignature(clz, components, typeExprs);
+              LOGGER.finer(() -> "Computed type signature for " + clz.getName() + ": 0x" + Long.toHexString(signature));
+              return signature;
             }
         ));
   }
 
   /// Compute a type signature from full class name, the component types, and component name
   static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr2[] componentTypes) {
-    String input = Stream.concat(Stream.of(clazz.getSimpleName()),
+    String input = Stream.concat(Stream.of(clazz.getName()),
             IntStream.range(0, components.length).boxed().flatMap(i ->
                 Stream.concat(Stream.of(componentTypes[i].toTreeString()), Stream.of(components[i].getName()))))
         .collect(Collectors.joining("!"));
-    return hashSignature(input);
+    final var signature = hashSignature(input);
+    LOGGER.fine(() -> "Signature for " + clazz.getName() + " input '" + input + "' -> 0x" + Long.toHexString(signature));
+    return signature;
   }
 
   /// Compute a type signature from enum class full name and constant names
@@ -1577,6 +1582,7 @@ sealed interface Companion permits Companion.Nothing {
 
   /// This method computes a 64 bit signature from a unique string representation by hashing it using SHA-256
   /// then extracting the first `Long.BYTES` big endian bytes into a long.
+  /// INTERNAL USE ONLY - Use hashClassSignature() or hashEnumSignature() instead
   static long hashSignature(String uniqueNess) {
     long result;
     final MessageDigest digest;

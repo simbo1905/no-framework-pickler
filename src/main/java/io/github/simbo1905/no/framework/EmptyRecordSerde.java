@@ -54,7 +54,9 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
     LOGGER.fine(() -> "EmptyRecordSerde " + userType.getName() + " Serializing empty record " + userType.getSimpleName() + " with type signature 0x" +
         Long.toHexString(typeSignature) + " at position " + buffer.position());
     buffer.putLong(typeSignature);
+    LOGGER.finer(() -> "EmptyRecordSerde wrote type signature 0x" + Long.toHexString(typeSignature) + " at position " + (buffer.position() - Long.BYTES) + " to " + (buffer.position() - 1));
     ZigZagEncoding.putInt(buffer, 0); // Empty record has zero components
+    LOGGER.finer(() -> "EmptyRecordSerde wrote component count 0 at position " + (buffer.position() - ZigZagEncoding.sizeOf(0)) + " to " + (buffer.position() - 1));
     return Long.BYTES + ZigZagEncoding.sizeOf(0); // Type signature + zero component count
   }
 
@@ -82,7 +84,9 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
         " deserializeWithoutSignature() at position " + buffer.position());
 
     final int count = ZigZagEncoding.getInt(buffer);
+    LOGGER.finer(() -> "EmptyRecordSerde read component count " + count + " from position " + (buffer.position() - ZigZagEncoding.sizeOf(count)) + " to " + (buffer.position() - 1));
     assert count == 0 : "Empty record should have zero components, but got " + count;
+    LOGGER.finer(() -> "EmptyRecordSerde returning singleton instance of " + userType.getSimpleName());
     return singleton;
   }
 
