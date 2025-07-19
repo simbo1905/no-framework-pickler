@@ -29,7 +29,6 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     LoggingControl.setupCleanLogging();
   }
 
-  
 
   @Override
   public boolean canProvideFor(TypeUsage targetType) {
@@ -50,11 +49,13 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
       case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.ArrayNode(var element, var ignored) -> Array.newInstance(toClass(element), 0).getClass();
+      case TypeExpr2.ArrayNode(var element, var ignored) ->
+        // Recursively determine the element class and create an array class from it.
+          java.lang.reflect.Array.newInstance(toClass(element), 0).getClass();
       case TypeExpr2.ListNode(var ignored) -> List.class;
       case TypeExpr2.OptionalNode(var ignored) -> Optional.class;
       case TypeExpr2.MapNode(var ignored, var ignored2) -> Map.class;
-        case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> (Class<?>) arrayType;
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> (Class<?>) arrayType;
     };
   }
 
@@ -215,17 +216,19 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         // TODO: handle CUSTOM type
         case CUSTOM -> Arbitraries.of();
       };
-      case TypeExpr2.ArrayNode(var element, var componentType) -> {
-          // ArrayNode represents an array type
-          // The element field contains the TypeExpr2 for what's inside the array
-          // The componentType is redundant - it's just the Java type of the element
-          
-          // Recursively create arbitrary for the element type
-          Arbitrary<?> elementArbitrary = arbitraryFor(element);
-          
-          // Create the array class from componentType
-          Class<?> arrayClass = java.lang.reflect.Array.newInstance(componentType, 0).getClass();
-          yield elementArbitrary.array((Class<Object>) arrayClass);
+      case TypeExpr2.ArrayNode(var element, var ignoredComponentType) -> {
+        // 1. Recursively create an arbitrary for the element type.
+        Arbitrary<?> elementArbitrary = arbitraryFor(element);
+
+        // 2. Determine the Java Class of the element from its structure.
+        Class<?> elementClass = toClass(element);
+
+        // 3. Create the target array's class (e.g., int[][].class from int[].class).
+        Class<?> arrayClass = java.lang.reflect.Array.newInstance(elementClass, 0).getClass();
+
+        // 4. Use the element arbitrary to generate an array of the correct type.
+        // The cast to (Class) is necessary for jQwik's API.
+        yield elementArbitrary.array((Class) arrayClass);
       }
       case TypeExpr2.ListNode(var element) -> arbitraryFor(element).list();
       case TypeExpr2.OptionalNode(var wrapped) -> arbitraryFor(wrapped).optional();
@@ -234,21 +237,21 @@ public class ITExhaustiveTests implements ArbitraryProvider {
       case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) -> {
         // JQwik does not directly support primitive arrays, so we create a list of wrappers and convert it.
         Arbitrary<?> wrapperArbitrary = switch (primitiveType) {
-            case BOOLEAN -> Arbitraries.of(true, false);
-            case BYTE -> Arbitraries.bytes();
-            case SHORT -> Arbitraries.shorts();
-            case CHARACTER -> Arbitraries.chars();
-            case INTEGER -> Arbitraries.integers();
-            case LONG -> Arbitraries.longs();
-            case FLOAT -> Arbitraries.floats();
-            case DOUBLE -> Arbitraries.doubles();
+          case BOOLEAN -> Arbitraries.of(true, false);
+          case BYTE -> Arbitraries.bytes();
+          case SHORT -> Arbitraries.shorts();
+          case CHARACTER -> Arbitraries.chars();
+          case INTEGER -> Arbitraries.integers();
+          case LONG -> Arbitraries.longs();
+          case FLOAT -> Arbitraries.floats();
+          case DOUBLE -> Arbitraries.doubles();
         };
         yield wrapperArbitrary.list().map(list -> {
-            Object primitiveArray = Array.newInstance(((Class<?>) arrayType).getComponentType(), list.size());
-            for (int i = 0; i < list.size(); i++) {
-                Array.set(primitiveArray, i, list.get(i));
-            }
-            return primitiveArray;
+          Object primitiveArray = Array.newInstance(((Class<?>) arrayType).getComponentType(), list.size());
+          for (int i = 0; i < list.size(); i++) {
+            Array.set(primitiveArray, i, list.get(i));
+          }
+          return primitiveArray;
         });
       }
     };
@@ -409,65 +412,65 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     }
   }
 
- @SuppressWarnings("unchecked")
-private Arbitrary<?> createRecordArbitrary(Class<?> recordClass) {
+  @SuppressWarnings("unchecked")
+  private Arbitrary<?> createRecordArbitrary(Class<?> recordClass) {
     if (recordClass == TestRecord.class) {
-        // Create arbitrary for TestRecord(int value)
-        return Arbitraries.integers().map(TestRecord::new);
+      // Create arbitrary for TestRecord(int value)
+      return Arbitraries.integers().map(TestRecord::new);
     }
-    
+
     // For other record types, try to use reflection to build them
     RecordComponent[] components = recordClass.getRecordComponents();
     if (components.length == 0) {
-        // No-arg record constructor
-        try {
-            java.lang.reflect.Constructor<?> constructor = recordClass.getConstructor();
-            return Arbitraries.just(constructor.newInstance());
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot create arbitrary for record: " + recordClass, e);
-        }
+      // No-arg record constructor
+      try {
+        java.lang.reflect.Constructor<?> constructor = recordClass.getConstructor();
+        return Arbitraries.just(constructor.newInstance());
+      } catch (Exception e) {
+        throw new IllegalStateException("Cannot create arbitrary for record: " + recordClass, e);
+      }
     }
-    
+
     if (components.length == 1) {
-        // Single component record
-        Class<?> componentType = components[0].getType();
-        TypeExpr2 componentTypeExpr = createTypeExprFromClass(componentType);
-        Arbitrary<?> componentArbitrary = arbitraryFor(componentTypeExpr);
-        
-        return componentArbitrary.map(value -> {
-            try {
-                java.lang.reflect.Constructor<?> constructor = recordClass.getConstructor(componentType);
-                return constructor.newInstance(value);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to create record instance", e);
-            }
-        });
+      // Single component record
+      Class<?> componentType = components[0].getType();
+      TypeExpr2 componentTypeExpr = createTypeExprFromClass(componentType);
+      Arbitrary<?> componentArbitrary = arbitraryFor(componentTypeExpr);
+
+      return componentArbitrary.map(value -> {
+        try {
+          java.lang.reflect.Constructor<?> constructor = recordClass.getConstructor(componentType);
+          return constructor.newInstance(value);
+        } catch (Exception e) {
+          throw new RuntimeException("Failed to create record instance", e);
+        }
+      });
     }
-    
+
     // For multi-component records, this would need more complex handling
     throw new IllegalStateException("Multi-component record handling not implemented: " + recordClass);
-}
+  }
 
-private TypeExpr2 createTypeExprFromClass(Class<?> clazz) {
+  private TypeExpr2 createTypeExprFromClass(Class<?> clazz) {
     if (clazz == int.class) {
-        return new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.INTEGER, int.class);
+      return new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.INTEGER, int.class);
     }
     if (clazz == boolean.class) {
-        return new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.BOOLEAN, boolean.class);
+      return new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.BOOLEAN, boolean.class);
     }
     if (clazz == Integer.class) {
-        return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.INTEGER, Integer.class);
+      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.INTEGER, Integer.class);
     }
     if (clazz == String.class) {
-        return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
+      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
     }
     if (clazz == TestRecord.class) {
-        return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.RECORD, TestRecord.class);
+      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.RECORD, TestRecord.class);
     }
     if (clazz == TestEnum.class) {
-        return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.ENUM, TestEnum.class);
+      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.ENUM, TestEnum.class);
     }
     // Add more mappings as needed
     throw new IllegalArgumentException("Unsupported class type: " + clazz);
-}
+  }
 }
