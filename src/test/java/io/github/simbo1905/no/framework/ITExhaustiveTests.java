@@ -216,9 +216,16 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         case CUSTOM -> Arbitraries.of();
       };
       case TypeExpr2.ArrayNode(var element, var componentType) -> {
-          // JQwik's array() method needs the array class (int[].class), not the component type (int.class)
+          // ArrayNode represents an array type
+          // The element field contains the TypeExpr2 for what's inside the array
+          // The componentType is redundant - it's just the Java type of the element
+          
+          // Recursively create arbitrary for the element type
+          Arbitrary<?> elementArbitrary = arbitraryFor(element);
+          
+          // Create the array class from componentType
           Class<?> arrayClass = java.lang.reflect.Array.newInstance(componentType, 0).getClass();
-          yield arbitraryFor(element).array((Class<Object>) arrayClass);
+          yield elementArbitrary.array((Class<Object>) arrayClass);
       }
       case TypeExpr2.ListNode(var element) -> arbitraryFor(element).list();
       case TypeExpr2.OptionalNode(var wrapped) -> arbitraryFor(wrapped).optional();
