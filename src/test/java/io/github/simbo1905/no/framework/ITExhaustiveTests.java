@@ -104,7 +104,17 @@ public class ITExhaustiveTests implements ArbitraryProvider {
   private Arbitrary<TypeExpr2> singleContainers(Arbitrary<TypeExpr2> valueTypes) {
     final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
     return Arbitraries.oneOf(
-        valueTypes.map(vt -> new TypeExpr2.ArrayNode(vt, toClass(vt))),
+        valueTypes.map(vt -> {
+            if (vt instanceof TypeExpr2.PrimitiveValueNode pvn) {
+                // Correctly create a PrimitiveArrayNode for primitive elements
+                Class<?> componentType = (Class<?>) pvn.javaType();
+                Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
+                return new TypeExpr2.PrimitiveArrayNode(pvn.type(), arrayType);
+            } else {
+                // Use ArrayNode for all other element types (references, containers)
+                return new TypeExpr2.ArrayNode(vt, toClass(vt));
+            }
+        }),
         valueTypes.map(TypeExpr2.ListNode::new),
         valueTypes.map(TypeExpr2.OptionalNode::new),
         // Map with String keys to avoid key type explosion
@@ -118,7 +128,17 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
 
     return Arbitraries.oneOf(
-        singleContainers.map(sc -> new TypeExpr2.ArrayNode(sc, toClass(sc))),      // Array(Container(Value))
+        singleContainers.map(sc -> {
+            if (sc instanceof TypeExpr2.PrimitiveValueNode pvn) {
+                // Correctly create a PrimitiveArrayNode for primitive elements
+                Class<?> componentType = (Class<?>) pvn.javaType();
+                Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
+                return new TypeExpr2.PrimitiveArrayNode(pvn.type(), arrayType);
+            } else {
+                // Use ArrayNode for all other element types (references, containers)
+                return new TypeExpr2.ArrayNode(sc, toClass(sc));
+            }
+        }),      // Array(Container(Value))
         singleContainers.map(TypeExpr2.ListNode::new),
         singleContainers.map(TypeExpr2.OptionalNode::new),
         singleContainers.map(s -> new TypeExpr2.MapNode(stringType, s)),
@@ -131,13 +151,31 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
     Arbitrary<TypeExpr2> essentialDouble = Arbitraries.oneOf(
         valueTypes.map(v -> new TypeExpr2.ArrayNode(new TypeExpr2.ListNode(v), List.class)),           // Array(List(Value))
-        valueTypes.map(v -> new TypeExpr2.ListNode(new TypeExpr2.ArrayNode(v, toClass(v)))),           // List(Array(Value))
-        valueTypes.map(v -> new TypeExpr2.OptionalNode(new TypeExpr2.ArrayNode(v, toClass(v)))),       // Optional(Array(Value))
+        valueTypes.map(v -> new TypeExpr2.ListNode(
+            (v instanceof TypeExpr2.PrimitiveValueNode pvn) ?
+                new TypeExpr2.PrimitiveArrayNode(pvn.type(), Array.newInstance((Class<?>) pvn.javaType(), 0).getClass()) :
+                new TypeExpr2.ArrayNode(v, toClass(v))
+        )),           // List(Array(Value))
+        valueTypes.map(v -> new TypeExpr2.OptionalNode(
+            (v instanceof TypeExpr2.PrimitiveValueNode pvn) ?
+                new TypeExpr2.PrimitiveArrayNode(pvn.type(), Array.newInstance((Class<?>) pvn.javaType(), 0).getClass()) :
+                new TypeExpr2.ArrayNode(v, toClass(v))
+        )),       // Optional(Array(Value))
         valueTypes.map(v -> new TypeExpr2.MapNode(stringType, new TypeExpr2.ListNode(v))), // Map<String, List<Value>>
         valueTypes.map(v -> new TypeExpr2.MapNode(new TypeExpr2.ListNode(v), stringType))  // Map<List<Value>, String>
     );
 
-    return essentialDouble.map(ed -> new TypeExpr2.ArrayNode(ed, toClass(ed)));  // Array(essential double combinations)
+    return essentialDouble.map(ed -> {
+        if (ed instanceof TypeExpr2.PrimitiveValueNode pvn) {
+            // Correctly create a PrimitiveArrayNode for primitive elements
+            Class<?> componentType = (Class<?>) pvn.javaType();
+            Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
+            return new TypeExpr2.PrimitiveArrayNode(pvn.type(), arrayType);
+        } else {
+            // Use ArrayNode for all other element types (references, containers)
+            return new TypeExpr2.ArrayNode(ed, toClass(ed));
+        }
+    });  // Array(essential double combinations)
   }
 
   private static final AtomicLong classCounter = new AtomicLong(0);

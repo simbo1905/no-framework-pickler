@@ -239,4 +239,28 @@ public class Ast2Tests {
     assertThat(deserialized.value().keySet().stream().findFirst().get()).containsExactly(true, false);
     assertEquals(original.value().get(new Boolean[]{true, false}), deserialized.value().get(new Boolean[]{true, false}));
   }
+
+  public record GenRecord_MapArrayBooleanToString(java.util.Map<java.lang.Boolean[], java.lang.String> value) {
+  }
+
+  @Test
+  void testGenRecord_MapArrayBooleanToString() {
+    final Pickler<GenRecord_MapArrayBooleanToString> pickler = Pickler.forClass(GenRecord_MapArrayBooleanToString.class);
+    final GenRecord_MapArrayBooleanToString original = new GenRecord_MapArrayBooleanToString(Map.of(new Boolean[]{true, false}, "test"));
+    LOGGER.fine(() -> "Original record: " + original);
+    LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
+
+    final ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+    pickler.serialize(buffer, original);
+    buffer.flip();
+
+    final GenRecord_MapArrayBooleanToString deserialized = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized record: " + deserialized);
+
+    assertEquals(original.value().size(), deserialized.value().size());
+    //noinspection OptionalGetWithoutIsPresent
+    assertThat(deserialized.value().keySet().stream().findFirst().get()).containsExactly(true, false);
+    assertEquals(original.value().get(new Boolean[]{true, false}), deserialized.value().get(new Boolean[]{true, false}));
+  }
+
 }
