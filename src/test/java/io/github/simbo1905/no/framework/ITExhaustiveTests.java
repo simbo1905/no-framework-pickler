@@ -197,7 +197,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     String fullClassName = "io.github.simbo1905.no.framework.generated." + recordName;
 
     String sourceCode = generateRecordSource(recordName, typeExpr);
-    LOGGER.info(() -> "Generated source for " + typeExpr.toTreeString() + ": " + sourceCode);
+    LOGGER.fine(() -> "Generated source for " + typeExpr.toTreeString() + ": " + sourceCode);
 
     Class<?> compiledClass = CompileAndLoadClass.compileAndClassLoad(fullClassName, sourceCode);
 
@@ -431,29 +431,30 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     } else if (expected instanceof Map<?, ?> expectedMap && actual instanceof Map<?, ?> actualMap) {
       assertEquals(expectedMap.size(), actualMap.size(), "Map size differs");
 
-      // For each entry in the expected map...
+      // Track which actual entries we've already matched
+      boolean[] used = new boolean[actualMap.size()];
+      List<Map.Entry<?, ?>> actualEntries = new ArrayList<>(actualMap.entrySet());
+
+      outer:
       for (Map.Entry<?, ?> expectedEntry : expectedMap.entrySet()) {
         Object expectedKey = expectedEntry.getKey();
         Object expectedValue = expectedEntry.getValue();
 
-        // ...find the corresponding entry in the actual map by deep-comparing the keys.
-        // This avoids using Map.get(), which fails for array keys.
-        Map.Entry<?, ?> actualEntry = actualMap.entrySet().stream()
-            .filter(e -> {
-              try {
-                // Use our existing deep equals logic to compare the keys
-                assertDeepEquals(expectedKey, e.getKey());
-                return true;
-              } catch (Exception | Error ex) {
-                return false;
-              }
-            })
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("No matching key found for: " + expectedKey));
-
-        // Now, compare the values of the two entries that have been matched by key.
-        assertDeepEquals(expectedValue, actualEntry.getValue());
+        for (int i = 0; i < actualEntries.size(); i++) {
+          if (used[i]) continue;
+          Map.Entry<?, ?> actualEntry = actualEntries.get(i);
+          try {
+            assertDeepEquals(expectedKey, actualEntry.getKey());
+            assertDeepEquals(expectedValue, actualEntry.getValue());
+            used[i] = true; // Found a unique match, mark as used
+            continue outer;
+          } catch (AssertionError | Exception ignore) {
+            // Not a match, keep looking
+          }
+        }
+        throw new AssertionError("No matching entry in actual map for expected entry: " + expectedEntry);
       }
+      // Optionally, check that all actual entries have been matched if duplication is possible
     } else if (expected instanceof Optional<?> expectedOptional && actual instanceof Optional<?> actualOptional) {
       assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs");
       if (expectedOptional.isPresent()) {
