@@ -14,22 +14,22 @@ import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
 /// Public sealed interface for the Type Expression protocol with marker support
 /// All type expression nodes are nested within this interface to provide a clean API
-sealed interface TypeExpr2 permits
-    TypeExpr2.ArrayNode, TypeExpr2.ListNode, TypeExpr2.OptionalNode, TypeExpr2.MapNode,
-    TypeExpr2.RefValueNode, TypeExpr2.PrimitiveValueNode, TypeExpr2.PrimitiveArrayNode {
+sealed interface TypeExpr permits
+    TypeExpr.ArrayNode, TypeExpr.ListNode, TypeExpr.OptionalNode, TypeExpr.MapNode,
+    TypeExpr.RefValueNode, TypeExpr.PrimitiveValueNode, TypeExpr.PrimitiveArrayNode {
 
   /// A special marker for user-defined types that are serialized using a type signature.
   /// This marker should never be written to the wire due to static analysis knowing we are dealing with a user type.
   int VOID_MARKER = 0;
 
   /// Recursive descent parser for Java types - builds tree bottom-up with markers
-  static TypeExpr2 analyzeType(Type type, Collection<SerdeHandler> customHandlers) {
+  static TypeExpr analyzeType(Type type, Collection<SerdeHandler> customHandlers) {
     final var result = analyzeTypeInner(type, customHandlers);
-    LOGGER.finer(() -> "Got TypeExpr2: " + result.toTreeString());
+    LOGGER.finer(() -> "Got TypeExpr: " + result.toTreeString());
     return result;
   }
 
-  private static @NotNull TypeExpr2 analyzeTypeInner(Type type, Collection<SerdeHandler> customHandlers) {
+  private static @NotNull TypeExpr analyzeTypeInner(Type type, Collection<SerdeHandler> customHandlers) {
     LOGGER.finer(() -> "Analyzing type: " + type);
 
     // Handle arrays first (both primitive arrays and object arrays)
@@ -42,7 +42,7 @@ sealed interface TypeExpr2 permits
           final var primitiveType = classifyPrimitiveClass(componentType);
           return new PrimitiveArrayNode(primitiveType, clazz);
         } else {
-          TypeExpr2 elementTypeExpr = analyzeType(componentType, customHandlers);
+          TypeExpr elementTypeExpr = analyzeType(componentType, customHandlers);
           LOGGER.finer(() -> "Created array node for: " + clazz + " with element type: " + elementTypeExpr.toTreeString());
           return new ArrayNode(elementTypeExpr, componentType);
         }
@@ -73,7 +73,7 @@ sealed interface TypeExpr2 permits
     // Handle generic array types (e.g., T[] where T is a type parameter)
     if (type instanceof GenericArrayType genericArrayType) {
       LOGGER.finer(() -> "Processing generic array type: " + genericArrayType);
-      TypeExpr2 elementTypeExpr = analyzeType(genericArrayType.getGenericComponentType(), customHandlers);
+      TypeExpr elementTypeExpr = analyzeType(genericArrayType.getGenericComponentType(), customHandlers);
       Type componentType = genericArrayType.getGenericComponentType();
       LOGGER.finer(() -> "Generic array component type: " + componentType + " of class " + componentType.getClass().getName());
 
@@ -92,7 +92,7 @@ sealed interface TypeExpr2 permits
         // Handle List<T>
         if (java.util.List.class.isAssignableFrom(rawClass)) {
           if (typeArgs.length == 1) {
-            TypeExpr2 elementTypeExpr = analyzeType(typeArgs[0], customHandlers);
+            TypeExpr elementTypeExpr = analyzeType(typeArgs[0], customHandlers);
             return new ListNode(elementTypeExpr);
           } else {
             throw new IllegalArgumentException("List must have exactly one type argument: " + type);
@@ -102,7 +102,7 @@ sealed interface TypeExpr2 permits
         // Handle Optional<T>
         if (java.util.Optional.class.isAssignableFrom(rawClass)) {
           if (typeArgs.length == 1) {
-            TypeExpr2 wrappedTypeExpr = analyzeType(typeArgs[0], customHandlers);
+            TypeExpr wrappedTypeExpr = analyzeType(typeArgs[0], customHandlers);
             return new OptionalNode(wrappedTypeExpr);
           } else {
             throw new IllegalArgumentException("Optional must have exactly one type argument: " + type);
@@ -112,8 +112,8 @@ sealed interface TypeExpr2 permits
         // Handle Map<K,V>
         if (java.util.Map.class.isAssignableFrom(rawClass)) {
           if (typeArgs.length == 2) {
-            TypeExpr2 keyTypeExpr = analyzeType(typeArgs[0], customHandlers);
-            TypeExpr2 valueTypeExpr = analyzeType(typeArgs[1], customHandlers);
+            TypeExpr keyTypeExpr = analyzeType(typeArgs[0], customHandlers);
+            TypeExpr valueTypeExpr = analyzeType(typeArgs[1], customHandlers);
             return new MapNode(keyTypeExpr, valueTypeExpr);
           } else {
             throw new IllegalArgumentException("Map must have exactly two type arguments: " + type);
@@ -238,7 +238,7 @@ sealed interface TypeExpr2 permits
     throw new IllegalArgumentException("Unsupported reference class type: " + clazz);
   }
 
-  static Stream<Class<?>> classesInAST(TypeExpr2 structure) {
+  static Stream<Class<?>> classesInAST(TypeExpr structure) {
     return switch (structure) {
       case ArrayNode(var element, var javaType) -> Stream.concat(
           Stream.of(javaType),
@@ -277,7 +277,7 @@ sealed interface TypeExpr2 permits
   boolean isRecord();
 
   /// Container node for arrays - has one child (element type)
-  record ArrayNode(TypeExpr2 element, Class<?> componentType) implements TypeExpr2 {
+  record ArrayNode(TypeExpr element, Class<?> componentType) implements TypeExpr {
     public ArrayNode {
       java.util.Objects.requireNonNull(element, "Array element type cannot be null");
     }
@@ -294,7 +294,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Container node for primitive arrays
-  record PrimitiveArrayNode(PrimitiveValueType primitiveType, Class<?> arrayType) implements TypeExpr2 {
+  record PrimitiveArrayNode(PrimitiveValueType primitiveType, Class<?> arrayType) implements TypeExpr {
     public PrimitiveArrayNode {
       java.util.Objects.requireNonNull(primitiveType, "Primitive type cannot be null");
       java.util.Objects.requireNonNull(arrayType, "Array type cannot be null");
@@ -315,7 +315,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Container node for lists - has one child (element type)
-  record ListNode(TypeExpr2 element) implements TypeExpr2 {
+  record ListNode(TypeExpr element) implements TypeExpr {
     public ListNode {
       java.util.Objects.requireNonNull(element, "List element type cannot be null");
     }
@@ -332,7 +332,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Container node for optionals - has one child (wrapped type)
-  record OptionalNode(TypeExpr2 wrapped) implements TypeExpr2 {
+  record OptionalNode(TypeExpr wrapped) implements TypeExpr {
     public OptionalNode {
       java.util.Objects.requireNonNull(wrapped, "Optional wrapped type cannot be null");
     }
@@ -349,7 +349,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Container node for maps - has two children (key type, value type)
-  record MapNode(TypeExpr2 key, TypeExpr2 value) implements TypeExpr2 {
+  record MapNode(TypeExpr key, TypeExpr value) implements TypeExpr {
     public MapNode {
       java.util.Objects.requireNonNull(key, "Map key type cannot be null");
       java.util.Objects.requireNonNull(value, "Map value type cannot be null");
@@ -367,7 +367,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Leaf node for all reference types with marker
-  record RefValueNode(RefValueType type, Type javaType) implements TypeExpr2 {
+  record RefValueNode(RefValueType type, Type javaType) implements TypeExpr {
     public RefValueNode {
       Objects.requireNonNull(type, "Reference type cannot be null");
       Objects.requireNonNull(javaType, "Java type cannot be null");
@@ -401,7 +401,7 @@ sealed interface TypeExpr2 permits
   }
 
   /// Leaf node for primitive types
-  record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr2 {
+  record PrimitiveValueNode(PrimitiveValueType type, Type javaType) implements TypeExpr {
     public PrimitiveValueNode {
       Objects.requireNonNull(type, "Primitive type cannot be null");
       Objects.requireNonNull(javaType, "Java type cannot be null");

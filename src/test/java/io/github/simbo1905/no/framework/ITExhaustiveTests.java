@@ -32,7 +32,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
 
   @Override
   public boolean canProvideFor(TypeUsage targetType) {
-    return targetType.isOfType(TypeExpr2.class);
+    return targetType.isOfType(TypeExpr.class);
   }
 
   @Override
@@ -41,57 +41,57 @@ public class ITExhaustiveTests implements ArbitraryProvider {
   }
 
   @Provide
-  Arbitrary<TypeExpr2> typeExprs() {
+  Arbitrary<TypeExpr> typeExprs() {
     return generateStructuralPatterns();
   }
 
-  private Class<?> toClass(TypeExpr2 typeExpr) {
+  private Class<?> toClass(TypeExpr typeExpr) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.ArrayNode(var element, var ignored) ->
+      case TypeExpr.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.ArrayNode(var element, var ignored) ->
         // Recursively determine the element class and create an array class from it.
           java.lang.reflect.Array.newInstance(toClass(element), 0).getClass();
-      case TypeExpr2.ListNode(var ignored) -> List.class;
-      case TypeExpr2.OptionalNode(var ignored) -> Optional.class;
-      case TypeExpr2.MapNode(var ignored, var ignored2) -> Map.class;
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType;
+      case TypeExpr.ListNode(var ignored) -> List.class;
+      case TypeExpr.OptionalNode(var ignored) -> Optional.class;
+      case TypeExpr.MapNode(var ignored, var ignored2) -> Map.class;
+      case TypeExpr.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType;
     };
   }
 
-  private Arbitrary<TypeExpr2> generateStructuralPatterns() {
+  private Arbitrary<TypeExpr> generateStructuralPatterns() {
     // Base value types - no nesting
-    Arbitrary<TypeExpr2> primitives = Arbitraries.of(
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.INTEGER, int.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.BOOLEAN, boolean.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.DOUBLE, double.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.LONG, long.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.FLOAT, float.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.BYTE, byte.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.SHORT, short.class),
-        new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.CHARACTER, char.class)
+    Arbitrary<TypeExpr> primitives = Arbitraries.of(
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BOOLEAN, boolean.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.DOUBLE, double.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.LONG, long.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.FLOAT, float.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BYTE, byte.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.SHORT, short.class),
+        new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.CHARACTER, char.class)
     );
 
-    Arbitrary<TypeExpr2> boxedTypes = Arbitraries.of(
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.INTEGER, Integer.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.BOOLEAN, Boolean.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.DOUBLE, Double.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.LONG, Long.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.FLOAT, Float.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.BYTE, Byte.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.SHORT, Short.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.CHARACTER, Character.class)
+    Arbitrary<TypeExpr> boxedTypes = Arbitraries.of(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTEGER, Integer.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.BOOLEAN, Boolean.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.DOUBLE, Double.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LONG, Long.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.FLOAT, Float.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.BYTE, Byte.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.SHORT, Short.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.CHARACTER, Character.class)
     );
 
-    Arbitrary<TypeExpr2> referenceTypes = Arbitraries.of(
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.RECORD, TestRecord.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.ENUM, TestEnum.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.LOCAL_DATE, LocalDate.class),
-        new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.LOCAL_DATE_TIME, LocalDateTime.class)
+    Arbitrary<TypeExpr> referenceTypes = Arbitraries.of(
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, TestRecord.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TestEnum.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LOCAL_DATE, LocalDate.class),
+        new TypeExpr.RefValueNode(TypeExpr.RefValueType.LOCAL_DATE_TIME, LocalDateTime.class)
     );
 
-    Arbitrary<TypeExpr2> valueTypes = Arbitraries.oneOf(primitives, boxedTypes, referenceTypes);
+    Arbitrary<TypeExpr> valueTypes = Arbitraries.oneOf(primitives, boxedTypes, referenceTypes);
 
     return Arbitraries.oneOf(
         valueTypes,                           // Depth 0: Value types
@@ -101,89 +101,89 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     );
   }
 
-  private Arbitrary<TypeExpr2> singleContainers(Arbitrary<TypeExpr2> valueTypes) {
-    final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
+  private Arbitrary<TypeExpr> singleContainers(Arbitrary<TypeExpr> valueTypes) {
+    final var stringType = new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
     return Arbitraries.oneOf(
         valueTypes.map(vt -> {
-          if (vt instanceof TypeExpr2.PrimitiveValueNode(
-              TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+          if (vt instanceof TypeExpr.PrimitiveValueNode(
+              TypeExpr.PrimitiveValueType type, java.lang.reflect.Type javaType
           )) {
             // Correctly create a PrimitiveArrayNode for primitive elements
             Class<?> componentType = (Class<?>) javaType;
             Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
-            return new TypeExpr2.PrimitiveArrayNode(type, arrayType);
+            return new TypeExpr.PrimitiveArrayNode(type, arrayType);
           } else {
             // Use ArrayNode for all other element types (references, containers)
-            return new TypeExpr2.ArrayNode(vt, toClass(vt));
+            return new TypeExpr.ArrayNode(vt, toClass(vt));
           }
         }),
-        valueTypes.map(TypeExpr2.ListNode::new),
-        valueTypes.map(TypeExpr2.OptionalNode::new),
+        valueTypes.map(TypeExpr.ListNode::new),
+        valueTypes.map(TypeExpr.OptionalNode::new),
         // Map with String keys to avoid key type explosion
-        valueTypes.map(v -> new TypeExpr2.MapNode(stringType, v)),
-        valueTypes.map(k -> new TypeExpr2.MapNode(k, stringType))
+        valueTypes.map(v -> new TypeExpr.MapNode(stringType, v)),
+        valueTypes.map(k -> new TypeExpr.MapNode(k, stringType))
     );
   }
 
-  private Arbitrary<TypeExpr2> doubleContainers(Arbitrary<TypeExpr2> valueTypes) {
-    Arbitrary<TypeExpr2> singleContainers = singleContainers(valueTypes);
-    final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
+  private Arbitrary<TypeExpr> doubleContainers(Arbitrary<TypeExpr> valueTypes) {
+    Arbitrary<TypeExpr> singleContainers = singleContainers(valueTypes);
+    final var stringType = new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
 
     return Arbitraries.oneOf(
         singleContainers.map(sc -> {
-          if (sc instanceof TypeExpr2.PrimitiveValueNode(
-              TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+          if (sc instanceof TypeExpr.PrimitiveValueNode(
+              TypeExpr.PrimitiveValueType type, java.lang.reflect.Type javaType
           )) {
             // Correctly create a PrimitiveArrayNode for primitive elements
             Class<?> componentType = (Class<?>) javaType;
             Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
-            return new TypeExpr2.PrimitiveArrayNode(type, arrayType);
+            return new TypeExpr.PrimitiveArrayNode(type, arrayType);
           } else {
             // Use ArrayNode for all other element types (references, containers)
-            return new TypeExpr2.ArrayNode(sc, toClass(sc));
+            return new TypeExpr.ArrayNode(sc, toClass(sc));
           }
         }),      // Array(Container(Value))
-        singleContainers.map(TypeExpr2.ListNode::new),
-        singleContainers.map(TypeExpr2.OptionalNode::new),
-        singleContainers.map(s -> new TypeExpr2.MapNode(stringType, s)),
-        singleContainers.map(s -> new TypeExpr2.MapNode(s, stringType))
+        singleContainers.map(TypeExpr.ListNode::new),
+        singleContainers.map(TypeExpr.OptionalNode::new),
+        singleContainers.map(s -> new TypeExpr.MapNode(stringType, s)),
+        singleContainers.map(s -> new TypeExpr.MapNode(s, stringType))
     );
   }
 
-  private Arbitrary<TypeExpr2> tripleContainers(Arbitrary<TypeExpr2> valueTypes) {
+  private Arbitrary<TypeExpr> tripleContainers(Arbitrary<TypeExpr> valueTypes) {
     // Only essential patterns to avoid combinatorial explosion
-    final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
-    Arbitrary<TypeExpr2> essentialDouble = Arbitraries.oneOf(
-        valueTypes.map(v -> new TypeExpr2.ArrayNode(new TypeExpr2.ListNode(v), List.class)),           // Array(List(Value))
-        valueTypes.map(v -> new TypeExpr2.ListNode(
-            (v instanceof TypeExpr2.PrimitiveValueNode(
-                TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+    final var stringType = new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
+    Arbitrary<TypeExpr> essentialDouble = Arbitraries.oneOf(
+        valueTypes.map(v -> new TypeExpr.ArrayNode(new TypeExpr.ListNode(v), List.class)),           // Array(List(Value))
+        valueTypes.map(v -> new TypeExpr.ListNode(
+            (v instanceof TypeExpr.PrimitiveValueNode(
+                TypeExpr.PrimitiveValueType type, java.lang.reflect.Type javaType
             )) ?
-                new TypeExpr2.PrimitiveArrayNode(type, Array.newInstance((Class<?>) javaType, 0).getClass()) :
-                new TypeExpr2.ArrayNode(v, toClass(v))
+                new TypeExpr.PrimitiveArrayNode(type, Array.newInstance((Class<?>) javaType, 0).getClass()) :
+                new TypeExpr.ArrayNode(v, toClass(v))
         )),           // List(Array(Value))
-        valueTypes.map(v -> new TypeExpr2.OptionalNode(
-            (v instanceof TypeExpr2.PrimitiveValueNode(
-                TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+        valueTypes.map(v -> new TypeExpr.OptionalNode(
+            (v instanceof TypeExpr.PrimitiveValueNode(
+                TypeExpr.PrimitiveValueType type, java.lang.reflect.Type javaType
             )) ?
-                new TypeExpr2.PrimitiveArrayNode(type, Array.newInstance((Class<?>) javaType, 0).getClass()) :
-                new TypeExpr2.ArrayNode(v, toClass(v))
+                new TypeExpr.PrimitiveArrayNode(type, Array.newInstance((Class<?>) javaType, 0).getClass()) :
+                new TypeExpr.ArrayNode(v, toClass(v))
         )),       // Optional(Array(Value))
-        valueTypes.map(v -> new TypeExpr2.MapNode(stringType, new TypeExpr2.ListNode(v))), // Map<String, List<Value>>
-        valueTypes.map(v -> new TypeExpr2.MapNode(new TypeExpr2.ListNode(v), stringType))  // Map<List<Value>, String>
+        valueTypes.map(v -> new TypeExpr.MapNode(stringType, new TypeExpr.ListNode(v))), // Map<String, List<Value>>
+        valueTypes.map(v -> new TypeExpr.MapNode(new TypeExpr.ListNode(v), stringType))  // Map<List<Value>, String>
     );
 
     return essentialDouble.map(ed -> {
-      if (ed instanceof TypeExpr2.PrimitiveValueNode(
-          TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+      if (ed instanceof TypeExpr.PrimitiveValueNode(
+          TypeExpr.PrimitiveValueType type, java.lang.reflect.Type javaType
       )) {
         // Correctly create a PrimitiveArrayNode for primitive elements
         Class<?> componentType = (Class<?>) javaType;
         Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
-        return new TypeExpr2.PrimitiveArrayNode(type, arrayType);
+        return new TypeExpr.PrimitiveArrayNode(type, arrayType);
       } else {
         // Use ArrayNode for all other element types (references, containers)
-        return new TypeExpr2.ArrayNode(ed, toClass(ed));
+        return new TypeExpr.ArrayNode(ed, toClass(ed));
       }
     });  // Array(essential double combinations)
   }
@@ -192,7 +192,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
 
   @Property(generation = GenerationMode.EXHAUSTIVE)
   @SuppressWarnings("unchecked")
-  void exhaustiveRoundTrip(@ForAll("typeExprs") TypeExpr2 typeExpr) throws Exception {
+  void exhaustiveRoundTrip(@ForAll("typeExprs") TypeExpr typeExpr) throws Exception {
     String recordName = "GenRecord_" + classCounter.incrementAndGet();
     String fullClassName = "io.github.simbo1905.no.framework.generated." + recordName;
 
@@ -232,7 +232,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
 
   }
 
-  private Arbitrary<Object> createInstanceArbitrary(TypeExpr2 typeExpr, Class<?> compiledClass) {
+  private Arbitrary<Object> createInstanceArbitrary(TypeExpr typeExpr, Class<?> compiledClass) {
     Arbitrary<?> componentArbitrary = arbitraryFor(typeExpr);
     RecordComponent[] components = compiledClass.getRecordComponents();
     if (components.length != 1) {
@@ -249,9 +249,9 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     });
   }
 
-  private Arbitrary<?> arbitraryFor(TypeExpr2 typeExpr) {
+  private Arbitrary<?> arbitraryFor(TypeExpr typeExpr) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var ignored) -> switch (type) {
+      case TypeExpr.PrimitiveValueNode(var type, var ignored) -> switch (type) {
         case BOOLEAN -> Arbitraries.of(true, false);
         case BYTE -> Arbitraries.bytes();
         case SHORT -> Arbitraries.shorts();
@@ -261,7 +261,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         case FLOAT -> Arbitraries.floats();
         case DOUBLE -> Arbitraries.doubles();
       };
-      case TypeExpr2.RefValueNode(var type, var javaType) -> switch (type) {
+      case TypeExpr.RefValueNode(var type, var javaType) -> switch (type) {
         case ENUM -> Arbitraries.defaultFor((Class<?>) javaType);
         case RECORD -> createRecordArbitrary((Class<?>) javaType);  // FIXED: Use custom method
         case BOOLEAN -> Arbitraries.of(true, false);
@@ -279,7 +279,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         // TODO: handle CUSTOM type
         case CUSTOM -> Arbitraries.of();
       };
-      case TypeExpr2.ArrayNode(var element, var ignoredComponentType) -> {
+      case TypeExpr.ArrayNode(var element, var ignoredComponentType) -> {
         // Recursively get an arbitrary for the array's elements.
         Arbitrary<?> elementArbitrary = arbitraryFor(element);
 
@@ -299,11 +299,11 @@ public class ITExhaustiveTests implements ArbitraryProvider {
           return array;
         });
       }
-      case TypeExpr2.ListNode(var element) -> arbitraryFor(element).list();
-      case TypeExpr2.OptionalNode(var wrapped) -> arbitraryFor(wrapped).optional();
-      case TypeExpr2.MapNode(var key, var value) -> Arbitraries.maps(arbitraryFor(key), arbitraryFor(value));
+      case TypeExpr.ListNode(var element) -> arbitraryFor(element).list();
+      case TypeExpr.OptionalNode(var wrapped) -> arbitraryFor(wrapped).optional();
+      case TypeExpr.MapNode(var key, var value) -> Arbitraries.maps(arbitraryFor(key), arbitraryFor(value));
       // TODO: handle PrimitiveArrayNode
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) -> {
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var arrayType) -> {
         // JQwik does not directly support primitive arrays, so we create a list of wrappers and convert it.
         Arbitrary<?> wrapperArbitrary = switch (primitiveType) {
           case BOOLEAN -> Arbitraries.of(true, false);
@@ -326,7 +326,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     };
   }
 
-  private String generateRecordSource(String recordName, TypeExpr2 typeExpr) {
+  private String generateRecordSource(String recordName, TypeExpr typeExpr) {
     String typeName = toJavaType(typeExpr, false);
     String packageName = "io.github.simbo1905.no.framework.generated";
 
@@ -351,38 +351,38 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     return String.format(template, packageName, importStatements, recordName, typeName);
   }
 
-  private void collectImports(TypeExpr2 typeExpr, Set<String> imports) {
+  private void collectImports(TypeExpr typeExpr, Set<String> imports) {
     switch (typeExpr) {
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> {
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (!clazz.isPrimitive() && !clazz.getPackageName().equals("java.lang")) {
           imports.add(clazz.getCanonicalName());
         }
       }
-      case TypeExpr2.ArrayNode(var element, var ignored) -> collectImports(element, imports);
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ArrayNode(var element, var ignored) -> collectImports(element, imports);
+      case TypeExpr.ListNode(var element) -> {
         imports.add("java.util.List");
         collectImports(element, imports);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         imports.add("java.util.Optional");
         collectImports(wrapped, imports);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         imports.add("java.util.Map");
         collectImports(key, imports);
         collectImports(value, imports);
       }
-      case TypeExpr2.PrimitiveValueNode(var ignored, var ignored2) -> {
+      case TypeExpr.PrimitiveValueNode(var ignored, var ignored2) -> {
       }
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored1) -> {
+      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored1) -> {
       }
     }
   }
 
-  private String toJavaType(TypeExpr2 typeExpr, boolean inGeneric) {
+  private String toJavaType(TypeExpr typeExpr, boolean inGeneric) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var type, var javaType) -> {
+      case TypeExpr.PrimitiveValueNode(var type, var javaType) -> {
         if (inGeneric) {
           yield switch (type) {
             case INTEGER -> "Integer";
@@ -397,13 +397,13 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         }
         yield ((Class<?>) javaType).getName();
       }
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> ((Class<?>) javaType).getCanonicalName();
-      case TypeExpr2.ArrayNode(var element, var ignored) -> toJavaType(element, false) + "[]";
-      case TypeExpr2.ListNode(var element) -> "java.util.List<" + toJavaType(element, true) + ">";
-      case TypeExpr2.OptionalNode(var wrapped) -> "java.util.Optional<" + toJavaType(wrapped, true) + ">";
-      case TypeExpr2.MapNode(var key, var value) ->
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> ((Class<?>) javaType).getCanonicalName();
+      case TypeExpr.ArrayNode(var element, var ignored) -> toJavaType(element, false) + "[]";
+      case TypeExpr.ListNode(var element) -> "java.util.List<" + toJavaType(element, true) + ">";
+      case TypeExpr.OptionalNode(var wrapped) -> "java.util.Optional<" + toJavaType(wrapped, true) + ">";
+      case TypeExpr.MapNode(var key, var value) ->
           "java.util.Map<" + toJavaType(key, true) + ", " + toJavaType(value, true) + ">";
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType.getCanonicalName();
+      case TypeExpr.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType.getCanonicalName();
     };
   }
 
@@ -509,7 +509,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     if (components.length == 1) {
       // Single component record
       Class<?> componentType = components[0].getType();
-      TypeExpr2 componentTypeExpr = createTypeExprFromClass(componentType);
+      TypeExpr componentTypeExpr = createTypeExprFromClass(componentType);
       Arbitrary<?> componentArbitrary = arbitraryFor(componentTypeExpr);
 
       return componentArbitrary.map(value -> {
@@ -526,24 +526,24 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     throw new IllegalStateException("Multi-component record handling not implemented: " + recordClass);
   }
 
-  private TypeExpr2 createTypeExprFromClass(Class<?> clazz) {
+  private TypeExpr createTypeExprFromClass(Class<?> clazz) {
     if (clazz == int.class) {
-      return new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.INTEGER, int.class);
+      return new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.INTEGER, int.class);
     }
     if (clazz == boolean.class) {
-      return new TypeExpr2.PrimitiveValueNode(TypeExpr2.PrimitiveValueType.BOOLEAN, boolean.class);
+      return new TypeExpr.PrimitiveValueNode(TypeExpr.PrimitiveValueType.BOOLEAN, boolean.class);
     }
     if (clazz == Integer.class) {
-      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.INTEGER, Integer.class);
+      return new TypeExpr.RefValueNode(TypeExpr.RefValueType.INTEGER, Integer.class);
     }
     if (clazz == String.class) {
-      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
+      return new TypeExpr.RefValueNode(TypeExpr.RefValueType.STRING, String.class);
     }
     if (clazz == TestRecord.class) {
-      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.RECORD, TestRecord.class);
+      return new TypeExpr.RefValueNode(TypeExpr.RefValueType.RECORD, TestRecord.class);
     }
     if (clazz == TestEnum.class) {
-      return new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.ENUM, TestEnum.class);
+      return new TypeExpr.RefValueNode(TypeExpr.RefValueType.ENUM, TestEnum.class);
     }
     // Add more mappings as needed
     throw new IllegalArgumentException("Unsupported class type: " + clazz);

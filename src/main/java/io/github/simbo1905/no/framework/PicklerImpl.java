@@ -42,21 +42,24 @@ final class PicklerImpl<R> implements Pickler<R> {
     LOGGER.fine(() -> "PicklerImpl.deserialize() looking up type signature: 0x" + Long.toHexString(typeSignature));
     final var serde = typeSignatureToSerde.get(typeSignature);
     if (serde == null) {
-      LOGGER.severe(() -> "No serde found for type signature: 0x" + Long.toHexString(typeSignature) + ". Available signatures: " + 
+      LOGGER.severe(() -> "No serde found for type signature: 0x" + Long.toHexString(typeSignature) + ". Available signatures: " +
           typeSignatureToSerde.keySet().stream().map(sig -> "0x" + Long.toHexString(sig)).collect(Collectors.joining(", ")));
       throw new IllegalStateException("Unknown type signature: " + typeSignature);
     }
     LOGGER.fine(() -> "PicklerImpl.deserialize() found serde: " + serde.getClass().getSimpleName() + " for signature: 0x" + Long.toHexString(typeSignature));
     final R result;
     if (serde instanceof RecordSerde<?> recordSerde) {
-      //noinspection unchecked
-      result = (R) recordSerde.deserializeWithoutSignature(buffer);
+      @SuppressWarnings("unchecked")
+      R record = (R) recordSerde.deserializeWithoutSignature(buffer);
+      result = record;
     } else if (serde instanceof EmptyRecordSerde<?> emptyRecordSerde) {
-      //noinspection unchecked
-      result = (R) emptyRecordSerde.deserializeWithoutSignature(buffer);
+      @SuppressWarnings("unchecked")
+      R record = (R) emptyRecordSerde.deserializeWithoutSignature(buffer);
+      result = record;
     } else if (serde instanceof EnumPickler<?> enumPickler) {
-      //noinspection unchecked
-      result = (R) enumPickler.deserializeWithoutSignature(buffer);
+      @SuppressWarnings("unchecked")
+      R record = (R) enumPickler.deserializeWithoutSignature(buffer);
+      result = record;
     } else {
       throw new IllegalStateException("Unsupported serde type: " + serde.getClass());
     }

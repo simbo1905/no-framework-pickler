@@ -99,7 +99,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
     if (recordClasses.isEmpty()) {
       throw new IllegalArgumentException("No record classes found in hierarchy of: " + clazz);
     }
-    
+
     // Get all classes that need picklers (records and enums)
     final var allPicklerClasses = legalAndIllegalClasses.get(Boolean.TRUE).stream()
         .filter(cls -> cls.isRecord() || cls.isEnum())
@@ -121,7 +121,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
     if (clazz.isRecord() && clazz.getRecordComponents().length == 0) {
       LOGGER.fine(() -> "Creating EmptyRecordSerde for empty record: " + clazz.getName());
       final Long typeSignature = typeSignatures.getOrDefault(clazz,
-          Companion.hashClassSignature(clazz, new RecordComponent[0], new TypeExpr2[0]));
+          Companion.hashClassSignature(clazz, new RecordComponent[0], new TypeExpr[0]));
       final Optional<Long> altTypeSignature = Optional.empty();
       return new EmptyRecordSerde<>(clazz, typeSignature, altTypeSignature);
     } else if (clazz.isEnum()) {
@@ -129,9 +129,9 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
       final Long typeSignature = typeSignatures.getOrDefault(clazz,
           Companion.hashEnumSignature(clazz));
       final Optional<Long> altTypeSignature = Optional.empty();
-      @SuppressWarnings({"unchecked", "rawtypes"})
-      final var enumClass = (Class) clazz;
-      return new EnumPickler(enumClass, typeSignature, altTypeSignature);
+      @SuppressWarnings("rawtypes") final var enumClass = (Class) clazz;
+      @SuppressWarnings({"unchecked", "rawtypes"}) final Pickler<T> enumPickler = new EnumPickler(enumClass, typeSignature, altTypeSignature);
+      return enumPickler;
     } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
@@ -149,7 +149,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
 
     for (Class<?> recordClass : recordClasses) {
       final var dependencySet = Arrays.stream(recordClass.getRecordComponents())
-          .map(component -> TypeExpr2.analyzeType(component.getGenericType(), List.of()))
+          .map(component -> TypeExpr.analyzeType(component.getGenericType(), List.of()))
           .flatMap(typeExpr -> classesInAST(typeExpr).stream())
           .filter(recordClasses::contains) // Only dependencies within our record hierarchy
           .collect(Collectors.toSet());
@@ -160,32 +160,32 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
     return dependencies;
   }
 
-  /// Extract all classes referenced in a TypeExpr2 AST
-  private static Set<Class<?>> classesInAST(TypeExpr2 typeExpr) {
+  /// Extract all classes referenced in a TypeExpr AST
+  private static Set<Class<?>> classesInAST(TypeExpr typeExpr) {
     final var classes = new HashSet<Class<?>>();
 
     switch (typeExpr) {
-      case TypeExpr2.ArrayNode(var element, var componentType) -> {
+      case TypeExpr.ArrayNode(var element, var componentType) -> {
         classes.add(componentType);
         classes.addAll(classesInAST(element));
       }
-      case TypeExpr2.ListNode(var element) -> classes.addAll(classesInAST(element));
-      case TypeExpr2.OptionalNode(var wrapped) -> classes.addAll(classesInAST(wrapped));
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.ListNode(var element) -> classes.addAll(classesInAST(element));
+      case TypeExpr.OptionalNode(var wrapped) -> classes.addAll(classesInAST(wrapped));
+      case TypeExpr.MapNode(var key, var value) -> {
         classes.addAll(classesInAST(key));
         classes.addAll(classesInAST(value));
       }
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> {
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> {
         if (javaType instanceof Class<?> cls) {
           classes.add(cls);
         }
       }
-      case TypeExpr2.PrimitiveValueNode(var ignored, var javaType) -> {
+      case TypeExpr.PrimitiveValueNode(var ignored, var javaType) -> {
         if (javaType instanceof Class<?> cls) {
           classes.add(cls);
         }
       }
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> classes.add(arrayType);
+      case TypeExpr.PrimitiveArrayNode(var ignored, var arrayType) -> classes.add(arrayType);
     }
 
     return classes;
@@ -297,7 +297,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
         }
         return serde;
       }
-      
+
       @Override
       public Pickler<?> resolveBySignature(long typeSignature) {
         final var serde = typeSignatureToSerde.get(typeSignature);
@@ -331,8 +331,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
         LOGGER.fine(() -> "Creating EnumPickler for enum in PicklerImpl: " + enumClass.getName());
         final var typeSignature = Companion.hashEnumSignature(enumClass);
         final var altSignature = Optional.<Long>empty();
-        @SuppressWarnings({"unchecked", "rawtypes"})
-        final var enumSerde = new EnumPickler(enumClass, typeSignature, altSignature);
+        @SuppressWarnings({"unchecked", "rawtypes"}) final var enumSerde = new EnumPickler(enumClass, typeSignature, altSignature);
 
         serdes.put(enumClass, enumSerde);
         typeSignatureToSerde.put(typeSignature, enumSerde);

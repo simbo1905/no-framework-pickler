@@ -22,7 +22,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
-import static io.github.simbo1905.no.framework.TypeExpr2.PrimitiveValueType.*;
+import static io.github.simbo1905.no.framework.TypeExpr.PrimitiveValueType.*;
 
 /// This is the static helpers of the pickler
 sealed interface Companion permits Companion.Nothing {
@@ -45,12 +45,6 @@ sealed interface Companion permits Companion.Nothing {
   /// NULL_MARKER is used as a sentinel value to indicate null when we need to distinguish between null and a positive value (e.g., enum ordinals)
   byte NULL_MARKER = Byte.MIN_VALUE;
   byte NOT_NULL_MARKER = Byte.MAX_VALUE;
-  /// FFL is a mask constant used to isolate the least significant byte (0xFF) as a long value.
-  /// When used with bitwise AND (&), it ensures that byte values are treated as unsigned
-  /// (0-255) rather than signed (-128 to 127) when converting to long. This is crucial
-  /// for the hash signature calculation where we need to treat each byte of the SHA-256
-  /// hash as an unsigned value before bit-shifting and combining them into a long.
-  long FFL = 0xFFL;
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
   static Set<Class<?>> recordClassHierarchy(final Class<?> current) {
@@ -97,10 +91,10 @@ sealed interface Companion permits Companion.Nothing {
                     }
                   }
 
-                  TypeExpr2 structure = TypeExpr2.analyzeType(component.getGenericType(), Set.of());
+                  TypeExpr structure = TypeExpr.analyzeType(component.getGenericType(), Set.of());
                   LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
                       structure.toTreeString());
-                  Stream<Class<?>> structureStream = TypeExpr2.classesInAST(structure);
+                  Stream<Class<?>> structureStream = TypeExpr.classesInAST(structure);
                   return Stream.concat(arrayStream, structureStream);
                 })
                 : Stream.empty()
@@ -109,30 +103,15 @@ sealed interface Companion permits Companion.Nothing {
   }
 
 
-  static Class<?> extractComponentType(TypeExpr2 typeExpr) {
+  static Class<?> extractComponentType(TypeExpr typeExpr) {
     // Simplified component type extraction
     return switch (typeExpr) {
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.OptionalNode(var ignored) -> Optional.class;
-      case TypeExpr2.ListNode(var ignored) -> List.class;
-      case TypeExpr2.ArrayNode(var ignored, var ignored2) -> Object[].class;
-      case TypeExpr2.MapNode(var ignoredKey, var ignoredValue) -> Map.class;
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.OptionalNode(var ignored) -> Optional.class;
+      case TypeExpr.ListNode(var ignored) -> List.class;
+      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Object[].class;
+      case TypeExpr.MapNode(var ignoredKey, var ignoredValue) -> Map.class;
       default -> Object.class;
-    };
-  }
-
-  /// Get marker for a primitive type
-  static int primitiveToMarker(Class<?> primitiveClass) {
-    return switch (primitiveClass) {
-      case Class<?> c when c == boolean.class -> -2;
-      case Class<?> c when c == byte.class -> -3;
-      case Class<?> c when c == short.class -> -4;
-      case Class<?> c when c == char.class -> -5;
-      case Class<?> c when c == int.class -> -6;
-      case Class<?> c when c == long.class -> -8;
-      case Class<?> c when c == float.class -> -10;
-      case Class<?> c when c == double.class -> -11;
-      default -> throw new IllegalArgumentException("Not a primitive type: " + primitiveClass);
     };
   }
 
@@ -148,7 +127,7 @@ sealed interface Companion permits Companion.Nothing {
       case Class<?> c when c == Float.class -> -10;
       case Class<?> c when c == Double.class -> -11;
       case Class<?> c when c == String.class -> -12;
-      case Class<?> c when c == java.util.UUID.class ->
+      case Class<?> c when c == UUID.class ->
           -12; // FIXME WARNING WARNING UUID will be handled like String to get more tests fixed WARNING WARNING
       case Class<?> c when c == LocalDate.class -> -13;
       case Class<?> c when c == LocalDateTime.class -> -14;
@@ -207,10 +186,10 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   static Reader createArrayReader(
-      Reader elementReader, Class<?> componentType, TypeExpr2 element) {
+      Reader elementReader, Class<?> componentType, TypeExpr element) {
     LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName() + " and element: " + element.toTreeString());
     final int expectedMarker = switch (element) {
-      case TypeExpr2.RefValueNode(TypeExpr2.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
         case RECORD -> Constants2.ARRAY_RECORD.marker();
         case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
         case ENUM -> Constants2.ARRAY_ENUM.marker();
@@ -227,16 +206,15 @@ sealed interface Companion permits Companion.Nothing {
         case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
         case CUSTOM -> throw new AssertionError("not implemented");
       };
-      case TypeExpr2.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr2.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
-      case TypeExpr2.MapNode ignored -> Constants2.ARRAY_MAP.marker();
-      case TypeExpr2.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr2.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
-      default -> throw new AssertionError("Unexpected value: " + element);
+      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Constants2.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
+      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return switch (element) {
-      case TypeExpr2.RefValueNode(TypeExpr2.RefValueType ignored, Type ignored1) -> buffer -> {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType ignored, Type ignored1) -> buffer -> {
         int posBeforeMarker = buffer.position();
         int marker = ZigZagEncoding.getInt(buffer);
         LOGGER.finer(() -> "Reading RefValueNode array marker " + marker + " at position " + posBeforeMarker + " (expected " + expectedMarker + ")");
@@ -477,10 +455,10 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer createArrayRefWriter(Writer elementWriter, TypeExpr2 element) {
+  static Writer createArrayRefWriter(Writer elementWriter, TypeExpr element) {
     LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
     final int marker = switch (element) {
-      case TypeExpr2.RefValueNode(TypeExpr2.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
+      case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
         case RECORD -> Constants2.ARRAY_RECORD.marker();
         case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
         case ENUM -> Constants2.ARRAY_ENUM.marker();
@@ -497,13 +475,12 @@ sealed interface Companion permits Companion.Nothing {
         case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
         default -> throw new IllegalStateException("Unexpected value: " + refValueType);
       };
-      case TypeExpr2.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr2.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
-      case TypeExpr2.MapNode ignored -> Constants2.ARRAY_MAP.marker();
-      case TypeExpr2.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr2.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
-      default -> throw new AssertionError("Unexpected value: " + element);
+      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Constants2.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
+      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return (buffer, value) -> {
       Object[] array = (Object[]) value;
@@ -561,7 +538,7 @@ sealed interface Companion permits Companion.Nothing {
         .mapToObj(i -> {
           RecordComponent component = components[i];
           MethodHandle getter = getters[i];
-          TypeExpr2 typeExpr = TypeExpr2.analyzeType(component.getGenericType(), customHandlers);
+          TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType(), customHandlers);
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
@@ -588,7 +565,7 @@ sealed interface Companion permits Companion.Nothing {
         .mapToObj(i -> {
           RecordComponent component = components[i];
           MethodHandle getter = getters[i];
-          TypeExpr2 typeExpr = TypeExpr2.analyzeType(component.getGenericType(), List.of());
+          TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType(), List.of());
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
@@ -601,7 +578,7 @@ sealed interface Companion permits Companion.Nothing {
         .toArray(ComponentSerde[]::new);
   }
 
-  static Sizer createComponentSizer(TypeExpr2 typeExpr, MethodHandle getter, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
+  static Sizer createComponentSizer(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
     LOGGER.fine(() -> "Creating component sizer for: " + typeExpr.toTreeString());
 
     Sizer sizerChain = createSizerChain(typeExpr, customSizers, customMarkers, typeSizerResolver);
@@ -609,11 +586,11 @@ sealed interface Companion permits Companion.Nothing {
     return extractAndDelegate(sizerChain, getter);
   }
 
-  static Sizer createSizerChain(TypeExpr2 typeExpr, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
+  static Sizer createSizerChain(TypeExpr typeExpr, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (customSizers.containsKey(clazz)) {
           yield customSizers.get(clazz);
@@ -621,41 +598,41 @@ sealed interface Companion permits Companion.Nothing {
           yield buildValueSizer(refValueType, javaType, typeSizerResolver);
         }
       }
-      case TypeExpr2.ArrayNode(var element, var componentType) -> {
+      case TypeExpr.ArrayNode(var element, var componentType) -> {
         final var elementSizer = createSizerChain(element, customSizers, customMarkers, typeSizerResolver);
         yield createArraySizerInner(elementSizer);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementSizer = createSizerChain(element, customSizers, customMarkers, typeSizerResolver);
         yield createListSizerInner(elementSizer);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keySizer = createSizerChain(key, customSizers, customMarkers, typeSizerResolver);
         final var valueSizer = createSizerChain(value, customSizers, customMarkers, typeSizerResolver);
         yield createMapSizerInner(keySizer, valueSizer);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueSizer = createSizerChain(wrapped, customSizers, customMarkers, typeSizerResolver);
         yield createOptionalSizerInner(valueSizer);
       }
     };
   }
 
-  static Reader createComponentReader(TypeExpr2 typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
+  static Reader createComponentReader(TypeExpr typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
     LOGGER.fine(() -> "Creating component reader for: " + typeExpr.toTreeString());
 
     return createReaderChain(typeExpr, customReaders, customMarkers, typeReaderResolver);
   }
 
-  static Reader createReaderChain(TypeExpr2 typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
+  static Reader createReaderChain(TypeExpr typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
         // Primitive arrays at the top level (e.g., int[] as a record component) need null checking
         final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
         yield nullCheckAndDelegate(primitiveArrayReader);
       }
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (customReaders.containsKey(clazz)) {
           yield customReaders.get(clazz);
@@ -663,9 +640,9 @@ sealed interface Companion permits Companion.Nothing {
           yield buildValueReader(refValueType, typeReaderResolver);
         }
       }
-      case TypeExpr2.ArrayNode(var element, var componentType) -> {
+      case TypeExpr.ArrayNode(var element, var componentType) -> {
         final Reader elementReader;
-        if (element instanceof TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored2)) {
+        if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
           // For nested primitive arrays, wrap the primitive array reader with null checking
           final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
           elementReader = nullCheckAndDelegate(primitiveArrayReader);
@@ -675,18 +652,18 @@ sealed interface Companion permits Companion.Nothing {
         final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         yield nullCheckAndDelegate(nonNullArrayReader);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementReader = createReaderChain(element, customReaders, customMarkers, typeReaderResolver);
         final var nonNullListReader = createListReader(elementReader);
         yield nullCheckAndDelegate(nonNullListReader);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keyReader = createReaderChain(key, customReaders, customMarkers, typeReaderResolver);
         final var valueReader = createReaderChain(value, customReaders, customMarkers, typeReaderResolver);
         final var nonNullMapReader = createMapReader(keyReader, valueReader);
         yield nullCheckAndDelegate(nonNullMapReader);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueReader = createReaderChain(wrapped, customReaders, customMarkers, typeReaderResolver);
         final var nonNullOptionalReader = createOptionalReader(valueReader);
         yield nullCheckAndDelegate(nonNullOptionalReader);
@@ -694,7 +671,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer createComponentWriter(TypeExpr2 typeExpr, MethodHandle getter, Map<Class<?>, Writer> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
+  static Writer createComponentWriter(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Writer> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
     LOGGER.fine(() -> "Creating component writer for: " + typeExpr.toTreeString());
 
     Writer writerChain = createWriterChain(typeExpr, customWriters, customMarkers, typeWriterResolver);
@@ -702,45 +679,43 @@ sealed interface Companion permits Companion.Nothing {
     return extractAndDelegateWriter(writerChain, getter);
   }
 
-  /// Create writer chain for TypeExpr2 
-  static Writer createWriterChain(TypeExpr2 typeExpr, Map<Class<?>, Writer> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
+  /// Create writer chain for TypeExpr 
+  static Writer createWriterChain(TypeExpr typeExpr, Map<Class<?>, Writer> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
-          buildPrimitiveArrayWriterInner(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (customWriters.containsKey(clazz)) {
           yield customWriters.get(clazz);
-        } else if (refValueType == TypeExpr2.RefValueType.RECORD || refValueType == TypeExpr2.RefValueType.INTERFACE || refValueType == TypeExpr2.RefValueType.ENUM) {
+        } else if (refValueType == TypeExpr.RefValueType.RECORD || refValueType == TypeExpr.RefValueType.INTERFACE || refValueType == TypeExpr.RefValueType.ENUM) {
           yield typeWriterResolver.apply(clazz);
         } else {
           yield buildRefValueWriter(refValueType, javaType);
         }
       }
-      case TypeExpr2.ArrayNode(var element, var ignored) -> {
+      case TypeExpr.ArrayNode(var element, var ignored) -> {
         Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
         yield createArrayRefWriter(elementWriter, element);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
         yield createListWriterInner(elementWriter);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         Writer keyWriter = createWriterChain(key, customWriters, customMarkers, typeWriterResolver);
         Writer valueWriter = createWriterChain(value, customWriters, customMarkers, typeWriterResolver);
         yield createMapWriterInner(keyWriter, valueWriter);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         Writer valueWriter = createWriterChain(wrapped, customWriters, customMarkers, typeWriterResolver);
         yield createOptionalWriterInner(valueWriter);
       }
     };
   }
 
-  /// Build ref value writer for TypeExpr2.RefValueType
-  static @NotNull Writer buildRefValueWriter(TypeExpr2.RefValueType refValueType, Type javaType) {
-    Class<?> cls = (Class<?>) javaType;
+  /// Build ref value writer for TypeExpr.RefValueType
+  static @NotNull Writer buildRefValueWriter(TypeExpr.RefValueType refValueType, Type javaType) {
     return switch (refValueType) {
       case BOOLEAN -> (buffer, obj) -> buffer.put((byte) ((boolean) obj ? 1 : 0));
       case BYTE -> (buffer, obj) -> buffer.put((byte) obj);
@@ -803,27 +778,8 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  /// Container type markers
-  enum ContainerType {
-    OPTIONAL_EMPTY(-16),
-    OPTIONAL_OF(-17),
-    ARRAY(-18),
-    MAP(-19),
-    LIST(-20);
-
-    private final int marker;
-
-    ContainerType(int marker) {
-      this.marker = marker;
-    }
-
-    int marker() {
-      return marker;
-    }
-  }
-
   /// Build primitive array writer for TypeExpr.PrimitiveValueType (old version)
-  static @NotNull Writer buildPrimitiveArrayWriterInner(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Writer buildPrimitiveArrayWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
     LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
     return switch (primitiveType) {
       case BOOLEAN -> (buffer, inner) -> {
@@ -948,7 +904,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build primitive value writer for TypeExpr.PrimitiveValueType
-  static @NotNull Writer buildPrimitiveValueWriter(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Writer buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
       case BYTE -> (ByteBuffer buffer, Object result) -> buffer.put((byte) result);
@@ -988,7 +944,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Reader buildPrimitiveValueReader(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Reader buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -1027,7 +983,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Reader buildPrimitiveArrayReader(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Reader buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
@@ -1124,7 +1080,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Sizer buildPrimitiveArraySizer(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Sizer buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType) {
     if (primitiveType == BOOLEAN) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Byte.BYTES;
     } else if (primitiveType == BYTE) {
@@ -1133,7 +1089,7 @@ sealed interface Companion permits Companion.Nothing {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Short.BYTES;
     } else if (primitiveType == CHARACTER) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Character.BYTES;
-    } else if (primitiveType == TypeExpr2.PrimitiveValueType.INTEGER) {
+    } else if (primitiveType == INTEGER) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Integer.BYTES;
     } else if (primitiveType == LONG) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Long.BYTES;
@@ -1146,7 +1102,7 @@ sealed interface Companion permits Companion.Nothing {
     }
   }
 
-  static @NotNull Sizer buildValueSizer(TypeExpr2.RefValueType refValueType, Type javaType, SizerResolver typeSizerResolver) {
+  static @NotNull Sizer buildValueSizer(TypeExpr.RefValueType refValueType, Type javaType, SizerResolver typeSizerResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
@@ -1169,7 +1125,7 @@ sealed interface Companion permits Companion.Nothing {
     throw new AssertionError("Unsupported Java type: " + javaType);
   }
 
-  static @NotNull Sizer buildPrimitiveValueSizer(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Sizer buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
       case SHORT -> (Object record) -> Short.BYTES;
@@ -1181,7 +1137,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Sizer buildPrimitiveArraySizerInner(TypeExpr2.PrimitiveValueType primitiveType) {
+  static @NotNull Sizer buildPrimitiveArraySizerInner(TypeExpr.PrimitiveValueType primitiveType) {
     final int bytesPerElement = switch (primitiveType) {
       case BOOLEAN, BYTE -> Byte.BYTES;
       case SHORT -> Short.BYTES;
@@ -1199,19 +1155,18 @@ sealed interface Companion permits Companion.Nothing {
       Float.class, Double.class, Character.class, Boolean.class
   );
 
-  static Class<?> typeExprToClass(TypeExpr2 typeExpr) {
+  static Class<?> typeExprToClass(TypeExpr typeExpr) {
     return switch (typeExpr) {
-      case TypeExpr2.ArrayNode(var element, var ignored) -> {
+      case TypeExpr.ArrayNode(var element, var ignored) -> {
         Class<?> componentClass = typeExprToClass(element);
         yield Array.newInstance(componentClass, 0).getClass();
       }
-      case TypeExpr2.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
-      case TypeExpr2.ListNode ignored -> List.class;
-      case TypeExpr2.MapNode ignored -> Map.class;
-      case TypeExpr2.OptionalNode ignored -> Optional.class;
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var javaType) -> (Class<?>) javaType;
-      default -> throw new IllegalStateException("Unexpected value: " + typeExpr);
+      case TypeExpr.RefValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.PrimitiveValueNode(var ignored, var javaType) -> (Class<?>) javaType;
+      case TypeExpr.ListNode ignored -> List.class;
+      case TypeExpr.MapNode ignored -> Map.class;
+      case TypeExpr.OptionalNode ignored -> Optional.class;
+      case TypeExpr.PrimitiveArrayNode(var ignored, var javaType) -> javaType;
     };
   }
 
@@ -1279,36 +1234,36 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build sizer chain with callback for complex types
-  static Sizer buildSizerChain(TypeExpr2 typeExpr, MethodHandle accessor,
+  static Sizer buildSizerChain(TypeExpr typeExpr, MethodHandle accessor,
                                SizerResolver complexResolver) {
     return extractAndDelegate(buildSizerChainInner(typeExpr, complexResolver), accessor);
   }
 
   /// Build sizer chain inner with callback delegation
-  static Sizer buildSizerChainInner(TypeExpr2 typeExpr,
+  static Sizer buildSizerChainInner(TypeExpr typeExpr,
                                     SizerResolver complexResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) ->
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var javaType) ->
           buildValueSizerInner(refValueType, javaType, complexResolver);
-      case TypeExpr2.ArrayNode(var element, var ignored) -> {
-        if (element instanceof TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored2)) {
+      case TypeExpr.ArrayNode(var element, var ignored) -> {
+        if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored2)) {
           yield buildPrimitiveArraySizerInner(primitiveType);
         } else {
           final var elementSizer = buildSizerChainInner(element, complexResolver);
           yield createArraySizerInner(elementSizer);
         }
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementSizer = buildSizerChainInner(element, complexResolver);
         yield createListSizerInner(elementSizer);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keySizer = buildSizerChainInner(key, complexResolver);
         final var valueSizer = buildSizerChainInner(value, complexResolver);
         yield createMapSizerInner(keySizer, valueSizer);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueSizer = buildSizerChainInner(wrapped, complexResolver);
         yield createOptionalSizerInner(valueSizer);
       }
@@ -1317,7 +1272,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value sizer with callback for complex types (RECORD, INTERFACE, ENUM)
-  static Sizer buildValueSizerInner(TypeExpr2.RefValueType refValueType, Type javaType,
+  static Sizer buildValueSizerInner(TypeExpr.RefValueType refValueType, Type javaType,
                                     SizerResolver complexResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
@@ -1342,36 +1297,36 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build writer chain with callback for complex types
-  static Writer buildWriterChain(TypeExpr2 typeExpr, MethodHandle accessor,
+  static Writer buildWriterChain(TypeExpr typeExpr, MethodHandle accessor,
                                  WriterResolver complexResolver) {
     return extractAndDelegate(buildWriterChainInner(typeExpr, complexResolver), accessor);
   }
 
   /// Build writer chain inner with callback delegation
-  static Writer buildWriterChainInner(TypeExpr2 typeExpr,
+  static Writer buildWriterChainInner(TypeExpr typeExpr,
                                       WriterResolver complexResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) ->
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var javaType) ->
           buildValueWriter(refValueType, javaType, complexResolver);
-      case TypeExpr2.ArrayNode(var element, var ignored) -> {
-        if (element instanceof TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored2)) {
+      case TypeExpr.ArrayNode(var element, var ignored) -> {
+        if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored2)) {
           yield buildPrimitiveArrayWriterInner(primitiveType);
         } else {
           final var elementWriter = buildWriterChainInner(element, complexResolver);
           yield createArrayRefWriter(elementWriter, element);
         }
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementWriter = buildWriterChainInner(element, complexResolver);
         yield createListWriterInner(elementWriter);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keyWriter = buildWriterChainInner(key, complexResolver);
         final var valueWriter = buildWriterChainInner(value, complexResolver);
         yield createMapWriterInner(keyWriter, valueWriter);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueWriter = buildWriterChainInner(wrapped, complexResolver);
         yield createOptionalWriterInner(valueWriter);
       }
@@ -1380,7 +1335,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value writer with callback for complex types
-  static Writer buildValueWriter(TypeExpr2.RefValueType refValueType, Type javaType,
+  static Writer buildValueWriter(TypeExpr.RefValueType refValueType, Type javaType,
                                  WriterResolver complexResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
@@ -1451,17 +1406,17 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build reader chain with callback for complex types
-  static Reader buildReaderChain(TypeExpr2 typeExpr,
+  static Reader buildReaderChain(TypeExpr typeExpr,
                                  ReaderResolver complexResolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var ignored) -> buildValueReader(refValueType, complexResolver);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
-      case TypeExpr2.ArrayNode(var element, var ignored3) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var ignored) -> buildValueReader(refValueType, complexResolver);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
+      case TypeExpr.ArrayNode(var element, var ignored3) -> {
         final Reader nonNullArrayReader;
-        if (element instanceof TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored2)) {
+        if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored2)) {
           nonNullArrayReader = buildPrimitiveArrayReader(primitiveType);
-        } else if (element instanceof TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored2)) {
+        } else if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
           // For nested primitive arrays (e.g., int[][] where element is int[])
           final var innerArrayReader = buildPrimitiveArrayReader(primitiveType);
           final var nullCheckedInnerReader = nullCheckAndDelegate(innerArrayReader);
@@ -1474,35 +1429,34 @@ sealed interface Companion permits Companion.Nothing {
         }
         yield nullCheckAndDelegate(nonNullArrayReader);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementReader = buildReaderChain(element, complexResolver);
         final var nonNullListReader = createListReader(elementReader);
         yield nullCheckAndDelegate(nonNullListReader);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keyReader = buildReaderChain(key, complexResolver);
         final var valueReader = buildReaderChain(value, complexResolver);
         final var nonNullMapReader = createMapReader(keyReader, valueReader);
         yield nullCheckAndDelegate(nonNullMapReader);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueReader = buildReaderChain(wrapped, complexResolver);
         final var nonNullOptionalReader = createOptionalReader(valueReader);
         yield nullCheckAndDelegate(nonNullOptionalReader);
       }
-      default -> throw new IllegalStateException("Unexpected value: " + typeExpr);
     };
   }
 
   /// Build value reader with callback for complex types
-  static Reader buildValueReader(TypeExpr2.RefValueType refValueType,
+  static Reader buildValueReader(TypeExpr.RefValueType refValueType,
                                  ReaderResolver complexResolver) {
     final Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
     return nullCheckAndDelegate(primitiveReader);
   }
 
   /// Build ref value reader with callback for complex types
-  static Reader buildRefValueReader(TypeExpr2.RefValueType refValueType,
+  static Reader buildRefValueReader(TypeExpr.RefValueType refValueType,
                                     ReaderResolver complexResolver) {
     return switch (refValueType) {
       case BOOLEAN -> buffer -> buffer.get() != 0;
@@ -1591,8 +1545,8 @@ sealed interface Companion permits Companion.Nothing {
             clz -> {
               final var components = clz.getRecordComponents();
               final var typeExprs = Arrays.stream(components)
-                  .map(comp -> TypeExpr2.analyzeType(comp.getGenericType(), Set.of()))
-                  .toArray(TypeExpr2[]::new);
+                  .map(comp -> TypeExpr.analyzeType(comp.getGenericType(), Set.of()))
+                  .toArray(TypeExpr[]::new);
               final var signature = hashClassSignature(clz, components, typeExprs);
               LOGGER.finer(() -> "Computed type signature for " + clz.getName() + ": 0x" + Long.toHexString(signature));
               return signature;
@@ -1601,7 +1555,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Compute a type signature from full class name, the component types, and component name
-  static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr2[] componentTypes) {
+  static long hashClassSignature(Class<?> clazz, RecordComponent[] components, TypeExpr[] componentTypes) {
     String input = Stream.concat(
             Stream.concat(Stream.of(clazz.getName()), Stream.of(String.valueOf(components.length))),
             IntStream.range(0, components.length).boxed().flatMap(i ->
@@ -1626,7 +1580,6 @@ sealed interface Companion permits Companion.Nothing {
   /// then extracting the first `Long.BYTES` big endian bytes into a long.
   /// INTERNAL USE ONLY - Use hashClassSignature() or hashEnumSignature() instead
   static long hashSignature(String uniqueNess) {
-    long result;
     final MessageDigest digest;
     try {
       digest = MessageDigest.getInstance(SHA_256);
@@ -1648,28 +1601,28 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy sizer that uses callback for record types
-  static Sizer createLazySizer(TypeExpr2 typeExpr, MethodHandle getter, DependencyResolver resolver) {
+  static Sizer createLazySizer(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
     final Sizer sizerChain = createLazySizerChain(typeExpr, resolver);
     return extractAndDelegate(sizerChain, getter);
   }
 
   /// Create lazy writer that uses callback for record types
-  static Writer createLazyWriter(TypeExpr2 typeExpr, MethodHandle getter, DependencyResolver resolver) {
+  static Writer createLazyWriter(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
     final Writer writerChain = createLazyWriterChain(typeExpr, resolver);
     return extractAndDelegateWriter(writerChain, getter);
   }
 
   /// Create lazy reader that uses callback for record types
-  static Reader createLazyReader(TypeExpr2 typeExpr, DependencyResolver resolver) {
+  static Reader createLazyReader(TypeExpr typeExpr, DependencyResolver resolver) {
     return createLazyReaderChain(typeExpr, resolver);
   }
 
   /// Create lazy sizer chain with callback delegation
-  static Sizer createLazySizerChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
+  static Sizer createLazySizerChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.isRecord()) {
           yield obj -> {
@@ -1696,20 +1649,20 @@ sealed interface Companion permits Companion.Nothing {
           });
         }
       }
-      case TypeExpr2.ArrayNode(var element, var ignored) -> {
+      case TypeExpr.ArrayNode(var element, var ignored) -> {
         final var elementSizer = createLazySizerChain(element, resolver);
         yield createArraySizerInner(elementSizer);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementSizer = createLazySizerChain(element, resolver);
         yield createListSizerInner(elementSizer);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keySizer = createLazySizerChain(key, resolver);
         final var valueSizer = createLazySizerChain(value, resolver);
         yield createMapSizerInner(keySizer, valueSizer);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueSizer = createLazySizerChain(wrapped, resolver);
         yield createOptionalSizerInner(valueSizer);
       }
@@ -1717,12 +1670,11 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy writer chain with callback delegation
-  static Writer createLazyWriterChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
+  static Writer createLazyWriterChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) ->
-          buildPrimitiveArrayWriterInner(primitiveType);
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
+      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.isRecord()) {
           yield (buffer, obj) -> {
@@ -1746,20 +1698,20 @@ sealed interface Companion permits Companion.Nothing {
           });
         }
       }
-      case TypeExpr2.ArrayNode(var element, var ignored) -> {
+      case TypeExpr.ArrayNode(var element, var ignored) -> {
         final var elementWriter = createLazyWriterChain(element, resolver);
         yield createArrayRefWriter(elementWriter, element);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementWriter = createLazyWriterChain(element, resolver);
         yield createListWriterInner(elementWriter);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keyWriter = createLazyWriterChain(key, resolver);
         final var valueWriter = createLazyWriterChain(value, resolver);
         yield createMapWriterInner(keyWriter, valueWriter);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueWriter = createLazyWriterChain(wrapped, resolver);
         yield createOptionalWriterInner(valueWriter);
       }
@@ -1767,33 +1719,31 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy reader chain with callback delegation
-  static Reader createLazyReaderChain(TypeExpr2 typeExpr, DependencyResolver resolver) {
+  static Reader createLazyReaderChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
-      case TypeExpr2.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored) -> {
+      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
+      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
         final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
         yield nullCheckAndDelegate(primitiveArrayReader);
       }
-      case TypeExpr2.RefValueNode(var refValueType, var javaType) -> {
+      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.isRecord()) {
           final Reader recordReader = buffer -> {
-            final long typeSignature = buffer.getLong();
+            buffer.getLong();
             final var pickler = resolver.resolve(clazz);
-            if (pickler instanceof RecordSerde<?> recordSerde) {
-              return recordSerde.deserializeWithoutSignature(buffer);
-            } else if (pickler instanceof EmptyRecordSerde<?> emptyRecordSerde) {
-              return emptyRecordSerde.deserializeWithoutSignature(buffer);
-            } else if (pickler instanceof EnumPickler<?> enumPickler) {
-              return enumPickler.deserializeWithoutSignature(buffer);
-            } else {
-              throw new IllegalStateException("Unsupported serde type: " + pickler.getClass());
-            }
+            return switch (pickler) {
+              case RecordSerde<?> recordSerde -> recordSerde.deserializeWithoutSignature(buffer);
+              case EmptyRecordSerde<?> emptyRecordSerde -> emptyRecordSerde.deserializeWithoutSignature(buffer);
+              case EnumPickler<?> enumPickler -> enumPickler.deserializeWithoutSignature(buffer);
+              case null, default ->
+                  throw new IllegalStateException("Unsupported serde type: " + (pickler != null ? pickler.getClass() : null));
+            };
           };
           yield nullCheckAndDelegate(recordReader);
         } else if (clazz.isEnum()) {
           final Reader enumReader = buffer -> {
-            final long typeSignature = buffer.getLong();
+            buffer.getLong();
             final var pickler = resolver.resolve(clazz);
             if (pickler instanceof EnumPickler<?> enumPickler) {
               return enumPickler.deserializeWithoutSignature(buffer);
@@ -1807,15 +1757,13 @@ sealed interface Companion permits Companion.Nothing {
             final long typeSignature = buffer.getLong();
             // For interfaces, we need to resolve the concrete type at runtime
             final var pickler = resolver.resolveBySignature(typeSignature);
-            if (pickler instanceof RecordSerde<?> recordSerde) {
-              return recordSerde.deserializeWithoutSignature(buffer);
-            } else if (pickler instanceof EmptyRecordSerde<?> emptyRecordSerde) {
-              return emptyRecordSerde.deserializeWithoutSignature(buffer);
-            } else if (pickler instanceof EnumPickler<?> enumPickler) {
-              return enumPickler.deserializeWithoutSignature(buffer);
-            } else {
-              throw new IllegalStateException("Unsupported serde type: " + pickler.getClass());
-            }
+            return switch (pickler) {
+              case RecordSerde<?> recordSerde -> recordSerde.deserializeWithoutSignature(buffer);
+              case EmptyRecordSerde<?> emptyRecordSerde -> emptyRecordSerde.deserializeWithoutSignature(buffer);
+              case EnumPickler<?> enumPickler -> enumPickler.deserializeWithoutSignature(buffer);
+              case null, default ->
+                  throw new IllegalStateException("Unsupported serde type: " + (pickler != null ? pickler.getClass() : null));
+            };
           };
           yield nullCheckAndDelegate(interfaceReader);
         } else {
@@ -1825,9 +1773,9 @@ sealed interface Companion permits Companion.Nothing {
           });
         }
       }
-      case TypeExpr2.ArrayNode(var element, var componentType) -> {
+      case TypeExpr.ArrayNode(var element, var componentType) -> {
         final Reader elementReader;
-        if (element instanceof TypeExpr2.PrimitiveArrayNode(var primitiveType, var ignored2)) {
+        if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
           final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
           elementReader = nullCheckAndDelegate(primitiveArrayReader);
         } else {
@@ -1836,18 +1784,18 @@ sealed interface Companion permits Companion.Nothing {
         final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         yield nullCheckAndDelegate(nonNullArrayReader);
       }
-      case TypeExpr2.ListNode(var element) -> {
+      case TypeExpr.ListNode(var element) -> {
         final var elementReader = createLazyReaderChain(element, resolver);
         final var nonNullListReader = createListReader(elementReader);
         yield nullCheckAndDelegate(nonNullListReader);
       }
-      case TypeExpr2.MapNode(var key, var value) -> {
+      case TypeExpr.MapNode(var key, var value) -> {
         final var keyReader = createLazyReaderChain(key, resolver);
         final var valueReader = createLazyReaderChain(value, resolver);
         final var nonNullMapReader = createMapReader(keyReader, valueReader);
         yield nullCheckAndDelegate(nonNullMapReader);
       }
-      case TypeExpr2.OptionalNode(var wrapped) -> {
+      case TypeExpr.OptionalNode(var wrapped) -> {
         final var valueReader = createLazyReaderChain(wrapped, resolver);
         final var nonNullOptionalReader = createOptionalReader(valueReader);
         yield nullCheckAndDelegate(nonNullOptionalReader);
@@ -1867,18 +1815,5 @@ sealed interface Companion permits Companion.Nothing {
           }
         })
         .toArray(MethodHandle[]::new);
-  }
-
-}
-
-class Debug {
-  public static void main(String[] args) {
-    String input = "io.github.simbo1905.no.framework.RecordPicklerTests$InnerRecordNullEndLinkedList!2!Inner!inner!InnerRecordNullEndLinkedList!next";
-    var hash = Companion.hashSignature(input);
-    LOGGER.info("input -> " + hash);
-    String input2 = "io.github.simbo1905.no.framework.RecordPicklerTests$LinkListEmptyEnd$LinkEnd!0";
-    var hash2 = Companion.hashSignature(input2);
-    LOGGER.info("input2 -> " + hash2);
-
   }
 }

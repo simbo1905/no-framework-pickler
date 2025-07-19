@@ -43,7 +43,7 @@ final class RecordSerde<T> implements Pickler<T> {
 
     final RecordComponent[] components = userType.getRecordComponents();
     assert components != null && components.length > 0 : "Record must have components: " + userType;
-    assert sizers.length == writers.length && writers.length == readers.length : 
+    assert sizers.length == writers.length && writers.length == readers.length :
         "Sizers, writers, and readers arrays must have the same length";
 
     // Create method handles
@@ -258,46 +258,6 @@ final class RecordSerde<T> implements Pickler<T> {
   @Override
   public String toString() {
     return "RecordSerde{userType=" + userType + ", typeSignature=0x" + Long.toHexString(typeSignature) + "}";
-  }
-
-  @SuppressWarnings("unchecked")
-  /// Sizer provides worst-case size estimates without performing computations for compression
-  /// FIXME try to hoist any such logic up to the factory method Pickler.forClass and delegate to that only
-  Sizer resolveTypeSizer(Class<?> targetClass) {
-    return obj -> {
-      if (obj == null) return Byte.BYTES;
-      else if (userType.isAssignableFrom(targetClass)) {
-        return this.maxSizeOf((T) obj);
-      }
-      throw new UnsupportedOperationException("Unhandled type: " + targetClass);
-    };
-  }
-
-  @SuppressWarnings("unchecked")
-  /// Writer handles serialization including compression computations for wire format
-  /// FIXME try to hoist any such logic up to the factory method Pickler.forClass and delegate to that only
-  Writer resolveTypeWriter(Class<?> targetClass) {
-    return (buffer, obj) -> {
-      if (userType.isAssignableFrom(targetClass)) {
-        this.writeToWire(buffer, (T) obj);
-      } else {
-        throw new UnsupportedOperationException("Unhandled type: " + targetClass);
-      }
-    };
-  }
-
-  /// Reader handles deserialization including decompression computations from wire format
-  /// FIXME try to hoist any such logic up to the factory method Pickler.forClass and delegate to that only
-  Reader resolveTypeReader(Long typeSignature) {
-    return buffer -> {
-      if (typeSignature == 0L) return null;
-      else if (typeSignature == this.typeSignature) {
-        // When called via Companion's type resolution, the signature has already been read
-        return this.deserializeWithoutSignature(buffer);
-      } else {
-        throw new UnsupportedOperationException("Type signature not supported by this record serde: " + typeSignature + " (expected: " + this.typeSignature + ")");
-      }
-    };
   }
 
   static Object defaultValue(Class<?> type) {
