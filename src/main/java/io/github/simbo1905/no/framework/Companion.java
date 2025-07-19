@@ -115,28 +115,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  /// Get marker for built-in reference types
-  static int referenceToMarker(Class<?> refClass) {
-    return switch (refClass) {
-      case Class<?> c when c == Boolean.class -> -2;
-      case Class<?> c when c == Byte.class -> -3;
-      case Class<?> c when c == Short.class -> -4;
-      case Class<?> c when c == Character.class -> -5;
-      case Class<?> c when c == Integer.class -> -6;
-      case Class<?> c when c == Long.class -> -8;
-      case Class<?> c when c == Float.class -> -10;
-      case Class<?> c when c == Double.class -> -11;
-      case Class<?> c when c == String.class -> -12;
-      case Class<?> c when c == UUID.class ->
-          -12; // FIXME WARNING WARNING UUID will be handled like String to get more tests fixed WARNING WARNING
-      case Class<?> c when c == LocalDate.class -> -13;
-      case Class<?> c when c == LocalDateTime.class -> -14;
-      case Class<?> c when c == Enum.class -> -15;
-      default -> throw new IllegalArgumentException("Not a built-in reference type: " + refClass);
-    };
-  }
-
-  enum Constants2 {
+  enum Markers {
     BOOLEAN(-1),
     BYTE(-2),
     SHORT(-3),
@@ -176,7 +155,7 @@ sealed interface Companion permits Companion.Nothing {
     ARRAY_OPTIONAL(-29);
     private final int marker;
 
-    Constants2(int marker) {
+    Markers(int marker) {
       this.marker = marker;
     }
 
@@ -185,32 +164,32 @@ sealed interface Companion permits Companion.Nothing {
     }
   }
 
-  static Reader createArrayReader(
-      Reader elementReader, Class<?> componentType, TypeExpr element) {
+  static Serde.Reader createArrayReader(
+      Serde.Reader elementReader, Class<?> componentType, TypeExpr element) {
     LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName() + " and element: " + element.toTreeString());
     final int expectedMarker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
-        case RECORD -> Constants2.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
-        case ENUM -> Constants2.ARRAY_ENUM.marker();
-        case BOOLEAN -> Constants2.ARRAY_BOOLEAN.marker();
-        case BYTE -> Constants2.ARRAY_BYTE.marker();
-        case SHORT -> Constants2.ARRAY_SHORT.marker();
-        case CHARACTER -> Constants2.ARRAY_CHAR.marker();
-        case INTEGER -> Constants2.ARRAY_INT.marker();
-        case LONG -> Constants2.ARRAY_LONG.marker();
-        case FLOAT -> Constants2.ARRAY_FLOAT.marker();
-        case DOUBLE -> Constants2.ARRAY_DOUBLE.marker();
-        case STRING -> Constants2.ARRAY_STRING.marker();
-        case LOCAL_DATE -> Constants2.ARRAY_LOCAL_DATE.marker();
-        case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
+        case RECORD -> Markers.ARRAY_RECORD.marker();
+        case INTERFACE -> Markers.ARRAY_INTERFACE.marker();
+        case ENUM -> Markers.ARRAY_ENUM.marker();
+        case BOOLEAN -> Markers.ARRAY_BOOLEAN.marker();
+        case BYTE -> Markers.ARRAY_BYTE.marker();
+        case SHORT -> Markers.ARRAY_SHORT.marker();
+        case CHARACTER -> Markers.ARRAY_CHAR.marker();
+        case INTEGER -> Markers.ARRAY_INT.marker();
+        case LONG -> Markers.ARRAY_LONG.marker();
+        case FLOAT -> Markers.ARRAY_FLOAT.marker();
+        case DOUBLE -> Markers.ARRAY_DOUBLE.marker();
+        case STRING -> Markers.ARRAY_STRING.marker();
+        case LOCAL_DATE -> Markers.ARRAY_LOCAL_DATE.marker();
+        case LOCAL_DATE_TIME -> Markers.ARRAY_LOCAL_DATE_TIME.marker();
         case CUSTOM -> throw new AssertionError("not implemented");
       };
-      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
-      case TypeExpr.MapNode ignored -> Constants2.ARRAY_MAP.marker();
-      case TypeExpr.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
-      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Markers.ARRAY_ARRAY.marker();
+      case TypeExpr.ListNode(var ignored) -> Markers.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Markers.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Markers.ARRAY_OPTIONAL.marker();
+      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored2) -> Markers.ARRAY_ARRAY.marker();
       case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return switch (element) {
@@ -254,16 +233,16 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer createMapWriterInner(
-      Writer keyWriter,
-      Writer valueWriter) {
+  static Serde.Writer createMapWriterInner(
+      Serde.Writer keyWriter,
+      Serde.Writer valueWriter) {
     return (buffer, obj) -> {
       Map<?, ?> map = (Map<?, ?>) obj;
       final int positionBeforeWrite = buffer.position();
-      ZigZagEncoding.putInt(buffer, Constants2.MAP.marker());
+      ZigZagEncoding.putInt(buffer, Markers.MAP.marker());
       /// TODO do not write NULL_MARKER if we can use NOT_NULL_MARKER as a sentinel - for maps we could write NULL_MARKER as the size when map is null
       ZigZagEncoding.putInt(buffer, map.size());
-      LOGGER.fine(() -> "Written map marker " + Constants2.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
+      LOGGER.fine(() -> "Written map marker " + Markers.MAP.marker() + " and size " + map.size() + " at position " + positionBeforeWrite);
       // Write each key-value pair
       map.forEach((key, value) -> {
         if (key == null) {
@@ -286,9 +265,9 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Reader createMapReader(
-      Reader keyReader,
-      Reader valueReader) {
+  static Serde.Reader createMapReader(
+      Serde.Reader keyReader,
+      Serde.Reader valueReader) {
     return buffer -> {
       int positionBeforeRead = buffer.position();
       int marker = ZigZagEncoding.getInt(buffer);
@@ -304,10 +283,10 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Reader createListReader(Reader elementReader) {
+  static Serde.Reader createListReader(Serde.Reader elementReader) {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
-      assert marker == Constants2.LIST.marker() : "Expected LIST marker";
+      assert marker == Markers.LIST.marker() : "Expected LIST marker";
       int size = ZigZagEncoding.getInt(buffer);
       return IntStream.range(0, size)
           .mapToObj(i -> elementReader.apply(buffer))
@@ -315,12 +294,12 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Reader createOptionalReader(Reader valueReader) {
+  static Serde.Reader createOptionalReader(Serde.Reader valueReader) {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
-      if (marker == Constants2.OPTIONAL_EMPTY.marker()) {
+      if (marker == Markers.OPTIONAL_EMPTY.marker()) {
         return Optional.empty();
-      } else if (marker == Constants2.OPTIONAL_OF.marker()) {
+      } else if (marker == Markers.OPTIONAL_OF.marker()) {
         return Optional.of(valueReader.apply(buffer));
       } else {
         throw new IllegalStateException("Invalid optional marker: " + marker);
@@ -328,28 +307,28 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer createOptionalWriterInner(Writer valueWriter) {
+  static Serde.Writer createOptionalWriterInner(Serde.Writer valueWriter) {
     LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
     return (buffer, value) -> {
       Optional<?> optional = (Optional<?>) value;
       if (optional.isEmpty()) {
         LOGGER.fine(() -> "Optional is empty, writing EMPTY marker at position: " + buffer.position());
-        ZigZagEncoding.putInt(buffer, Constants2.OPTIONAL_EMPTY.marker());
+        ZigZagEncoding.putInt(buffer, Markers.OPTIONAL_EMPTY.marker());
       } else {
         final int positionBeforeWrite = buffer.position();
-        ZigZagEncoding.putInt(buffer, Constants2.OPTIONAL_OF.marker());
+        ZigZagEncoding.putInt(buffer, Markers.OPTIONAL_OF.marker());
         buffer.put(NOT_NULL_MARKER);
-        LOGGER.fine(() -> "Optional is present wrote OPTIONAL_OF=" + Constants2.OPTIONAL_OF.marker() + " followed by NOT_NULL_MARKER=1 at position: " + positionBeforeWrite);
+        LOGGER.fine(() -> "Optional is present wrote OPTIONAL_OF=" + Markers.OPTIONAL_OF.marker() + " followed by NOT_NULL_MARKER=1 at position: " + positionBeforeWrite);
         valueWriter.accept(buffer, optional.get());
       }
     };
   }
 
-  static Writer createListWriterInner(Writer elementWriter) {
+  static Serde.Writer createListWriterInner(Serde.Writer elementWriter) {
     return (buffer, value) -> {
       List<?> list = (List<?>) value;
       // Write LIST marker and size
-      ZigZagEncoding.putInt(buffer, Constants2.LIST.marker());
+      ZigZagEncoding.putInt(buffer, Markers.LIST.marker());
       /// TODO do not write NULL_MARKER if we can use NOT_NULL_MARKER as a sentinel - for lists we could write NULL_MARKER as the size when list is null
       ZigZagEncoding.putInt(buffer, list.size());
       // Write each element
@@ -366,7 +345,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Sizer createOptionalSizerInner(Sizer valueSizer) {
+  static Serde.Sizer createOptionalSizerInner(Serde.Sizer valueSizer) {
     LOGGER.fine(() -> "Creating optional sizer with delegate valueSizer: " + valueSizer);
     return (Object inner) -> {
       Optional<?> optional = (Optional<?>) inner;
@@ -381,7 +360,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Sizer createArraySizerInner(Sizer elementSizer) {
+  static Serde.Sizer createArraySizerInner(Serde.Sizer elementSizer) {
     LOGGER.fine(() -> "Creating array sizer with delegate elementSizer: " + elementSizer);
     return (Object inner) -> {
       if (inner == null) {
@@ -402,7 +381,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Sizer createListSizerInner(Sizer elementSizer) {
+  static Serde.Sizer createListSizerInner(Serde.Sizer elementSizer) {
     LOGGER.fine(() -> "Creating list sizer inner with delegate elementSizer: " + elementSizer);
     return (Object inner) -> {
       if (inner == null) {
@@ -425,8 +404,8 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Sizer createMapSizerInner
-      (Sizer keySizer, Sizer valueSizer) {
+  static Serde.Sizer createMapSizerInner
+      (Serde.Sizer keySizer, Serde.Sizer valueSizer) {
     return (Object inner) -> {
       if (inner == null) {
         LOGGER.fine(() -> "Map is null, returning size 0");
@@ -455,31 +434,31 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer createArrayRefWriter(Writer elementWriter, TypeExpr element) {
+  static Serde.Writer createArrayRefWriter(Serde.Writer elementWriter, TypeExpr element) {
     LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
     final int marker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
-        case RECORD -> Constants2.ARRAY_RECORD.marker();
-        case INTERFACE -> Constants2.ARRAY_INTERFACE.marker();
-        case ENUM -> Constants2.ARRAY_ENUM.marker();
-        case BOOLEAN -> Constants2.ARRAY_BOOLEAN.marker();
-        case BYTE -> Constants2.ARRAY_BYTE.marker();
-        case SHORT -> Constants2.ARRAY_SHORT.marker();
-        case CHARACTER -> Constants2.ARRAY_CHAR.marker();
-        case INTEGER -> Constants2.ARRAY_INT.marker();
-        case LONG -> Constants2.ARRAY_LONG.marker();
-        case FLOAT -> Constants2.ARRAY_FLOAT.marker();
-        case DOUBLE -> Constants2.ARRAY_DOUBLE.marker();
-        case STRING -> Constants2.ARRAY_STRING.marker();
-        case LOCAL_DATE -> Constants2.ARRAY_LOCAL_DATE.marker();
-        case LOCAL_DATE_TIME -> Constants2.ARRAY_LOCAL_DATE_TIME.marker();
+        case RECORD -> Markers.ARRAY_RECORD.marker();
+        case INTERFACE -> Markers.ARRAY_INTERFACE.marker();
+        case ENUM -> Markers.ARRAY_ENUM.marker();
+        case BOOLEAN -> Markers.ARRAY_BOOLEAN.marker();
+        case BYTE -> Markers.ARRAY_BYTE.marker();
+        case SHORT -> Markers.ARRAY_SHORT.marker();
+        case CHARACTER -> Markers.ARRAY_CHAR.marker();
+        case INTEGER -> Markers.ARRAY_INT.marker();
+        case LONG -> Markers.ARRAY_LONG.marker();
+        case FLOAT -> Markers.ARRAY_FLOAT.marker();
+        case DOUBLE -> Markers.ARRAY_DOUBLE.marker();
+        case STRING -> Markers.ARRAY_STRING.marker();
+        case LOCAL_DATE -> Markers.ARRAY_LOCAL_DATE.marker();
+        case LOCAL_DATE_TIME -> Markers.ARRAY_LOCAL_DATE_TIME.marker();
         default -> throw new IllegalStateException("Unexpected value: " + refValueType);
       };
-      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
-      case TypeExpr.ListNode(var ignored) -> Constants2.ARRAY_LIST.marker();
-      case TypeExpr.MapNode ignored -> Constants2.ARRAY_MAP.marker();
-      case TypeExpr.OptionalNode ignored -> Constants2.ARRAY_OPTIONAL.marker();
-      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored2) -> Constants2.ARRAY_ARRAY.marker();
+      case TypeExpr.ArrayNode(var ignored, var ignored2) -> Markers.ARRAY_ARRAY.marker();
+      case TypeExpr.ListNode(var ignored) -> Markers.ARRAY_LIST.marker();
+      case TypeExpr.MapNode ignored -> Markers.ARRAY_MAP.marker();
+      case TypeExpr.OptionalNode ignored -> Markers.ARRAY_OPTIONAL.marker();
+      case TypeExpr.PrimitiveArrayNode(var ignored, var ignored2) -> Markers.ARRAY_ARRAY.marker();
       case TypeExpr.PrimitiveValueNode ignored -> Integer.MIN_VALUE; // should not happen
     };
     return (buffer, value) -> {
@@ -515,18 +494,18 @@ sealed interface Companion permits Companion.Nothing {
   static ComponentSerde[] buildComponentSerdes(
       Class<?> recordClass,
       Collection<SerdeHandler> customHandlers,
-      SizerResolver typeSizerResolver,
-      WriterResolver typeWriterResolver,
-      ReaderResolver typeReaderResolver
+      Serde.SizerResolver typeSizerResolver,
+      Serde.WriterResolver typeWriterResolver,
+      Serde.ReaderResolver typeReaderResolver
   ) {
     LOGGER.fine(() -> "Building ComponentSerde[] for record: " + recordClass.getName());
 
     // Pre-process custom handlers into efficient lookup maps
-    final Map<Class<?>, Sizer> customSizers = customHandlers.stream()
+    final Map<Class<?>, Serde.Sizer> customSizers = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::sizer));
-    final Map<Class<?>, Writer> customWriters = customHandlers.stream()
+    final Map<Class<?>, Serde.Writer> customWriters = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::writer));
-    final Map<Class<?>, Reader> customReaders = customHandlers.stream()
+    final Map<Class<?>, Serde.Reader> customReaders = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
     final Map<Class<?>, Integer> customMarkers = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
@@ -542,9 +521,9 @@ sealed interface Companion permits Companion.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          Writer writer = createComponentWriter(typeExpr, getter, customWriters, customMarkers, typeWriterResolver);
-          Reader reader = createComponentReader(typeExpr, customReaders, customMarkers, typeReaderResolver);
-          Sizer sizer = createComponentSizer(typeExpr, getter, customSizers, customMarkers, typeSizerResolver);
+          Serde.Writer writer = createComponentWriter(typeExpr, getter, customWriters, customMarkers, typeWriterResolver);
+          Serde.Reader reader = createComponentReader(typeExpr, customReaders, customMarkers, typeReaderResolver);
+          Serde.Sizer sizer = createComponentSizer(typeExpr, getter, customSizers, customMarkers, typeSizerResolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
@@ -569,24 +548,24 @@ sealed interface Companion permits Companion.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          Sizer sizer = createLazySizer(typeExpr, getter, resolver);
-          Writer writer = createLazyWriter(typeExpr, getter, resolver);
-          Reader reader = createLazyReader(typeExpr, resolver);
+          Serde.Sizer sizer = createLazySizer(typeExpr, getter, resolver);
+          Serde.Writer writer = createLazyWriter(typeExpr, getter, resolver);
+          Serde.Reader reader = createLazyReader(typeExpr, resolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
         .toArray(ComponentSerde[]::new);
   }
 
-  static Sizer createComponentSizer(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
+  static Serde.Sizer createComponentSizer(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Serde.Sizer> customSizers, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
     LOGGER.fine(() -> "Creating component sizer for: " + typeExpr.toTreeString());
 
-    Sizer sizerChain = createSizerChain(typeExpr, customSizers, customMarkers, typeSizerResolver);
+    Serde.Sizer sizerChain = createSizerChain(typeExpr, customSizers, customMarkers, typeSizerResolver);
 
     return extractAndDelegate(sizerChain, getter);
   }
 
-  static Sizer createSizerChain(TypeExpr typeExpr, Map<Class<?>, Sizer> customSizers, Map<Class<?>, Integer> customMarkers, SizerResolver typeSizerResolver) {
+  static Serde.Sizer createSizerChain(TypeExpr typeExpr, Map<Class<?>, Serde.Sizer> customSizers, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
@@ -618,13 +597,13 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Reader createComponentReader(TypeExpr typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
+  static Serde.Reader createComponentReader(TypeExpr typeExpr, Map<Class<?>, Serde.Reader> customReaders, Map<Class<?>, Integer> customMarkers, Serde.ReaderResolver typeReaderResolver) {
     LOGGER.fine(() -> "Creating component reader for: " + typeExpr.toTreeString());
 
     return createReaderChain(typeExpr, customReaders, customMarkers, typeReaderResolver);
   }
 
-  static Reader createReaderChain(TypeExpr typeExpr, Map<Class<?>, Reader> customReaders, Map<Class<?>, Integer> customMarkers, ReaderResolver typeReaderResolver) {
+  static Serde.Reader createReaderChain(TypeExpr typeExpr, Map<Class<?>, Serde.Reader> customReaders, Map<Class<?>, Integer> customMarkers, Serde.ReaderResolver typeReaderResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
@@ -641,7 +620,7 @@ sealed interface Companion permits Companion.Nothing {
         }
       }
       case TypeExpr.ArrayNode(var element, var componentType) -> {
-        final Reader elementReader;
+        final Serde.Reader elementReader;
         if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
           // For nested primitive arrays, wrap the primitive array reader with null checking
           final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
@@ -671,16 +650,16 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer createComponentWriter(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Writer> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
+  static Serde.Writer createComponentWriter(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Serde.Writer> customWriters, Map<Class<?>, Integer> customMarkers, Serde.WriterResolver typeWriterResolver) {
     LOGGER.fine(() -> "Creating component writer for: " + typeExpr.toTreeString());
 
-    Writer writerChain = createWriterChain(typeExpr, customWriters, customMarkers, typeWriterResolver);
+    Serde.Writer writerChain = createWriterChain(typeExpr, customWriters, customMarkers, typeWriterResolver);
 
     return extractAndDelegateWriter(writerChain, getter);
   }
 
   /// Create writer chain for TypeExpr 
-  static Writer createWriterChain(TypeExpr typeExpr, Map<Class<?>, Writer> customWriters, Map<Class<?>, Integer> customMarkers, WriterResolver typeWriterResolver) {
+  static Serde.Writer createWriterChain(TypeExpr typeExpr, Map<Class<?>, Serde.Writer> customWriters, Map<Class<?>, Integer> customMarkers, Serde.WriterResolver typeWriterResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
@@ -695,27 +674,27 @@ sealed interface Companion permits Companion.Nothing {
         }
       }
       case TypeExpr.ArrayNode(var element, var ignored) -> {
-        Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
         yield createArrayRefWriter(elementWriter, element);
       }
       case TypeExpr.ListNode(var element) -> {
-        Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
         yield createListWriterInner(elementWriter);
       }
       case TypeExpr.MapNode(var key, var value) -> {
-        Writer keyWriter = createWriterChain(key, customWriters, customMarkers, typeWriterResolver);
-        Writer valueWriter = createWriterChain(value, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer keyWriter = createWriterChain(key, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer valueWriter = createWriterChain(value, customWriters, customMarkers, typeWriterResolver);
         yield createMapWriterInner(keyWriter, valueWriter);
       }
       case TypeExpr.OptionalNode(var wrapped) -> {
-        Writer valueWriter = createWriterChain(wrapped, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer valueWriter = createWriterChain(wrapped, customWriters, customMarkers, typeWriterResolver);
         yield createOptionalWriterInner(valueWriter);
       }
     };
   }
 
   /// Build ref value writer for TypeExpr.RefValueType
-  static @NotNull Writer buildRefValueWriter(TypeExpr.RefValueType refValueType, Type javaType) {
+  static @NotNull Serde.Writer buildRefValueWriter(TypeExpr.RefValueType refValueType, Type javaType) {
     return switch (refValueType) {
       case BOOLEAN -> (buffer, obj) -> buffer.put((byte) ((boolean) obj ? 1 : 0));
       case BYTE -> (buffer, obj) -> buffer.put((byte) obj);
@@ -725,11 +704,11 @@ sealed interface Companion permits Companion.Nothing {
         final int result = (int) object;
         final var position = buffer.position();
         if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
-          ZigZagEncoding.putInt(buffer, Constants2.INTEGER_VAR.marker());
+          ZigZagEncoding.putInt(buffer, Markers.INTEGER_VAR.marker());
           LOGGER.fine(() -> "Writing INTEGER_VAR value=" + result + " at position: " + position);
           ZigZagEncoding.putInt(buffer, result);
         } else {
-          ZigZagEncoding.putInt(buffer, Constants2.INTEGER.marker());
+          ZigZagEncoding.putInt(buffer, Markers.INTEGER.marker());
           LOGGER.fine(() -> "Writing INTEGER value=" + result + " at position: " + position);
           buffer.putInt(result);
         }
@@ -738,11 +717,11 @@ sealed interface Companion permits Companion.Nothing {
         final long result = (long) record;
         final var position = buffer.position();
         if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
-          ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
+          ZigZagEncoding.putInt(buffer, Markers.LONG_VAR.marker());
           LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
           ZigZagEncoding.putLong(buffer, result);
         } else {
-          ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
+          ZigZagEncoding.putInt(buffer, Markers.LONG.marker());
           LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
           buffer.putLong(result);
         }
@@ -779,13 +758,13 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build primitive array writer for TypeExpr.PrimitiveValueType (old version)
-  static @NotNull Writer buildPrimitiveArrayWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Writer buildPrimitiveArrayWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
     LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
     return switch (primitiveType) {
       case BOOLEAN -> (buffer, inner) -> {
         final var position = buffer.position();
         final var booleans = (boolean[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants2.BOOLEAN.marker());
+        ZigZagEncoding.putInt(buffer, Markers.BOOLEAN.marker());
         int length = booleans.length;
         ZigZagEncoding.putInt(buffer, length);
         BitSet bitSet = new BitSet(length);
@@ -799,13 +778,13 @@ sealed interface Companion permits Companion.Nothing {
       case BYTE -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag BYTE at position " + buffer.position());
         final var bytes = (byte[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants2.BYTE.marker());
+        ZigZagEncoding.putInt(buffer, Markers.BYTE.marker());
         ZigZagEncoding.putInt(buffer, bytes.length);
         buffer.put(bytes);
       };
       case SHORT -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag SHORT at position " + buffer.position());
-        ZigZagEncoding.putInt(buffer, Constants2.SHORT.marker());
+        ZigZagEncoding.putInt(buffer, Markers.SHORT.marker());
         final var shorts = (short[]) inner;
         ZigZagEncoding.putInt(buffer, shorts.length);
         for (short s : shorts) {
@@ -815,7 +794,7 @@ sealed interface Companion permits Companion.Nothing {
       case CHARACTER -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag CHARACTER at position " + buffer.position());
         final var chars = (char[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants2.CHARACTER.marker());
+        ZigZagEncoding.putInt(buffer, Markers.CHARACTER.marker());
         ZigZagEncoding.putInt(buffer, chars.length);
         for (char c : chars) {
           buffer.putChar(c);
@@ -824,7 +803,7 @@ sealed interface Companion permits Companion.Nothing {
       case FLOAT -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag FLOAT at position " + buffer.position());
         final var floats = (float[]) inner;
-        ZigZagEncoding.putInt(buffer, Constants2.FLOAT.marker());
+        ZigZagEncoding.putInt(buffer, Markers.FLOAT.marker());
         ZigZagEncoding.putInt(buffer, floats.length);
         for (float f : floats) {
           buffer.putFloat(f);
@@ -832,7 +811,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case DOUBLE -> (buffer, inner) -> {
         LOGGER.finer(() -> "Delegating ARRAY for tag DOUBLE at position " + buffer.position());
-        ZigZagEncoding.putInt(buffer, Constants2.DOUBLE.marker());
+        ZigZagEncoding.putInt(buffer, Markers.DOUBLE.marker());
         final var doubles = (double[]) inner;
         ZigZagEncoding.putInt(buffer, doubles.length);
         for (double d : doubles) {
@@ -846,16 +825,16 @@ sealed interface Companion permits Companion.Nothing {
         final var sampleAverageSize = length > 0 ? estimateAverageSizeInt(integers, length) : 1;
         // Here we must be saving one byte per integer to justify the encoding cost
         if (sampleAverageSize < Integer.BYTES - 1) {
-          LOGGER.finer(() -> "Writing INTEGER_VAR marker " + Constants2.INTEGER_VAR.marker() + " at position " + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, Constants2.INTEGER_VAR.marker());
+          LOGGER.finer(() -> "Writing INTEGER_VAR marker " + Markers.INTEGER_VAR.marker() + " at position " + buffer.position() + " length=" + length);
+          ZigZagEncoding.putInt(buffer, Markers.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
           IntStream.range(0, integers.length).forEach(i -> {
             LOGGER.finer(() -> "Writing INTEGER_VAR element " + i + " value=" + integers[i] + " at position " + buffer.position());
             ZigZagEncoding.putInt(buffer, integers[i]);
           });
         } else {
-          LOGGER.finer(() -> "Writing INTEGER marker " + Constants2.INTEGER.marker() + " at position " + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, Constants2.INTEGER.marker());
+          LOGGER.finer(() -> "Writing INTEGER marker " + Markers.INTEGER.marker() + " at position " + buffer.position() + " length=" + length);
+          ZigZagEncoding.putInt(buffer, Markers.INTEGER.marker());
           ZigZagEncoding.putInt(buffer, length);
           IntStream.range(0, integers.length).forEach(i -> {
             LOGGER.finer(() -> "Writing INTEGER element " + i + " value=" + integers[i] + " at position " + buffer.position());
@@ -870,14 +849,14 @@ sealed interface Companion permits Companion.Nothing {
         final var sampleAverageSize = length > 0 ? estimateAverageSizeLong(longs, length) : 1;
         if ((length <= SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 1) || (length > SAMPLE_SIZE && sampleAverageSize < Long.BYTES - 2)) {
           LOGGER.fine(() -> "Writing LONG_VAR array - position=" + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
+          ZigZagEncoding.putInt(buffer, Markers.LONG_VAR.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (long i : longs) {
             ZigZagEncoding.putLong(buffer, i);
           }
         } else {
           LOGGER.fine(() -> "Writing LONG array - position=" + buffer.position() + " length=" + length);
-          ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
+          ZigZagEncoding.putInt(buffer, Markers.LONG.marker());
           ZigZagEncoding.putInt(buffer, length);
           for (long i : longs) {
             buffer.putLong(i);
@@ -904,7 +883,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build primitive value writer for TypeExpr.PrimitiveValueType
-  static @NotNull Writer buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Writer buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
       case BYTE -> (ByteBuffer buffer, Object result) -> buffer.put((byte) result);
@@ -914,12 +893,12 @@ sealed interface Companion permits Companion.Nothing {
         final int result = (int) object;
         final var position = buffer.position();
         if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
-          LOGGER.fine(() -> "Writing primitive INTEGER_VAR marker=" + Constants2.INTEGER_VAR.marker() + " value=" + result + " at position: " + position);
-          ZigZagEncoding.putInt(buffer, Constants2.INTEGER_VAR.marker());
+          LOGGER.fine(() -> "Writing primitive INTEGER_VAR marker=" + Markers.INTEGER_VAR.marker() + " value=" + result + " at position: " + position);
+          ZigZagEncoding.putInt(buffer, Markers.INTEGER_VAR.marker());
           ZigZagEncoding.putInt(buffer, result);
         } else {
-          LOGGER.fine(() -> "Writing primitive marker=" + Constants2.INTEGER_VAR.marker() + "  INTEGER value=" + result + " at position: " + position);
-          ZigZagEncoding.putInt(buffer, Constants2.INTEGER.marker());
+          LOGGER.fine(() -> "Writing primitive marker=" + Markers.INTEGER_VAR.marker() + "  INTEGER value=" + result + " at position: " + position);
+          ZigZagEncoding.putInt(buffer, Markers.INTEGER.marker());
           buffer.putInt(result);
         }
       };
@@ -929,11 +908,11 @@ sealed interface Companion permits Companion.Nothing {
           final long result = (long) record;
           final var position = buffer.position();
           if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
-            ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
+            ZigZagEncoding.putInt(buffer, Markers.LONG_VAR.marker());
             LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
             ZigZagEncoding.putLong(buffer, result);
           } else {
-            ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
+            ZigZagEncoding.putInt(buffer, Markers.LONG.marker());
             LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
             buffer.putLong(result);
           }
@@ -944,7 +923,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Reader buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Reader buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -955,11 +934,11 @@ sealed interface Companion permits Companion.Nothing {
       case INTEGER -> (buffer) -> {
         final var position = buffer.position();
         final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.INTEGER_VAR.marker()) {
+        if (marker == Markers.INTEGER_VAR.marker()) {
           int value = ZigZagEncoding.getInt(buffer);
           LOGGER.finer(() -> "INTEGER reader: read INTEGER_VAR value=" + value + " at position=" + buffer.position());
           return value;
-        } else if (marker == Constants2.INTEGER.marker()) {
+        } else if (marker == Markers.INTEGER.marker()) {
           int value = buffer.getInt();
           LOGGER.finer(() -> "INTEGER reader: read INTEGER value=" + value + " at position=" + buffer.position());
           return value;
@@ -970,10 +949,10 @@ sealed interface Companion permits Companion.Nothing {
         final var position = buffer.position();
         // If not enough space, read marker
         final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.LONG_VAR.marker()) {
+        if (marker == Markers.LONG_VAR.marker()) {
           LOGGER.finer(() -> "LONG reader: read LONG_VAR marker=" + marker + " at position=" + position);
           return ZigZagEncoding.getLong(buffer);
-        } else if (marker == Constants2.LONG.marker()) {
+        } else if (marker == Markers.LONG.marker()) {
           LOGGER.finer(() -> "LONG reader: read LONG marker=" + marker + " at position=" + position);
           return buffer.getLong();
         } else {
@@ -983,11 +962,11 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Reader buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Reader buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.BOOLEAN.marker() : "Expected BOOLEAN marker but got: " + marker;
+        assert marker == Markers.BOOLEAN.marker() : "Expected BOOLEAN marker but got: " + marker;
         int boolLength = ZigZagEncoding.getInt(buffer);
         boolean[] booleans = new boolean[boolLength];
         int bytesLength = ZigZagEncoding.getInt(buffer);
@@ -999,7 +978,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case BYTE -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.BYTE.marker() : "Expected BYTE marker but got: " + marker;
+        assert marker == Markers.BYTE.marker() : "Expected BYTE marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         byte[] bytes = new byte[length];
         buffer.get(bytes);
@@ -1007,7 +986,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case SHORT -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.SHORT.marker() : "Expected SHORT marker but got: " + marker;
+        assert marker == Markers.SHORT.marker() : "Expected SHORT marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         short[] shorts = new short[length];
         IntStream.range(0, length).forEach(i -> shorts[i] = buffer.getShort());
@@ -1015,7 +994,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case CHARACTER -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.CHARACTER.marker() : "Expected CHARACTER marker but got: " + marker;
+        assert marker == Markers.CHARACTER.marker() : "Expected CHARACTER marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         char[] chars = new char[length];
         IntStream.range(0, length).forEach(i -> chars[i] = buffer.getChar());
@@ -1023,7 +1002,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case FLOAT -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.FLOAT.marker() : "Expected FLOAT marker but got: " + marker;
+        assert marker == Markers.FLOAT.marker() : "Expected FLOAT marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         float[] floats = new float[length];
         IntStream.range(0, length).forEach(i -> floats[i] = buffer.getFloat());
@@ -1031,7 +1010,7 @@ sealed interface Companion permits Companion.Nothing {
       };
       case DOUBLE -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        assert marker == Constants2.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;
+        assert marker == Markers.DOUBLE.marker() : "Expected DOUBLE marker but got: " + marker;
         int length = ZigZagEncoding.getInt(buffer);
         double[] doubles = new double[length];
         IntStream.range(0, length).forEach(i -> doubles[i] = buffer.getDouble());
@@ -1041,7 +1020,7 @@ sealed interface Companion permits Companion.Nothing {
         int positionBeforeMarker = buffer.position();
         int marker = ZigZagEncoding.getInt(buffer);
         LOGGER.finer(() -> "Reading INTEGER array marker " + marker + " at position " + positionBeforeMarker);
-        if (marker == Constants2.INTEGER_VAR.marker()) {
+        if (marker == Markers.INTEGER_VAR.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           LOGGER.finer(() -> "Reading INTEGER_VAR array with length " + length + " at position " + buffer.position());
           int[] integers = new int[length];
@@ -1051,7 +1030,7 @@ sealed interface Companion permits Companion.Nothing {
             LOGGER.finer(() -> "Read INTEGER_VAR element " + i + " value=" + integers[i] + " from position " + positionBeforeElement);
           });
           return integers;
-        } else if (marker == Constants2.INTEGER.marker()) {
+        } else if (marker == Markers.INTEGER.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           LOGGER.finer(() -> "Reading INTEGER array with length " + length + " at position " + buffer.position());
           int[] integers = new int[length];
@@ -1065,12 +1044,12 @@ sealed interface Companion permits Companion.Nothing {
       };
       case LONG -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.LONG_VAR.marker()) {
+        if (marker == Markers.LONG_VAR.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           long[] longs = new long[length];
           IntStream.range(0, length).forEach(i -> longs[i] = ZigZagEncoding.getLong(buffer));
           return longs;
-        } else if (marker == Constants2.LONG.marker()) {
+        } else if (marker == Markers.LONG.marker()) {
           int length = ZigZagEncoding.getInt(buffer);
           long[] longs = new long[length];
           IntStream.range(0, length).forEach(i -> longs[i] = buffer.getLong());
@@ -1080,7 +1059,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Sizer buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Sizer buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType) {
     if (primitiveType == BOOLEAN) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Byte.BYTES;
     } else if (primitiveType == BYTE) {
@@ -1102,7 +1081,7 @@ sealed interface Companion permits Companion.Nothing {
     }
   }
 
-  static @NotNull Sizer buildValueSizer(TypeExpr.RefValueType refValueType, Type javaType, SizerResolver typeSizerResolver) {
+  static @NotNull Serde.Sizer buildValueSizer(TypeExpr.RefValueType refValueType, Type javaType, Serde.SizerResolver typeSizerResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
@@ -1125,7 +1104,7 @@ sealed interface Companion permits Companion.Nothing {
     throw new AssertionError("Unsupported Java type: " + javaType);
   }
 
-  static @NotNull Sizer buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Sizer buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
       case SHORT -> (Object record) -> Short.BYTES;
@@ -1137,7 +1116,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Sizer buildPrimitiveArraySizerInner(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serde.Sizer buildPrimitiveArraySizerInner(TypeExpr.PrimitiveValueType primitiveType) {
     final int bytesPerElement = switch (primitiveType) {
       case BOOLEAN, BYTE -> Byte.BYTES;
       case SHORT -> Short.BYTES;
@@ -1170,7 +1149,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Sizer extractAndDelegate(Sizer delegate, MethodHandle accessor) {
+  static Serde.Sizer extractAndDelegate(Serde.Sizer delegate, MethodHandle accessor) {
     return (Object record) -> {
       final Object value;
       try {
@@ -1188,7 +1167,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Writer extractAndDelegate(Writer delegate, MethodHandle
+  static Serde.Writer extractAndDelegate(Serde.Writer delegate, MethodHandle
       accessor) {
     final Class<?> type = accessor.type().returnType();
     if (type.isPrimitive()) {
@@ -1229,19 +1208,19 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Extract and delegate for Writer interface  
-  static Writer extractAndDelegateWriter(Writer delegate, MethodHandle accessor) {
+  static Serde.Writer extractAndDelegateWriter(Serde.Writer delegate, MethodHandle accessor) {
     return extractAndDelegate(delegate, accessor);
   }
 
   /// Build sizer chain with callback for complex types
-  static Sizer buildSizerChain(TypeExpr typeExpr, MethodHandle accessor,
-                               SizerResolver complexResolver) {
+  static Serde.Sizer buildSizerChain(TypeExpr typeExpr, MethodHandle accessor,
+                                     Serde.SizerResolver complexResolver) {
     return extractAndDelegate(buildSizerChainInner(typeExpr, complexResolver), accessor);
   }
 
   /// Build sizer chain inner with callback delegation
-  static Sizer buildSizerChainInner(TypeExpr typeExpr,
-                                    SizerResolver complexResolver) {
+  static Serde.Sizer buildSizerChainInner(TypeExpr typeExpr,
+                                          Serde.SizerResolver complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var javaType) ->
@@ -1272,8 +1251,8 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value sizer with callback for complex types (RECORD, INTERFACE, ENUM)
-  static Sizer buildValueSizerInner(TypeExpr.RefValueType refValueType, Type javaType,
-                                    SizerResolver complexResolver) {
+  static Serde.Sizer buildValueSizerInner(TypeExpr.RefValueType refValueType, Type javaType,
+                                          Serde.SizerResolver complexResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN, BYTE -> obj -> obj == null ? Byte.BYTES : 2 * Byte.BYTES;
@@ -1297,14 +1276,14 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build writer chain with callback for complex types
-  static Writer buildWriterChain(TypeExpr typeExpr, MethodHandle accessor,
-                                 WriterResolver complexResolver) {
+  static Serde.Writer buildWriterChain(TypeExpr typeExpr, MethodHandle accessor,
+                                       Serde.WriterResolver complexResolver) {
     return extractAndDelegate(buildWriterChainInner(typeExpr, complexResolver), accessor);
   }
 
   /// Build writer chain inner with callback delegation
-  static Writer buildWriterChainInner(TypeExpr typeExpr,
-                                      WriterResolver complexResolver) {
+  static Serde.Writer buildWriterChainInner(TypeExpr typeExpr,
+                                            Serde.WriterResolver complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var javaType) ->
@@ -1335,8 +1314,8 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value writer with callback for complex types
-  static Writer buildValueWriter(TypeExpr.RefValueType refValueType, Type javaType,
-                                 WriterResolver complexResolver) {
+  static Serde.Writer buildValueWriter(TypeExpr.RefValueType refValueType, Type javaType,
+                                       Serde.WriterResolver complexResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN -> (buffer, obj) -> buffer.put((byte) ((boolean) obj ? 1 : 0));
@@ -1347,11 +1326,11 @@ sealed interface Companion permits Companion.Nothing {
           final int result = (int) object;
           final var position = buffer.position();
           if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
-            ZigZagEncoding.putInt(buffer, Constants2.INTEGER_VAR.marker());
+            ZigZagEncoding.putInt(buffer, Markers.INTEGER_VAR.marker());
             LOGGER.fine(() -> "Writing INTEGER_VAR value=" + result + " at position: " + position);
             ZigZagEncoding.putInt(buffer, result);
           } else {
-            ZigZagEncoding.putInt(buffer, Constants2.INTEGER.marker());
+            ZigZagEncoding.putInt(buffer, Markers.INTEGER.marker());
             LOGGER.fine(() -> "Writing INTEGER value=" + result + " at position: " + position);
             buffer.putInt(result);
           }
@@ -1362,11 +1341,11 @@ sealed interface Companion permits Companion.Nothing {
             final long result = (long) record;
             final var position = buffer.position();
             if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
-              ZigZagEncoding.putInt(buffer, Constants2.LONG_VAR.marker());
+              ZigZagEncoding.putInt(buffer, Markers.LONG_VAR.marker());
               LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
               ZigZagEncoding.putLong(buffer, result);
             } else {
-              ZigZagEncoding.putInt(buffer, Constants2.LONG.marker());
+              ZigZagEncoding.putInt(buffer, Markers.LONG.marker());
               LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
               buffer.putLong(result);
             }
@@ -1406,14 +1385,14 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build reader chain with callback for complex types
-  static Reader buildReaderChain(TypeExpr typeExpr,
-                                 ReaderResolver complexResolver) {
+  static Serde.Reader buildReaderChain(TypeExpr typeExpr,
+                                       Serde.ReaderResolver complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var ignored) -> buildValueReader(refValueType, complexResolver);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
       case TypeExpr.ArrayNode(var element, var ignored3) -> {
-        final Reader nonNullArrayReader;
+        final Serde.Reader nonNullArrayReader;
         if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored2)) {
           nonNullArrayReader = buildPrimitiveArrayReader(primitiveType);
         } else if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
@@ -1449,15 +1428,15 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value reader with callback for complex types
-  static Reader buildValueReader(TypeExpr.RefValueType refValueType,
-                                 ReaderResolver complexResolver) {
-    final Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
+  static Serde.Reader buildValueReader(TypeExpr.RefValueType refValueType,
+                                       Serde.ReaderResolver complexResolver) {
+    final Serde.Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
     return nullCheckAndDelegate(primitiveReader);
   }
 
   /// Build ref value reader with callback for complex types
-  static Reader buildRefValueReader(TypeExpr.RefValueType refValueType,
-                                    ReaderResolver complexResolver) {
+  static Serde.Reader buildRefValueReader(TypeExpr.RefValueType refValueType,
+                                          Serde.ReaderResolver complexResolver) {
     return switch (refValueType) {
       case BOOLEAN -> buffer -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -1467,9 +1446,9 @@ sealed interface Companion permits Companion.Nothing {
         final var positionBefore = buffer.position();
         LOGGER.fine(() -> "RefValueReader reading INTEGER_VAR or INTEGER marker at position: " + positionBefore);
         final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.INTEGER_VAR.marker()) {
+        if (marker == Markers.INTEGER_VAR.marker()) {
           return ZigZagEncoding.getInt(buffer);
-        } else if (marker == Constants2.INTEGER.marker()) {
+        } else if (marker == Markers.INTEGER.marker()) {
           return buffer.getInt();
         } else {
           throw new IllegalStateException("Expected INTEGER marker but got: " + marker + " at position: " + positionBefore);
@@ -1479,9 +1458,9 @@ sealed interface Companion permits Companion.Nothing {
         final var positionBefore = buffer.position();
         LOGGER.fine(() -> "RefValueReader reading LONG_VAR or LONG marker at position: " + positionBefore);
         final int marker = ZigZagEncoding.getInt(buffer);
-        if (marker == Constants2.LONG_VAR.marker()) {
+        if (marker == Markers.LONG_VAR.marker()) {
           return ZigZagEncoding.getLong(buffer);
-        } else if (marker == Constants2.LONG.marker()) {
+        } else if (marker == Markers.LONG.marker()) {
           return buffer.getLong();
         } else {
           throw new IllegalStateException("Expected LONG marker but got: " + marker + " at position: " + positionBefore);
@@ -1519,7 +1498,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Null check and delegate pattern for readers
-  static Reader nullCheckAndDelegate(Reader delegate) {
+  static Serde.Reader nullCheckAndDelegate(Serde.Reader delegate) {
     return buffer -> {
       final int positionBefore = buffer.position();
       final byte nullMarker = buffer.get();
@@ -1601,24 +1580,24 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy sizer that uses callback for record types
-  static Sizer createLazySizer(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
-    final Sizer sizerChain = createLazySizerChain(typeExpr, resolver);
+  static Serde.Sizer createLazySizer(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
+    final Serde.Sizer sizerChain = createLazySizerChain(typeExpr, resolver);
     return extractAndDelegate(sizerChain, getter);
   }
 
   /// Create lazy writer that uses callback for record types
-  static Writer createLazyWriter(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
-    final Writer writerChain = createLazyWriterChain(typeExpr, resolver);
+  static Serde.Writer createLazyWriter(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
+    final Serde.Writer writerChain = createLazyWriterChain(typeExpr, resolver);
     return extractAndDelegateWriter(writerChain, getter);
   }
 
   /// Create lazy reader that uses callback for record types
-  static Reader createLazyReader(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serde.Reader createLazyReader(TypeExpr typeExpr, DependencyResolver resolver) {
     return createLazyReaderChain(typeExpr, resolver);
   }
 
   /// Create lazy sizer chain with callback delegation
-  static Sizer createLazySizerChain(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serde.Sizer createLazySizerChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
@@ -1670,7 +1649,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy writer chain with callback delegation
-  static Writer createLazyWriterChain(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serde.Writer createLazyWriterChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
@@ -1719,7 +1698,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy reader chain with callback delegation
-  static Reader createLazyReaderChain(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serde.Reader createLazyReaderChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
@@ -1729,38 +1708,38 @@ sealed interface Companion permits Companion.Nothing {
       case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.isRecord()) {
-          final Reader recordReader = buffer -> {
+          final Serde.Reader recordReader = buffer -> {
             buffer.getLong();
             final var pickler = resolver.resolve(clazz);
             return switch (pickler) {
               case RecordSerde<?> recordSerde -> recordSerde.deserializeWithoutSignature(buffer);
               case EmptyRecordSerde<?> emptyRecordSerde -> emptyRecordSerde.deserializeWithoutSignature(buffer);
-              case EnumPickler<?> enumPickler -> enumPickler.deserializeWithoutSignature(buffer);
+              case EnumSerde<?> enumPickler -> enumPickler.deserializeWithoutSignature(buffer);
               case null, default ->
                   throw new IllegalStateException("Unsupported serde type: " + (pickler != null ? pickler.getClass() : null));
             };
           };
           yield nullCheckAndDelegate(recordReader);
         } else if (clazz.isEnum()) {
-          final Reader enumReader = buffer -> {
+          final Serde.Reader enumReader = buffer -> {
             buffer.getLong();
             final var pickler = resolver.resolve(clazz);
-            if (pickler instanceof EnumPickler<?> enumPickler) {
+            if (pickler instanceof EnumSerde<?> enumPickler) {
               return enumPickler.deserializeWithoutSignature(buffer);
             } else {
-              throw new IllegalStateException("Expected EnumPickler but got: " + pickler.getClass());
+              throw new IllegalStateException("Expected EnumSerde but got: " + pickler.getClass());
             }
           };
           yield nullCheckAndDelegate(enumReader);
         } else if (clazz.isInterface()) {
-          final Reader interfaceReader = buffer -> {
+          final Serde.Reader interfaceReader = buffer -> {
             final long typeSignature = buffer.getLong();
             // For interfaces, we need to resolve the concrete type at runtime
             final var pickler = resolver.resolveBySignature(typeSignature);
             return switch (pickler) {
               case RecordSerde<?> recordSerde -> recordSerde.deserializeWithoutSignature(buffer);
               case EmptyRecordSerde<?> emptyRecordSerde -> emptyRecordSerde.deserializeWithoutSignature(buffer);
-              case EnumPickler<?> enumPickler -> enumPickler.deserializeWithoutSignature(buffer);
+              case EnumSerde<?> enumPickler -> enumPickler.deserializeWithoutSignature(buffer);
               case null, default ->
                   throw new IllegalStateException("Unsupported serde type: " + (pickler != null ? pickler.getClass() : null));
             };
@@ -1774,7 +1753,7 @@ sealed interface Companion permits Companion.Nothing {
         }
       }
       case TypeExpr.ArrayNode(var element, var componentType) -> {
-        final Reader elementReader;
+        final Serde.Reader elementReader;
         if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
           final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
           elementReader = nullCheckAndDelegate(primitiveArrayReader);

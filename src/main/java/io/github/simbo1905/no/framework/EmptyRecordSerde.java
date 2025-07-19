@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /// Specialized handler for records with no components (empty records)
+@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 final class EmptyRecordSerde<T> implements Pickler<T> {
   final Class<?> userType;
   final long typeSignature;

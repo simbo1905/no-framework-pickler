@@ -24,14 +24,14 @@ final class RecordSerde<T> implements Pickler<T> {
   final MethodHandle[] componentAccessors;
   final Class<?>[] componentTypes; // Component types for the record, used for backwards compatibility defaults
   final boolean compatibilityMode;
-  final Sizer[] sizers;
-  final Writer[] writers;
-  final Reader[] readers;
+  final Serde.Sizer[] sizers;
+  final Serde.Writer[] writers;
+  final Serde.Reader[] readers;
 
   RecordSerde(Class<?> userType,
               long typeSignature,
               Optional<Long> altTypeSignature,
-              Sizer[] sizers, Writer[] writers, Reader[] readers) {
+              Serde.Sizer[] sizers, Serde.Writer[] writers, Serde.Reader[] readers) {
     assert userType.isRecord() : "User type must be a record: " + userType;
     compatibilityMode = CompatibilityMode.current() == CompatibilityMode.ENABLED;
     this.userType = Objects.requireNonNull(userType);

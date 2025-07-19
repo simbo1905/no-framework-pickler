@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905.no.framework;
 
 import java.util.Objects;
@@ -6,9 +9,9 @@ import java.util.Objects;
 record SerdeHandler(
     Class<?> valueBasedLike,
     int marker,
-    Sizer sizer,
-    Writer writer,
-    Reader reader
+    Serde.Sizer sizer,
+    Serde.Writer writer,
+    Serde.Reader reader
 ) {
   public SerdeHandler {
     Objects.requireNonNull(valueBasedLike, "valueBasedLike must not be null");

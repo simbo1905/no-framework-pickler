@@ -18,7 +18,7 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, PicklerOfMany, RecordSerde {
+public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerde, RecordSerde {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -125,20 +125,20 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
       final Optional<Long> altTypeSignature = Optional.empty();
       return new EmptyRecordSerde<>(clazz, typeSignature, altTypeSignature);
     } else if (clazz.isEnum()) {
-      LOGGER.fine(() -> "Creating EnumPickler for enum: " + clazz.getName());
+      LOGGER.fine(() -> "Creating EnumSerde for enum: " + clazz.getName());
       final Long typeSignature = typeSignatures.getOrDefault(clazz,
           Companion.hashEnumSignature(clazz));
       final Optional<Long> altTypeSignature = Optional.empty();
       @SuppressWarnings("rawtypes") final var enumClass = (Class) clazz;
-      @SuppressWarnings({"unchecked", "rawtypes"}) final Pickler<T> enumPickler = new EnumPickler(enumClass, typeSignature, altTypeSignature);
+      @SuppressWarnings({"unchecked", "rawtypes"}) final Pickler<T> enumPickler = new EnumSerde(enumClass, typeSignature, altTypeSignature);
       return enumPickler;
     } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
       return createSimpleRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);
     } else {
-      // Complex case: multiple records or dependencies require PicklerOfMany
-      LOGGER.fine(() -> "Creating PicklerOfMany for complex record: " + clazz.getName());
+      // Complex case: multiple records or dependencies require ManySerde
+      LOGGER.fine(() -> "Creating ManySerde for complex record: " + clazz.getName());
       return createPicklerImpl(clazz, allPicklerClasses, typeSignatures);
     }
   }
@@ -192,7 +192,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
   }
 
   /// Create sizer resolver that handles enum types
-  private static SizerResolver createEnumSizerResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+  private static Serde.SizerResolver createEnumSizerResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     return targetClass -> {
       if (targetClass.isEnum() && enumToTypeSignatureMap.containsKey(targetClass)) {
         // Enum size is constant: type signature + worst-case ordinal (no separate null marker needed)
@@ -203,7 +203,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
   }
 
   /// Create writer resolver that handles enum types
-  private static WriterResolver createEnumWriterResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+  private static Serde.WriterResolver createEnumWriterResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     return targetClass -> {
       if (targetClass.isEnum() && enumToTypeSignatureMap.containsKey(targetClass)) {
         final Long enumTypeSignature = enumToTypeSignatureMap.get(targetClass);
@@ -222,7 +222,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
   }
 
   /// Create reader resolver that handles enum types
-  private static ReaderResolver createEnumReaderResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+  private static Serde.ReaderResolver createEnumReaderResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     // Reverse mapping: signature -> enum class
     final Map<Long, Class<Enum<?>>> signatureToEnumClass = enumToTypeSignatureMap.entrySet().stream()
         .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
@@ -250,9 +250,9 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
     final var altSignature = Optional.ofNullable(typeSignatures.get(userType));
 
     // Create resolvers that handle enum types
-    final SizerResolver sizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
-    final WriterResolver writerResolver = createEnumWriterResolver(enumToTypeSignatureMap);
-    final ReaderResolver readerResolver = createEnumReaderResolver(enumToTypeSignatureMap);
+    final Serde.SizerResolver sizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
+    final Serde.WriterResolver writerResolver = createEnumWriterResolver(enumToTypeSignatureMap);
+    final Serde.ReaderResolver readerResolver = createEnumReaderResolver(enumToTypeSignatureMap);
 
     // Create component serdes directly without external resolvers
     final var customHandlers = List.<SerdeHandler>of();
@@ -264,15 +264,15 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
         readerResolver
     );
 
-    final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Sizer[]::new);
-    final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Writer[]::new);
-    final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Reader[]::new);
+    final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);
+    final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serde.Writer[]::new);
+    final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serde.Reader[]::new);
 
     return new RecordSerde<>(userType, typeSignature, altSignature, sizers, writers, readers);
   }
 
-  /// Create PicklerOfMany for complex cases with delegation
-  private static <T> PicklerOfMany<T> createPicklerImpl(
+  /// Create ManySerde for complex cases with delegation
+  private static <T> ManySerde<T> createPicklerImpl(
       Class<T> rootClass,
       Set<Class<?>> allClasses,
       Map<Class<?>, Long> typeSignatures) {
@@ -325,17 +325,17 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
       }
     }
 
-    // Create EnumPickler instances for all enum classes
+    // Create EnumSerde instances for all enum classes
     for (Class<?> enumClass : allClasses) {
       if (enumClass.isEnum()) {
-        LOGGER.fine(() -> "Creating EnumPickler for enum in PicklerOfMany: " + enumClass.getName());
+        LOGGER.fine(() -> "Creating EnumSerde for enum in ManySerde: " + enumClass.getName());
         final var typeSignature = Companion.hashEnumSignature(enumClass);
         final var altSignature = Optional.<Long>empty();
-        @SuppressWarnings({"unchecked", "rawtypes"}) final var enumSerde = new EnumPickler(enumClass, typeSignature, altSignature);
+        @SuppressWarnings({"unchecked", "rawtypes"}) final var enumSerde = new EnumSerde(enumClass, typeSignature, altSignature);
 
         serdes.put(enumClass, enumSerde);
         typeSignatureToSerde.put(typeSignature, enumSerde);
-        LOGGER.fine(() -> "Added EnumPickler to serdes map for: " + enumClass.getName() + " with signature: 0x" + Long.toHexString(typeSignature));
+        LOGGER.fine(() -> "Added EnumSerde to serdes map for: " + enumClass.getName() + " with signature: 0x" + Long.toHexString(typeSignature));
       }
     }
 
@@ -347,9 +347,9 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
 
         // Use callback-based component building
         final var componentSerdes = Companion.buildComponentSerdesWithCallback(recordClass, resolver);
-        final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Sizer[]::new);
-        final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Writer[]::new);
-        final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Reader[]::new);
+        final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);
+        final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serde.Writer[]::new);
+        final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serde.Reader[]::new);
 
         final var serde = new RecordSerde<>(recordClass, typeSignature, altSignature, sizers, writers, readers);
         serdes.put(recordClass, serde);
@@ -362,7 +362,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
       }
     }
 
-    return new PicklerOfMany<>(rootClass, serdes, typeSignatureToSerde);
+    return new ManySerde<>(rootClass, serdes, typeSignatureToSerde);
   }
 
   /// In order to support optional backwards compatibility, we need to be able to tell the newer pickler what is the

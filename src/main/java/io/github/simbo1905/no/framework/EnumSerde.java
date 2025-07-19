@@ -12,13 +12,14 @@ import java.util.Objects;
 import java.util.Optional;
 
 /// Specialized handler for enum types
-final class EnumPickler<T extends Enum<T>> implements Pickler<T> {
+final class EnumSerde<T extends Enum<T>> implements Pickler<T> {
   final Class<T> enumType;
   final long typeSignature;
+  @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
   final Optional<Long> altTypeSignature;
   final T[] enumConstants;
 
-  public EnumPickler(@NotNull Class<T> enumType, long typeSignature, Optional<Long> altTypeSignature) {
+  public EnumSerde(@NotNull Class<T> enumType, long typeSignature, @SuppressWarnings("OptionalUsedAsFieldOrParameterType") Optional<Long> altTypeSignature) {
     assert enumType.isEnum() : "User type must be an enum: " + enumType;
 
     this.enumType = enumType;
@@ -26,7 +27,7 @@ final class EnumPickler<T extends Enum<T>> implements Pickler<T> {
     this.altTypeSignature = altTypeSignature;
     this.enumConstants = enumType.getEnumConstants();
 
-    LOGGER.fine(() -> "EnumPickler " + enumType.getName() + " construction complete with type signature 0x" +
+    LOGGER.fine(() -> "EnumSerde " + enumType.getName() + " construction complete with type signature 0x" +
         Long.toHexString(typeSignature));
   }
 
@@ -39,12 +40,12 @@ final class EnumPickler<T extends Enum<T>> implements Pickler<T> {
     if (!enumType.isAssignableFrom(enumValue.getClass())) {
       throw new IllegalArgumentException("Expected " + enumType + " but got " + enumValue.getClass());
     }
-    LOGGER.fine(() -> "EnumPickler " + enumType.getName() + " Serializing enum " + enumValue + " with type signature 0x" +
+    LOGGER.fine(() -> "EnumSerde " + enumType.getName() + " Serializing enum " + enumValue + " with type signature 0x" +
         Long.toHexString(typeSignature) + " at position " + buffer.position());
     buffer.putLong(typeSignature);
-    LOGGER.finer(() -> "EnumPickler wrote type signature 0x" + Long.toHexString(typeSignature) + " at position " + (buffer.position() - Long.BYTES) + " to " + (buffer.position() - 1));
+    LOGGER.finer(() -> "EnumSerde wrote type signature 0x" + Long.toHexString(typeSignature) + " at position " + (buffer.position() - Long.BYTES) + " to " + (buffer.position() - 1));
     ZigZagEncoding.putInt(buffer, enumValue.ordinal());
-    LOGGER.finer(() -> "EnumPickler wrote ordinal " + enumValue.ordinal() + " at position " + (buffer.position() - ZigZagEncoding.sizeOf(enumValue.ordinal())) + " to " + (buffer.position() - 1));
+    LOGGER.finer(() -> "EnumSerde wrote ordinal " + enumValue.ordinal() + " at position " + (buffer.position() - ZigZagEncoding.sizeOf(enumValue.ordinal())) + " to " + (buffer.position() - 1));
     return Long.BYTES + ZigZagEncoding.sizeOf(enumValue.ordinal());
   }
 
@@ -70,15 +71,15 @@ final class EnumPickler<T extends Enum<T>> implements Pickler<T> {
   T deserializeWithoutSignature(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
-    LOGGER.fine(() -> "EnumPickler " + enumType.getSimpleName() +
+    LOGGER.fine(() -> "EnumSerde " + enumType.getSimpleName() +
         " deserializeWithoutSignature() at position " + buffer.position());
 
     final int ordinal = ZigZagEncoding.getInt(buffer);
-    LOGGER.finer(() -> "EnumPickler read ordinal " + ordinal + " from position " + (buffer.position() - ZigZagEncoding.sizeOf(ordinal)) + " to " + (buffer.position() - 1));
+    LOGGER.finer(() -> "EnumSerde read ordinal " + ordinal + " from position " + (buffer.position() - ZigZagEncoding.sizeOf(ordinal)) + " to " + (buffer.position() - 1));
     if (ordinal < 0 || ordinal >= enumConstants.length) {
       throw new IllegalArgumentException("Invalid enum ordinal " + ordinal + " for " + enumType + " with " + enumConstants.length + " constants");
     }
-    LOGGER.finer(() -> "EnumPickler returning enum constant " + enumConstants[ordinal]);
+    LOGGER.finer(() -> "EnumSerde returning enum constant " + enumConstants[ordinal]);
     return enumConstants[ordinal];
   }
 
@@ -103,6 +104,6 @@ final class EnumPickler<T extends Enum<T>> implements Pickler<T> {
 
   @Override
   public String toString() {
-    return "EnumPickler{enumType=" + enumType + ", typeSignature=0x" + Long.toHexString(typeSignature) + "}";
+    return "EnumSerde{enumType=" + enumType + ", typeSignature=0x" + Long.toHexString(typeSignature) + "}";
   }
 }

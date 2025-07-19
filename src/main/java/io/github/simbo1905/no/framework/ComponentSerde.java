@@ -7,9 +7,9 @@ import java.util.Objects;
 
 /// Component serialization bundle that will allow for custom value-like types to be serialized
 record ComponentSerde(
-    Writer writer,
-    Reader reader,
-    Sizer sizer
+    Serde.Writer writer,
+    Serde.Reader reader,
+    Serde.Sizer sizer
 ) {
   public ComponentSerde {
     Objects.requireNonNull(writer, "writer must not be null");
