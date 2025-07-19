@@ -289,18 +289,18 @@ sealed interface Companion permits Companion.Nothing {
       // Write each key-value pair
       map.forEach((key, value) -> {
         if (key == null) {
-          LOGGER.finer(() -> "Map key is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
+          LOGGER.finest(() -> "Map key is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER);
         } else {
-          LOGGER.finer(() -> "Map key is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
+          LOGGER.finest(() -> "Map key is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER);
           keyWriter.accept(buffer, key);
         }
         if (value == null) {
-          LOGGER.finer(() -> "Map value is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
+          LOGGER.finest(() -> "Map value is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // write a marker for null
         } else {
-          LOGGER.finer(() -> "Map value is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
+          LOGGER.finest(() -> "Map value is present writing NOT_NULL_MARKER=1 marker at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER); // write a marker for non-null
           valueWriter.accept(buffer, value);
         }
@@ -522,12 +522,12 @@ sealed interface Companion permits Companion.Nothing {
           final int index = i;
           int posBeforeNull = buffer.position();
           buffer.put(NULL_MARKER); // write a marker for null
-          LOGGER.finer(() -> "Writing NULL_MARKER " + NULL_MARKER + " at position " + posBeforeNull + " for array element " + index);
+          LOGGER.finest(() -> "Writing NULL_MARKER " + NULL_MARKER + " at position " + posBeforeNull + " for array element " + index);
         } else {
           final int index = i;
           int posBeforeNotNull = buffer.position();
           buffer.put(NOT_NULL_MARKER); // write a marker for non-null
-          LOGGER.finer(() -> "Writing NOT_NULL_MARKER " + NOT_NULL_MARKER + " at position " + posBeforeNotNull + " for array element " + index);
+          LOGGER.finest(() -> "Writing NOT_NULL_MARKER " + NOT_NULL_MARKER + " at position " + posBeforeNotNull + " for array element " + index);
           elementWriter.accept(buffer, item);
         }
       }
@@ -1569,7 +1569,7 @@ sealed interface Companion permits Companion.Nothing {
     return buffer -> {
       final int positionBefore = buffer.position();
       final byte nullMarker = buffer.get();
-      LOGGER.finer(() -> "Read null marker " + nullMarker + " at position " + positionBefore +
+      LOGGER.finest(() -> "Read null marker " + nullMarker + " at position " + positionBefore +
           " (NULL=" + NULL_MARKER + ", NOT_NULL=" + NOT_NULL_MARKER + ")");
       if (nullMarker == NULL_MARKER) {
         return null;

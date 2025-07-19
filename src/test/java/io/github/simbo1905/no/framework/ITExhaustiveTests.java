@@ -149,7 +149,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     String fullClassName = "io.github.simbo1905.no.framework.generated." + recordName;
 
     String sourceCode = generateRecordSource(recordName, typeExpr);
-    LOGGER.fine(() -> "Generated source for " + typeExpr.toTreeString() + ": " + sourceCode);
+    LOGGER.info(() -> "Generated source for " + typeExpr.toTreeString() + ": " + sourceCode);
 
     Class<?> compiledClass = CompileAndLoadClass.compileAndClassLoad(fullClassName, sourceCode);
 
@@ -217,18 +217,24 @@ public class ITExhaustiveTests implements ArbitraryProvider {
         case CUSTOM -> Arbitraries.of();
       };
       case TypeExpr2.ArrayNode(var element, var ignoredComponentType) -> {
-        // 1. Recursively create an arbitrary for the element type.
+        // Recursively get an arbitrary for the array's elements.
         Arbitrary<?> elementArbitrary = arbitraryFor(element);
 
-        // 2. Determine the Java Class of the element from its structure.
-        Class<?> elementClass = toClass(element);
+        // This is the class of the final array to be generated (e.g., Boolean[][].class).
+        Class<?> arrayClass = toClass(typeExpr);
 
-        // 3. Create the target array's class (e.g., int[][].class from int[].class).
-        Class<?> arrayClass = java.lang.reflect.Array.newInstance(elementClass, 0).getClass();
-
-        // 4. Use the element arbitrary to generate an array of the correct type.
-        // The cast to (Class) is necessary for jQwik's API.
-        yield elementArbitrary.array((Class) arrayClass);
+        // Manually create the array by first generating a list of elements
+        // and then populating a new array instance. This is more robust
+        // than using Arbitrary.array() in this recursive context.
+        yield elementArbitrary.list().map(list -> {
+          // The componentType is the type of the elements (e.g., Boolean[].class for a Boolean[][]).
+          Class<?> componentType = arrayClass.getComponentType();
+          Object array = Array.newInstance(componentType, list.size());
+          for (int i = 0; i < list.size(); i++) {
+            Array.set(array, i, list.get(i));
+          }
+          return array;
+        });
       }
       case TypeExpr2.ListNode(var element) -> arbitraryFor(element).list();
       case TypeExpr2.OptionalNode(var wrapped) -> arbitraryFor(wrapped).optional();
@@ -361,24 +367,29 @@ public class ITExhaustiveTests implements ArbitraryProvider {
       }
     } else if (expected instanceof Map<?, ?> expectedMap && actual instanceof Map<?, ?> actualMap) {
       assertEquals(expectedMap.size(), actualMap.size(), "Map size differs");
-      for (Map.Entry<?, ?> entry : expectedMap.entrySet()) {
-        Object expectedKey = entry.getKey();
-        Object expectedValue = entry.getValue();
-        // This is tricky for maps with non-trivial key equality
-        Optional<?> actualKeyOpt = actualMap.keySet().stream()
-            .filter(k -> {
+
+      // For each entry in the expected map...
+      for (Map.Entry<?, ?> expectedEntry : expectedMap.entrySet()) {
+        Object expectedKey = expectedEntry.getKey();
+        Object expectedValue = expectedEntry.getValue();
+
+        // ...find the corresponding entry in the actual map by deep-comparing the keys.
+        // This avoids using Map.get(), which fails for array keys.
+        Map.Entry<?, ?> actualEntry = actualMap.entrySet().stream()
+            .filter(e -> {
               try {
-                assertDeepEquals(expectedKey, k);
+                // Use our existing deep equals logic to compare the keys
+                assertDeepEquals(expectedKey, e.getKey());
                 return true;
-              } catch (Exception | Error e) {
+              } catch (Exception | Error ex) {
                 return false;
               }
             })
-            .findFirst();
-        if (actualKeyOpt.isEmpty()) {
-          throw new AssertionError("No matching key for " + expectedKey + " in actual map");
-        }
-        assertDeepEquals(expectedValue, actualMap.get(actualKeyOpt.get()));
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No matching key found for: " + expectedKey));
+
+        // Now, compare the values of the two entries that have been matched by key.
+        assertDeepEquals(expectedValue, actualEntry.getValue());
       }
     } else if (expected instanceof Optional<?> expectedOptional && actual instanceof Optional<?> actualOptional) {
       assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs");

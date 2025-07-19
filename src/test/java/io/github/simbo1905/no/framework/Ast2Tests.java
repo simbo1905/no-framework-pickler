@@ -8,8 +8,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.logging.Logger;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class Ast2Tests {
@@ -213,5 +215,28 @@ public class Ast2Tests {
 
     // 7. Assert the deserialized record is equal to the original
     assertEquals(original, deserialized);
+  }
+
+  public record GenRecord_557(java.util.Map<java.lang.Boolean[], java.lang.String> value) {
+  }
+
+  @Test
+  void testGenRecord_557() {
+    final Pickler<GenRecord_557> pickler = Pickler.forClass(GenRecord_557.class);
+    final GenRecord_557 original = new GenRecord_557(Map.of(new Boolean[]{true, false}, "test"));
+    LOGGER.fine(() -> "Original record: " + original);
+    LOGGER.fine(() -> "Original record hashCode: " + original.hashCode());
+
+    final ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(original));
+    pickler.serialize(buffer, original);
+    buffer.flip();
+
+    final GenRecord_557 deserialized = pickler.deserialize(buffer);
+    LOGGER.fine(() -> "Deserialized record: " + deserialized);
+
+    assertEquals(original.value().size(), deserialized.value().size());
+    //noinspection OptionalGetWithoutIsPresent
+    assertThat(deserialized.value().keySet().stream().findFirst().get()).containsExactly(true, false);
+    assertEquals(original.value().get(new Boolean[]{true, false}), deserialized.value().get(new Boolean[]{true, false}));
   }
 }
