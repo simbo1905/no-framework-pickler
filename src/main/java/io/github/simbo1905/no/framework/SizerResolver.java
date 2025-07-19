@@ -7,9 +7,4 @@ import java.util.function.Function;
 
 interface SizerResolver extends
     Function<Class<?>, Sizer> {
-  // For this simple case, the resolvers can be simple lambdas that throw
-  // as they shouldn't be called for a trivial record with only primitive components.
-  SizerResolver throwsSizerResolver = type -> {
-    throw new AssertionError("Sizer throwsSizerResolver should not be reachable.");
-  };
 }

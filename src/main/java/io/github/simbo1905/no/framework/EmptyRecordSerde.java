@@ -97,7 +97,7 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
       throw new IllegalArgumentException("Expected " + userType + " but got " + record.getClass());
     }
 
-    return Byte.BYTES + Long.BYTES; // Only type signature and zero component counnt
+    return Byte.BYTES + Long.BYTES; // Only type signature and zero component count
   }
 
   @Override

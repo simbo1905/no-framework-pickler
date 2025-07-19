@@ -18,7 +18,6 @@ final class EnumPickler<T extends Enum<T>> implements Pickler<T> {
   final Optional<Long> altTypeSignature;
   final T[] enumConstants;
 
-  @SuppressWarnings("unchecked")
   public EnumPickler(@NotNull Class<T> enumType, long typeSignature, Optional<Long> altTypeSignature) {
     assert enumType.isEnum() : "User type must be an enum: " + enumType;
 

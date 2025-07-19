@@ -59,12 +59,6 @@ sealed interface TypeExpr permits
           }
           // Otherwise it's a built-in reference type
           RefValueType refType = classifyReferenceClass(clazz);
-          int marker;
-          if (refType == RefValueType.RECORD || refType == RefValueType.ENUM || refType == RefValueType.INTERFACE) {
-            marker = VOID_MARKER; // Due to static analysis we never write VOID_MARKER we write the user type signature
-          } else {
-            marker = Companion.referenceToMarker(clazz);
-          }
           return new RefValueNode(refType, clazz);
         }
       }
@@ -249,7 +243,7 @@ sealed interface TypeExpr permits
       case MapNode(var key, var value) -> Stream.concat(
           classesInAST(key),
           classesInAST(value));
-      case RefValueNode(var type, var javaType) -> Stream.of((Class<?>) javaType);
+      case RefValueNode(var ignored, var javaType) -> Stream.of((Class<?>) javaType);
       case PrimitiveValueNode(var ignored2, var javaType) -> Stream.of((Class<?>) javaType);
     };
   }
@@ -264,10 +258,7 @@ sealed interface TypeExpr permits
       case ListNode(var element) -> "LIST(" + element.toTreeString() + ")";
       case OptionalNode(var wrapped) -> "OPTIONAL(" + wrapped.toTreeString() + ")";
       case MapNode(var key, var value) -> "MAP(" + key.toTreeString() + "," + value.toTreeString() + ")";
-      case RefValueNode(var type, var javaType) -> {
-        String className = ((Class<?>) javaType).getSimpleName();
-        yield className;
-      }
+      case RefValueNode(var ignored, var javaType) -> ((Class<?>) javaType).getSimpleName();
       case PrimitiveValueNode(var ignored1, var javaType) -> ((Class<?>) javaType).getSimpleName();
     };
   }
@@ -425,6 +416,6 @@ sealed interface TypeExpr permits
 
   enum PrimitiveValueType {
     BOOLEAN, BYTE, SHORT, CHARACTER,
-    INTEGER, LONG, FLOAT, DOUBLE;
+    INTEGER, LONG, FLOAT, DOUBLE
   }
 }

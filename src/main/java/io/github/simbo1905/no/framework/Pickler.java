@@ -18,7 +18,7 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, PicklerImpl, RecordSerde {
+public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, PicklerOfMany, RecordSerde {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -137,8 +137,8 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
       return createSimpleRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);
     } else {
-      // Complex case: multiple records or dependencies require PicklerImpl
-      LOGGER.fine(() -> "Creating PicklerImpl for complex record: " + clazz.getName());
+      // Complex case: multiple records or dependencies require PicklerOfMany
+      LOGGER.fine(() -> "Creating PicklerOfMany for complex record: " + clazz.getName());
       return createPicklerImpl(clazz, allPicklerClasses, typeSignatures);
     }
   }
@@ -271,8 +271,8 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
     return new RecordSerde<>(userType, typeSignature, altSignature, sizers, writers, readers);
   }
 
-  /// Create PicklerImpl for complex cases with delegation
-  private static <T> PicklerImpl<T> createPicklerImpl(
+  /// Create PicklerOfMany for complex cases with delegation
+  private static <T> PicklerOfMany<T> createPicklerImpl(
       Class<T> rootClass,
       Set<Class<?>> allClasses,
       Map<Class<?>, Long> typeSignatures) {
@@ -328,7 +328,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
     // Create EnumPickler instances for all enum classes
     for (Class<?> enumClass : allClasses) {
       if (enumClass.isEnum()) {
-        LOGGER.fine(() -> "Creating EnumPickler for enum in PicklerImpl: " + enumClass.getName());
+        LOGGER.fine(() -> "Creating EnumPickler for enum in PicklerOfMany: " + enumClass.getName());
         final var typeSignature = Companion.hashEnumSignature(enumClass);
         final var altSignature = Optional.<Long>empty();
         @SuppressWarnings({"unchecked", "rawtypes"}) final var enumSerde = new EnumPickler(enumClass, typeSignature, altSignature);
@@ -362,7 +362,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumPickler, Pickle
       }
     }
 
-    return new PicklerImpl<>(rootClass, serdes, typeSignatureToSerde);
+    return new PicklerOfMany<>(rootClass, serdes, typeSignatureToSerde);
   }
 
   /// In order to support optional backwards compatibility, we need to be able to tell the newer pickler what is the

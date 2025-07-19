@@ -10,14 +10,11 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 /// Main coordinator for multiple record types using static analysis and callback delegation
-final class PicklerImpl<R> implements Pickler<R> {
-  final Class<R> rootClass;
-  final Map<Class<?>, Pickler<?>> serdes;
-  final Map<Long, Pickler<?>> typeSignatureToSerde;
-
-  PicklerImpl(Class<R> rootClass,
-              Map<Class<?>, Pickler<?>> serdes,
-              Map<Long, Pickler<?>> typeSignatureToSerde) {
+record PicklerOfMany<R>(Class<R> rootClass, Map<Class<?>, Pickler<?>> serdes,
+                        Map<Long, Pickler<?>> typeSignatureToSerde) implements Pickler<R> {
+  PicklerOfMany(Class<R> rootClass,
+                Map<Class<?>, Pickler<?>> serdes,
+                Map<Long, Pickler<?>> typeSignatureToSerde) {
     this.rootClass = rootClass;
     this.serdes = Map.copyOf(serdes);
     this.typeSignatureToSerde = Map.copyOf(typeSignatureToSerde);
@@ -39,29 +36,32 @@ final class PicklerImpl<R> implements Pickler<R> {
   public R deserialize(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     final long typeSignature = buffer.getLong();
-    LOGGER.fine(() -> "PicklerImpl.deserialize() looking up type signature: 0x" + Long.toHexString(typeSignature));
+    LOGGER.fine(() -> "PicklerOfMany.deserialize() looking up type signature: 0x" + Long.toHexString(typeSignature));
     final var serde = typeSignatureToSerde.get(typeSignature);
     if (serde == null) {
       LOGGER.severe(() -> "No serde found for type signature: 0x" + Long.toHexString(typeSignature) + ". Available signatures: " +
           typeSignatureToSerde.keySet().stream().map(sig -> "0x" + Long.toHexString(sig)).collect(Collectors.joining(", ")));
       throw new IllegalStateException("Unknown type signature: " + typeSignature);
     }
-    LOGGER.fine(() -> "PicklerImpl.deserialize() found serde: " + serde.getClass().getSimpleName() + " for signature: 0x" + Long.toHexString(typeSignature));
+    LOGGER.fine(() -> "PicklerOfMany.deserialize() found serde: " + serde.getClass().getSimpleName() + " for signature: 0x" + Long.toHexString(typeSignature));
     final R result;
-    if (serde instanceof RecordSerde<?> recordSerde) {
-      @SuppressWarnings("unchecked")
-      R record = (R) recordSerde.deserializeWithoutSignature(buffer);
-      result = record;
-    } else if (serde instanceof EmptyRecordSerde<?> emptyRecordSerde) {
-      @SuppressWarnings("unchecked")
-      R record = (R) emptyRecordSerde.deserializeWithoutSignature(buffer);
-      result = record;
-    } else if (serde instanceof EnumPickler<?> enumPickler) {
-      @SuppressWarnings("unchecked")
-      R record = (R) enumPickler.deserializeWithoutSignature(buffer);
-      result = record;
-    } else {
-      throw new IllegalStateException("Unsupported serde type: " + serde.getClass());
+    switch (serde) {
+      case RecordSerde<?> recordSerde -> {
+        @SuppressWarnings("unchecked")
+        R record = (R) recordSerde.deserializeWithoutSignature(buffer);
+        result = record;
+      }
+      case EmptyRecordSerde<?> emptyRecordSerde -> {
+        @SuppressWarnings("unchecked")
+        R record = (R) emptyRecordSerde.deserializeWithoutSignature(buffer);
+        result = record;
+      }
+      case EnumPickler<?> enumPickler -> {
+        @SuppressWarnings("unchecked")
+        R record = (R) enumPickler.deserializeWithoutSignature(buffer);
+        result = record;
+      }
+      default -> throw new IllegalStateException("Unsupported serde type: " + serde.getClass());
     }
     return result;
   }

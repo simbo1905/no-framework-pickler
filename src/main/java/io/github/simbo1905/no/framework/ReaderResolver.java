@@ -7,7 +7,4 @@ import java.util.function.Function;
 
 interface ReaderResolver extends
     Function<Long, Reader> {
-  ReaderResolver throwsReaderResolver = type -> {
-    throw new AssertionError("Reader throwsReaderResolver should not be reachable.");
-  };
 }

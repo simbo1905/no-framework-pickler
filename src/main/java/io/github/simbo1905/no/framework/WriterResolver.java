@@ -7,11 +7,5 @@ import java.util.function.Function;
 
 interface WriterResolver extends
     Function<Class<?>, Writer> {
-  WriterResolver throwsWriterResolver = type -> {
-    throw new AssertionError("Writer throwsWriterResolver should not be reachable.");
-  };
 
-  default Writer resolveWriter(Class<?> type) {
-    return apply(type);
-  }
 }

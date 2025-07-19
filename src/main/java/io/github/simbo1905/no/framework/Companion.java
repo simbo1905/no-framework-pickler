@@ -24,7 +24,7 @@ import java.util.stream.Stream;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static io.github.simbo1905.no.framework.TypeExpr.PrimitiveValueType.*;
 
-/// This is the static helpers of the pickler
+/// This is a namespace of static functional methods.
 sealed interface Companion permits Companion.Nothing {
 
   record Nothing() implements Companion {
