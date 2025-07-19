@@ -55,7 +55,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
       case TypeExpr2.ListNode(var ignored) -> List.class;
       case TypeExpr2.OptionalNode(var ignored) -> Optional.class;
       case TypeExpr2.MapNode(var ignored, var ignored2) -> Map.class;
-      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> (Class<?>) arrayType;
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType;
     };
   }
 
@@ -105,15 +105,17 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     final var stringType = new TypeExpr2.RefValueNode(TypeExpr2.RefValueType.STRING, String.class);
     return Arbitraries.oneOf(
         valueTypes.map(vt -> {
-            if (vt instanceof TypeExpr2.PrimitiveValueNode pvn) {
-                // Correctly create a PrimitiveArrayNode for primitive elements
-                Class<?> componentType = (Class<?>) pvn.javaType();
-                Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
-                return new TypeExpr2.PrimitiveArrayNode(pvn.type(), arrayType);
-            } else {
-                // Use ArrayNode for all other element types (references, containers)
-                return new TypeExpr2.ArrayNode(vt, toClass(vt));
-            }
+          if (vt instanceof TypeExpr2.PrimitiveValueNode(
+              TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+          )) {
+            // Correctly create a PrimitiveArrayNode for primitive elements
+            Class<?> componentType = (Class<?>) javaType;
+            Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
+            return new TypeExpr2.PrimitiveArrayNode(type, arrayType);
+          } else {
+            // Use ArrayNode for all other element types (references, containers)
+            return new TypeExpr2.ArrayNode(vt, toClass(vt));
+          }
         }),
         valueTypes.map(TypeExpr2.ListNode::new),
         valueTypes.map(TypeExpr2.OptionalNode::new),
@@ -129,15 +131,17 @@ public class ITExhaustiveTests implements ArbitraryProvider {
 
     return Arbitraries.oneOf(
         singleContainers.map(sc -> {
-            if (sc instanceof TypeExpr2.PrimitiveValueNode pvn) {
-                // Correctly create a PrimitiveArrayNode for primitive elements
-                Class<?> componentType = (Class<?>) pvn.javaType();
-                Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
-                return new TypeExpr2.PrimitiveArrayNode(pvn.type(), arrayType);
-            } else {
-                // Use ArrayNode for all other element types (references, containers)
-                return new TypeExpr2.ArrayNode(sc, toClass(sc));
-            }
+          if (sc instanceof TypeExpr2.PrimitiveValueNode(
+              TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+          )) {
+            // Correctly create a PrimitiveArrayNode for primitive elements
+            Class<?> componentType = (Class<?>) javaType;
+            Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
+            return new TypeExpr2.PrimitiveArrayNode(type, arrayType);
+          } else {
+            // Use ArrayNode for all other element types (references, containers)
+            return new TypeExpr2.ArrayNode(sc, toClass(sc));
+          }
         }),      // Array(Container(Value))
         singleContainers.map(TypeExpr2.ListNode::new),
         singleContainers.map(TypeExpr2.OptionalNode::new),
@@ -152,13 +156,17 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     Arbitrary<TypeExpr2> essentialDouble = Arbitraries.oneOf(
         valueTypes.map(v -> new TypeExpr2.ArrayNode(new TypeExpr2.ListNode(v), List.class)),           // Array(List(Value))
         valueTypes.map(v -> new TypeExpr2.ListNode(
-            (v instanceof TypeExpr2.PrimitiveValueNode pvn) ?
-                new TypeExpr2.PrimitiveArrayNode(pvn.type(), Array.newInstance((Class<?>) pvn.javaType(), 0).getClass()) :
+            (v instanceof TypeExpr2.PrimitiveValueNode(
+                TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+            )) ?
+                new TypeExpr2.PrimitiveArrayNode(type, Array.newInstance((Class<?>) javaType, 0).getClass()) :
                 new TypeExpr2.ArrayNode(v, toClass(v))
         )),           // List(Array(Value))
         valueTypes.map(v -> new TypeExpr2.OptionalNode(
-            (v instanceof TypeExpr2.PrimitiveValueNode pvn) ?
-                new TypeExpr2.PrimitiveArrayNode(pvn.type(), Array.newInstance((Class<?>) pvn.javaType(), 0).getClass()) :
+            (v instanceof TypeExpr2.PrimitiveValueNode(
+                TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+            )) ?
+                new TypeExpr2.PrimitiveArrayNode(type, Array.newInstance((Class<?>) javaType, 0).getClass()) :
                 new TypeExpr2.ArrayNode(v, toClass(v))
         )),       // Optional(Array(Value))
         valueTypes.map(v -> new TypeExpr2.MapNode(stringType, new TypeExpr2.ListNode(v))), // Map<String, List<Value>>
@@ -166,15 +174,17 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     );
 
     return essentialDouble.map(ed -> {
-        if (ed instanceof TypeExpr2.PrimitiveValueNode pvn) {
-            // Correctly create a PrimitiveArrayNode for primitive elements
-            Class<?> componentType = (Class<?>) pvn.javaType();
-            Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
-            return new TypeExpr2.PrimitiveArrayNode(pvn.type(), arrayType);
-        } else {
-            // Use ArrayNode for all other element types (references, containers)
-            return new TypeExpr2.ArrayNode(ed, toClass(ed));
-        }
+      if (ed instanceof TypeExpr2.PrimitiveValueNode(
+          TypeExpr2.PrimitiveValueType type, java.lang.reflect.Type javaType
+      )) {
+        // Correctly create a PrimitiveArrayNode for primitive elements
+        Class<?> componentType = (Class<?>) javaType;
+        Class<?> arrayType = Array.newInstance(componentType, 0).getClass();
+        return new TypeExpr2.PrimitiveArrayNode(type, arrayType);
+      } else {
+        // Use ArrayNode for all other element types (references, containers)
+        return new TypeExpr2.ArrayNode(ed, toClass(ed));
+      }
     });  // Array(essential double combinations)
   }
 
@@ -201,11 +211,27 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     pickler.serialize(buffer, recordInstance);
     buffer.flip();
     Object deserialized = pickler.deserialize(buffer);
+    try {
+      assertDeepEquals(recordInstance, deserialized);
+    } catch (AssertionError e) {
+      LOGGER.severe(() -> """
+          ==========================
+          Assertion failed for type: %s
+          --------------------------
+          With source code:
+          --------------------------
+          %s
+          --------------------------
+          Original instance: %s
+          --------------------------
+          Deserialized instance: %s
+          --------------------------
+          """.formatted(typeExpr.toTreeString(), sourceCode, recordInstance, deserialized));
+      throw e;
+    }
 
-    assertDeepEquals(recordInstance, deserialized);
   }
 
-  @SuppressWarnings("unchecked")
   private Arbitrary<Object> createInstanceArbitrary(TypeExpr2 typeExpr, Class<?> compiledClass) {
     Arbitrary<?> componentArbitrary = arbitraryFor(typeExpr);
     RecordComponent[] components = compiledClass.getRecordComponents();
@@ -214,7 +240,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     }
     Class<?> componentType = components[0].getType();
 
-    return (Arbitrary<Object>) componentArbitrary.map(value -> {
+    return componentArbitrary.map(value -> {
       try {
         return compiledClass.getConstructor(componentType).newInstance(value);
       } catch (Exception e) {
@@ -223,7 +249,6 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     });
   }
 
-  @SuppressWarnings("unchecked")
   private Arbitrary<?> arbitraryFor(TypeExpr2 typeExpr) {
     return switch (typeExpr) {
       case TypeExpr2.PrimitiveValueNode(var type, var ignored) -> switch (type) {
@@ -291,7 +316,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
           case DOUBLE -> Arbitraries.doubles();
         };
         yield wrapperArbitrary.list().map(list -> {
-          Object primitiveArray = Array.newInstance(((Class<?>) arrayType).getComponentType(), list.size());
+          Object primitiveArray = Array.newInstance(arrayType.getComponentType(), list.size());
           for (int i = 0; i < list.size(); i++) {
             Array.set(primitiveArray, i, list.get(i));
           }
@@ -350,7 +375,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
       }
       case TypeExpr2.PrimitiveValueNode(var ignored, var ignored2) -> {
       }
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) -> {
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var ignored1) -> {
       }
     }
   }
@@ -378,7 +403,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
       case TypeExpr2.OptionalNode(var wrapped) -> "java.util.Optional<" + toJavaType(wrapped, true) + ">";
       case TypeExpr2.MapNode(var key, var value) ->
           "java.util.Map<" + toJavaType(key, true) + ", " + toJavaType(value, true) + ">";
-      case TypeExpr2.PrimitiveArrayNode(var primitiveType, var arrayType) -> ((Class<?>) arrayType).getCanonicalName();
+      case TypeExpr2.PrimitiveArrayNode(var ignored, var arrayType) -> arrayType.getCanonicalName();
     };
   }
 
@@ -432,6 +457,7 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     } else if (expected instanceof Optional<?> expectedOptional && actual instanceof Optional<?> actualOptional) {
       assertEquals(expectedOptional.isPresent(), actualOptional.isPresent(), "Optional presence differs");
       if (expectedOptional.isPresent()) {
+        //noinspection OptionalGetWithoutIsPresent
         assertDeepEquals(expectedOptional.get(), actualOptional.get());
       }
     } else {
@@ -461,7 +487,6 @@ public class ITExhaustiveTests implements ArbitraryProvider {
     }
   }
 
-  @SuppressWarnings("unchecked")
   private Arbitrary<?> createRecordArbitrary(Class<?> recordClass) {
     if (recordClass == TestRecord.class) {
       // Create arbitrary for TestRecord(int value)
