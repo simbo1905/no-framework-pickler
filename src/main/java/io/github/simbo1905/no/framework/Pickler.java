@@ -135,11 +135,11 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
     } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
-      return createSimpleRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);
+      return createDirectRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);
     } else {
       // Complex case: multiple records or dependencies require ManySerde
       LOGGER.fine(() -> "Creating ManySerde for complex record: " + clazz.getName());
-      return createPicklerImpl(clazz, allPicklerClasses, typeSignatures);
+      return createManySerde(clazz, allPicklerClasses, typeSignatures);
     }
   }
 
@@ -243,7 +243,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
   }
 
   /// Create RecordSerde
-  private static <T> RecordSerde<T> createSimpleRecordSerde(Class<T> userType, Map<Class<?>, Long> typeSignatures, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+  private static <T> RecordSerde<T> createDirectRecordSerde(Class<T> userType, Map<Class<?>, Long> typeSignatures, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
     final var recordClasses = List.<Class<?>>of(userType);
     final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
     final var typeSignature = recordTypeSignatures.get(userType);
@@ -272,7 +272,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
   }
 
   /// Create ManySerde for complex cases with delegation
-  private static <T> ManySerde<T> createPicklerImpl(
+  private static <T> ManySerde<T> createManySerde(
       Class<T> rootClass,
       Set<Class<?>> allClasses,
       Map<Class<?>, Long> typeSignatures) {
@@ -288,6 +288,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
     final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
 
     // Create dependency resolver callback with type signature resolution
+    // FIXME this can be a functional interface in ManySerde and we can use a lambda directly
     final Companion.DependencyResolver resolver = new Companion.DependencyResolver() {
       @Override
       public Pickler<?> resolve(Class<?> targetClass) {

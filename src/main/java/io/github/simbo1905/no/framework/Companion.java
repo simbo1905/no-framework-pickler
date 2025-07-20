@@ -11,6 +11,7 @@ import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,6 +27,29 @@ import static io.github.simbo1905.no.framework.TypeExpr.PrimitiveValueType.*;
 
 /// This is a namespace of static functional methods.
 sealed interface Companion permits Companion.Nothing {
+
+  static Object defaultValue(Class<?> type) {
+    if (type.isPrimitive()) {
+      if (type == boolean.class) {
+        return false;
+      } else if (type == byte.class) {
+        return (byte) 0;
+      } else if (type == short.class) {
+        return (short) 0;
+      } else if (type == int.class) {
+        return 0;
+      } else if (type == long.class) {
+        return 0L;
+      } else if (type == float.class) {
+        return 0.0f;
+      } else if (type == double.class) {
+        return 0.0;
+      } else if (type == char.class) {
+        return '\u0000';
+      }
+    }
+    return null;
+  }
 
   record Nothing() implements Companion {
   }
@@ -1565,18 +1589,10 @@ sealed interface Companion permits Companion.Nothing {
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(e.getMessage(), e);
     }
-    byte[] b = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
-    long l1 = bytesToLong(b, 0);
-    long l2 = bytesToLong(b, 8);
-    return l1 ^ l2;
-  }
-
-  static long bytesToLong(byte[] b, int offset) {
-    long result = 0;
-    for (int i = 0; i < 8; i++) {
-      result |= ((long) b[offset + i] & 0xff) << (56 - (i * 8));
-    }
-    return result;
+    final byte[] b = digest.digest(uniqueNess.getBytes(StandardCharsets.UTF_8));
+    final var bb = ByteBuffer.wrap(b).order(ByteOrder.BIG_ENDIAN);
+    // XOR 16 bytes down to 8 bytes
+    return bb.getLong() ^ bb.getLong();
   }
 
   /// Create lazy sizer that uses callback for record types

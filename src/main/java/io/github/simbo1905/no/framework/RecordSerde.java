@@ -67,7 +67,6 @@ final class RecordSerde<T> implements Pickler<T> {
         })
         .toArray(MethodHandle[]::new);
 
-    //noinspection RedundantSuppression
     @SuppressWarnings("rawtypes") final var raw = (Class<?>[]) new Class[componentAccessors.length];
     componentTypes = raw;
     IntStream.range(0, componentAccessors.length).forEach(i -> {
@@ -75,7 +74,6 @@ final class RecordSerde<T> implements Pickler<T> {
       componentTypes[i] = rc.getType();
     });
   }
-
 
   @Override
   public int serialize(ByteBuffer buffer, T record) {
@@ -85,44 +83,23 @@ final class RecordSerde<T> implements Pickler<T> {
     if (!userType.isAssignableFrom(record.getClass())) {
       throw new IllegalArgumentException("Expected " + userType + " but got " + record.getClass());
     }
-
-    LOGGER.fine(() -> "RecordSerde " + userType.getSimpleName() + " serialize " + record.hashCode() + " at position " + buffer.position());
     return writeToWire(buffer, record);
   }
 
   int writeToWire(ByteBuffer buffer, T record) {
     final int startPosition = buffer.position();
-    LOGGER.fine(() -> String.format("writeToWire START at position %d", startPosition));
-
-    LOGGER.finer(() -> String.format("Writing type signature: 0x%s at position %d",
-        Long.toHexString(typeSignature), startPosition));
     buffer.putLong(typeSignature);
     final int afterSigPosition = buffer.position();
-    LOGGER.fine(() -> String.format("Wrote type signature, position now: %d", afterSigPosition));
-
-    LOGGER.finer(() -> String.format("Writing component count: %d at position %d",
-        writers.length, afterSigPosition));
     ZigZagEncoding.putInt(buffer, writers.length);
     final int afterCountPosition = buffer.position();
-    LOGGER.fine(() -> String.format("Wrote component count %d, position now: %d",
-        writers.length, afterCountPosition));
 
-    // Log component writing details
     IntStream.range(0, writers.length)
-        .forEach(i -> {
-          final int posBefore = buffer.position();
-          LOGGER.finer(() -> String.format("Starting component %d of %d at position %d",
-              i + 1, writers.length, posBefore));
-          LOGGER.fine(() -> String.format("Writing component %d at position %d", i, posBefore));
-          writers[i].accept(buffer, record);
-          final int posAfter = buffer.position();
-          LOGGER.finer(() -> String.format("Finished component %d at position %d (wrote %d bytes)",
-              i, posAfter, posAfter - posBefore));
-        });
+        .forEach(i -> writers[i].accept(buffer, record));
 
     final int endPosition = buffer.position();
-    LOGGER.fine(() -> String.format("writeToWire END for %s. Total bytes written: %d (from %d to %d)",
-        userType.getSimpleName(), (endPosition - startPosition), startPosition, endPosition));
+    LOGGER.fine(() -> String.format("[%s.writeToWire] Wrote %d bytes for %s. Sig: 0x%s @%d, Count: %d @%d, Components @%d, End @%d",
+        userType.getSimpleName(), (endPosition - startPosition), record.getClass().getSimpleName(),
+        Long.toHexString(typeSignature), startPosition, writers.length, afterSigPosition, afterCountPosition, endPosition));
     return endPosition - startPosition;
   }
 
@@ -134,11 +111,10 @@ final class RecordSerde<T> implements Pickler<T> {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
     final int typeSigPosition = buffer.position();
-    // read the type signature first as it is a cryptographic hash of the class name and component metadata and fixed size
     final long incomingSignature = buffer.getLong();
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() + " deserialize() read type signature 0x" + Long.toHexString(incomingSignature) + " at position " + typeSigPosition + ", expected 0x" + Long.toHexString(typeSignature));
-
-    LOGGER.fine(() -> "Signature comparison: (incomingSignature != this.typeSignature) is " + (incomingSignature != this.typeSignature));
+    LOGGER.fine(() -> String.format("[%s.deserialize] Read signature 0x%s @%d, expected 0x%s%s",
+        userType.getSimpleName(), Long.toHexString(incomingSignature), typeSigPosition, Long.toHexString(typeSignature),
+        altTypeSignature.map(alt -> " or 0x" + Long.toHexString(alt)).orElse("")));
 
     if (incomingSignature != this.typeSignature) {
       if (compatibilityMode && altTypeSignature.isPresent() && incomingSignature == altTypeSignature.get()) {
@@ -150,7 +126,6 @@ final class RecordSerde<T> implements Pickler<T> {
       }
     }
 
-    LOGGER.finer(() -> "RecordPickler deserializing record " + this.userType.getSimpleName() + " buffer remaining bytes: " + buffer.remaining() + " limit: " + buffer.limit() + " capacity: " + buffer.capacity());
     return readFromWire(buffer);
   }
 
@@ -159,73 +134,41 @@ final class RecordSerde<T> implements Pickler<T> {
   T deserializeWithoutSignature(ByteBuffer buffer) {
     Objects.requireNonNull(buffer);
     buffer.order(ByteOrder.BIG_ENDIAN);
-    LOGGER.fine(() -> "RecordPickler " + userType.getSimpleName() +
-        " deserializeWithoutSignature() at position " + buffer.position());
     return readFromWire(buffer);
   }
 
   T readFromWire(ByteBuffer buffer) {
-    LOGGER.fine(() -> String.format("[%s.readFromWire] Entry. Position: %d/%d with %d bytes remaining",
-        userType.getSimpleName(), buffer.position(), buffer.limit(), buffer.remaining()));
-
     final int countPosition = buffer.position();
-    final int bufferLimit = buffer.limit();
-    final int bufferRemaining = buffer.remaining();
-    LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component count at position %d/%d with %d bytes remaining",
-        userType.getSimpleName(), countPosition, bufferLimit, bufferRemaining));
-
     final int wireCount = ZigZagEncoding.getInt(buffer);
-    LOGGER.fine(() -> String.format("[%s.readFromWire] Read component count. Position before: %d, after: %d. Count: %d",
-        userType.getSimpleName(), countPosition, buffer.position(), wireCount));
+    final int afterCountPosition = buffer.position();
 
-    LOGGER.finer(() -> String.format("[%s.readFromWire] Component count validation: wireCount=%d, readers.length=%d, compatibilityMode=%b",
-        userType.getSimpleName(), wireCount, readers.length, compatibilityMode));
-    // Fill the components from the buffer up to the wireCount
+    final int componentsToRead = Math.min(wireCount, readers.length);
     Object[] components = new Object[readers.length];
-    LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read components", userType.getSimpleName()));
-
-    LOGGER.finer(() -> String.format("[%s.readFromWire] Starting to read %d components at position %d/%d",
-        userType.getSimpleName(), readers.length, buffer.position(), buffer.limit()));
-
-    IntStream.range(0, Math.min(wireCount, readers.length)).forEach(i -> {
-      final int componentIndex = i;
-      final int readPosition = buffer.position();
-      final int readLimit = buffer.limit();
-      final int readRemaining = buffer.remaining();
-      LOGGER.finer(() -> String.format("[%s.readFromWire] Reading component %d of %d at position %d/%d with %d bytes remaining",
-          userType.getSimpleName(), componentIndex + 1, readers.length, readPosition, readLimit, readRemaining));
-
-      LOGGER.fine(() -> String.format("[%s.readFromWire] Reading component %d at position %d. Reader: %s",
-          userType.getSimpleName(), componentIndex, readPosition, readers[componentIndex].getClass().getSimpleName()));
-
-      components[i] = readers[componentIndex].apply(buffer);
-
-      LOGGER.finer(() -> String.format("[%s.readFromWire] Read component %d. Position after: %d. Value: %s",
-          userType.getSimpleName(), componentIndex, buffer.position(), components[i]));
-
-      if (componentIndex + 1 < readers.length) {
-        LOGGER.finer(() -> String.format("[%s.readFromWire] Moving to next component at position %d",
-            userType.getSimpleName(), buffer.position()));
-      }
+    IntStream.range(0, componentsToRead).forEach(i -> {
+      components[i] = readers[i].apply(buffer);
     });
 
-    // If we need more, and we are in backwards compatibility mode, fill the remaining components with default values
+    String compatibilityLog = "";
     if (wireCount < readers.length) {
-      LOGGER.fine(() -> String.format("%s.readFromWire] Need to fill %d components due to wireCount=%d < readers.length=%d",
-          userType.getSimpleName(), readers.length - wireCount, wireCount, readers.length));
-
+      if (!compatibilityMode) {
+        throw new IllegalStateException(String.format("Wire count %d is less than expected %d and compatibility mode is disabled for %s",
+            wireCount, readers.length, userType.getSimpleName()));
+      }
+      compatibilityLog = String.format(" (filled %d default values)", readers.length - wireCount);
       IntStream.range(wireCount, readers.length).forEach(i -> {
         final RecordComponent rc = userType.getRecordComponents()[i];
-        final Object defaultValue = defaultValue(rc.getType());
-        LOGGER.finer(() -> String.format("%s.readFromWire] Filling component %d of %d with default value of type %s: %s",
-            userType.getSimpleName(), i + 1, readers.length, rc.getType().getName(), defaultValue));
-        components[i] = defaultValue;
+        components[i] = Companion.defaultValue(rc.getType());
       });
     }
 
+    final int endPosition = buffer.position();
+    final String finalCompatibilityLog = compatibilityLog;
+    LOGGER.fine(() -> String.format("[%s.readFromWire] Read count: %d @%d. Read %d components from @%d to @%d%s. Components: %s",
+        userType.getSimpleName(), wireCount, countPosition, componentsToRead, afterCountPosition, endPosition,
+        finalCompatibilityLog, Arrays.toString(components)));
+
     // Invoke constructor
     try {
-      LOGGER.finer(() -> "Constructing record at position " + buffer.position() + " with components: " + Arrays.toString(components));
       @SuppressWarnings("unchecked") final var result = (T) this.recordConstructor.invokeWithArguments(components);
       return result;
     } catch (Throwable e) {
@@ -257,29 +200,8 @@ final class RecordSerde<T> implements Pickler<T> {
 
   @Override
   public String toString() {
-    return "RecordSerde{userType=" + userType + ", typeSignature=0x" + Long.toHexString(typeSignature) + "}";
+    return "RecordSerde{userType=" + userType + ", typeSignature=0x" + Long.toHexString(typeSignature) +
+        " altTypeSignature=" + altTypeSignature.map(aLong -> "0x" + Long.toHexString(aLong)).orElse("null") + "}";
   }
 
-  static Object defaultValue(Class<?> type) {
-    if (type.isPrimitive()) {
-      if (type == boolean.class) {
-        return false;
-      } else if (type == byte.class) {
-        return (byte) 0;
-      } else if (type == short.class) {
-        return (short) 0;
-      } else if (type == int.class) {
-        return 0;
-      } else if (type == long.class) {
-        return 0L;
-      } else if (type == float.class) {
-        return 0.0f;
-      } else if (type == double.class) {
-        return 0.0;
-      } else if (type == char.class) {
-        return '\u0000';
-      }
-    }
-    return null;
-  }
 }
