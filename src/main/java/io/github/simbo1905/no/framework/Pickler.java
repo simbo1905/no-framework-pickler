@@ -18,7 +18,7 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerde, RecordSerde {
+public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSerde, ManySerde, RecordSerde {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -234,27 +234,6 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
     };
   }
 
-  /// Create reader resolver that handles enum types
-  private static Serde.ReaderResolver createEnumReaderResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    // Reverse mapping: signature -> enum class
-    final Map<Long, Class<Enum<?>>> signatureToEnumClass = enumToTypeSignatureMap.entrySet().stream()
-        .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
-
-    return typeSignature -> {
-      final Class<Enum<?>> enumClass = signatureToEnumClass.get(typeSignature);
-      if (enumClass != null) {
-        return buffer -> {
-          final int value = ZigZagEncoding.getInt(buffer);
-          if (value < 0) { // Negative value is the NULL_MARKER sentinel
-            return null;
-          }
-          return enumClass.getEnumConstants()[value];
-        };
-      }
-      return null; // Let RecordSerde handle its own types
-    };
-  }
-
   /// Create RecordSerde
   private static <T> RecordSerde<T> createDirectRecordSerde(
       Class<T> userType, Map<Class<?>, Long> typeSignatures,
@@ -274,21 +253,46 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
     final Map<Class<?>, Serde.Reader> customReaders = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
 
-    // Create resolvers that handle enum types
-    final Serde.SizerResolver sizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
-    final Serde.WriterResolver writerResolver = createEnumWriterResolver(enumToTypeSignatureMap);
-    final Serde.ReaderResolver readerResolver = createEnumReaderResolver(enumToTypeSignatureMap);
-    final Serde.SignatureReader signatureReader = typeSignature2 -> {
-      throw new AssertionError("SignatureReader TODO");
+    // 1. Create a resolver specifically for the direct build path
+    final Companion.DependencyResolver resolver = new Companion.DependencyResolver() {
+      @Override
+      public Pickler<?> resolve(Class<?> clazz) {
+        if (clazz.isEnum()) {
+          @SuppressWarnings({"rawtypes"}) final var enumClass = (Class) clazz;
+          final var enumTypeSignature = enumToTypeSignatureMap.get(enumClass);
+          @SuppressWarnings({"unchecked", "rawtypes"})
+          Pickler<?> r = new EnumSerde(enumClass, enumTypeSignature, Optional.empty());
+          return r;
+        }
+        // Handle custom types if necessary
+        if (customReaders.containsKey(clazz)) {
+          // This class is a custom type. Create a simple pickler for it.
+          final Serde.Sizer sizer = customSizers.get(clazz);
+          final Serde.Writer writer = customWriters.get(clazz);
+          final Serde.Reader reader = customReaders.get(clazz);
+
+          // Return a new anonymous Pickler that wraps the custom handler's logic.
+          final Pickler<?> result = new CustomSerde<>(sizer, writer, reader);
+          return result;
+        }
+        // In a direct build, we don't expect to resolve other records.
+        throw new UnsupportedOperationException("Direct resolver cannot resolve class: " + clazz.getName());
+      }
+
+      @Override
+      public Pickler<?> resolveBySignature(long typeSignature) {
+        // This is primarily for deserializing interfaces/records from a stream,
+        // which is not the main concern for the direct writer/sizer setup.
+        // However, a reader for a component might need it.
+        throw new UnsupportedOperationException("Signature resolution not supported in direct build path: " + Long.toHexString(typeSignature));
+      }
     };
-    // Create component serdes directly without external resolvers
-    final var componentSerdes = Companion.buildComponentSerdes(
+
+    // 2. Call the new, unified component builder method
+    final var componentSerdes = Companion.buildComponentSerdesWithCallback(
         userType,
-        customHandlers,
-        sizerResolver,
-        writerResolver,
-        readerResolver,
-        signatureReader
+        resolver,
+        customHandlers
     );
 
     final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);

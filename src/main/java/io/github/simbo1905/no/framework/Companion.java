@@ -228,32 +228,25 @@ sealed interface Companion permits Companion.Nothing {
         }
         int posBeforeLength = buffer.position();
         int length = ZigZagEncoding.getInt(buffer);
-        LOGGER.finer(() -> "Reading array length " + length + " at position " + posBeforeLength);
+        LOGGER.fine(() -> "Reading array length " + length + " at position " + posBeforeLength);
         Object[] array = (Object[]) Array.newInstance(componentType, length);
-        Arrays.setAll(array, i -> {
-          LOGGER.finer(() -> "Reading array element " + i + " at position " + buffer.position());
-          return elementReader.apply(buffer);
-        });
+        Arrays.setAll(array, i -> elementReader.apply(buffer));
         return array;
       };
       default -> buffer -> {
         int posBeforeMarker = buffer.position();
         int marker = ZigZagEncoding.getInt(buffer);
-        LOGGER.finer(() -> "Reading array marker " + marker + " at position " + posBeforeMarker + " (expected " + expectedMarker + " for " + element.toTreeString() + ")");
+        LOGGER.fine(() -> "Reading array marker " + marker + " at position " + posBeforeMarker + " (expected " + expectedMarker + " for " + element.toTreeString() + ")");
         if (marker != expectedMarker) {
           throw new IllegalStateException("Expected marker " + expectedMarker + " but got " + marker);
         }
         int posBeforeLength = buffer.position();
         int length = ZigZagEncoding.getInt(buffer);
-        LOGGER.finer(() -> "Reading array length " + length + " at position " + posBeforeLength);
+        LOGGER.fine(() -> "Reading array length " + length + " at position " + posBeforeLength);
         // Use typeExprToClass to get the correct component type for nested arrays
         Class<?> componentTypeInner = typeExprToClass(element);
         Object array = Array.newInstance(componentTypeInner, length);
-        for (int i = 0; i < length; i++) {
-          final int index = i;
-          LOGGER.finer(() -> "Reading array element " + index + " at position " + buffer.position());
-          Array.set(array, i, elementReader.apply(buffer));
-        }
+        Arrays.setAll((Object[]) array, i -> elementReader.apply(buffer));
         return array;
       };
     };
@@ -360,10 +353,8 @@ sealed interface Companion permits Companion.Nothing {
       // Write each element
       for (Object item : list) {
         if (item == null) {
-          LOGGER.finer(() -> "Extracted value is null writing NULL_MARKER=-1 marker at position: " + buffer.position());
           buffer.put(NULL_MARKER); // Write -1 for null
         } else {
-          LOGGER.finer(() -> "Extracted value is present NOT_NULL_MARKER=1 marker at position: " + buffer.position());
           buffer.put(NOT_NULL_MARKER); // Write +1 for non-null
           elementWriter.accept(buffer, item); // Delegate to the actual writer
         }
@@ -516,19 +507,12 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  /// Build ComponentSerde array for a record type using TypeExpr AST
-  static ComponentSerde[] buildComponentSerdes(
+  /// Build component serdes with lazy callback resolution
+  static ComponentSerde[] buildComponentSerdesWithCallback(
       Class<?> recordClass,
-      Collection<SerdeHandler> customHandlers,
-      Serde.SizerResolver typeSizerResolver,
-      Serde.WriterResolver typeWriterResolver,
-      Serde.ReaderResolver typeReaderResolver,
-      Serde.SignatureReader typeSignatureReader
-  ) {
-    LOGGER.fine(() -> "Building ComponentSerde[] for record: " + recordClass.getName());
-
-    final Map<Class<?>, Integer> customMarkers = customHandlers.stream()
-        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
+      DependencyResolver resolver,
+      List<SerdeHandler> customHandlers) {
+    LOGGER.fine(() -> "Building ComponentSerde[] with callback for record: " + recordClass.getName());
 
     RecordComponent[] components = recordClass.getRecordComponents();
     MethodHandle[] getters = resolveGetters(recordClass, components);
@@ -541,240 +525,13 @@ sealed interface Companion permits Companion.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          Serde.Writer writer = createComponentWriter(typeExpr, getter, customMarkers, typeWriterResolver);
-          Serde.Reader reader = createComponentReader(typeExpr, customMarkers, typeSignatureReader, typeReaderResolver);
-          Serde.Sizer sizer = createComponentSizer(typeExpr, getter, customMarkers, typeSizerResolver);
+          Serde.Writer writer = createLazyWriter(typeExpr, getter, resolver);
+          Serde.Reader reader = createLazyReader(typeExpr, resolver);
+          Serde.Sizer sizer = createLazySizer(typeExpr, getter, resolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
         .toArray(ComponentSerde[]::new);
-  }
-
-  /// Build component serdes with lazy callback resolution
-  static ComponentSerde[] buildComponentSerdesWithCallback(
-      Class<?> recordClass,
-      DependencyResolver resolver,
-      List<SerdeHandler> customHandlers) {
-    LOGGER.fine(() -> "Building ComponentSerde[] with callback for record: " + recordClass.getName());
-
-    /*
-    TODO implement lazy callback resolution for component serdes
-     createLazySizer
-     createLazyWriter
-     createLazyReader
-     */
-
-    return null;
-  }
-
-  static Serde.Sizer createComponentSizer(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
-    LOGGER.fine(() -> "Creating component sizer for: " + typeExpr.toTreeString());
-
-    Serde.Sizer sizerChain = createSizerChain(typeExpr, customMarkers, typeSizerResolver);
-
-    return extractAndDelegate(sizerChain, getter);
-  }
-
-  static Serde.Sizer createSizerChain(TypeExpr typeExpr, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
-    return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
-      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
-      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
-        Class<?> clazz = (Class<?>) javaType;
-        if (refValueType.requiresResolution()) {
-          yield typeSizerResolver.apply(clazz);
-        } else {
-          yield buildValueSizer(refValueType, javaType, typeSizerResolver);
-        }
-      }
-      case TypeExpr.ArrayNode(var element, var componentType) -> {
-        final var elementSizer = createSizerChain(element, customMarkers, typeSizerResolver);
-        yield createArraySizerInner(elementSizer);
-      }
-      case TypeExpr.ListNode(var element) -> {
-        final var elementSizer = createSizerChain(element, customMarkers, typeSizerResolver);
-        yield createListSizerInner(elementSizer);
-      }
-      case TypeExpr.MapNode(var key, var value) -> {
-        final var keySizer = createSizerChain(key, customMarkers, typeSizerResolver);
-        final var valueSizer = createSizerChain(value, customMarkers, typeSizerResolver);
-        yield createMapSizerInner(keySizer, valueSizer);
-      }
-      case TypeExpr.OptionalNode(var wrapped) -> {
-        final var valueSizer = createSizerChain(wrapped, customMarkers, typeSizerResolver);
-        yield createOptionalSizerInner(valueSizer);
-      }
-    };
-  }
-
-  static Serde.Reader createComponentReader(
-      TypeExpr typeExpr,
-      Map<Class<?>, Integer> customMarkers, Serde.SignatureReader typeReaderResolver, Serde.ReaderResolver readerResolver) {
-    LOGGER.fine(() -> "Creating component reader for: " + typeExpr.toTreeString());
-
-    return createReaderChain(typeExpr, customMarkers, typeReaderResolver, readerResolver);
-  }
-
-  static Serde.Reader createReaderChain(TypeExpr typeExpr,
-                                        Map<Class<?>, Integer> customMarkers,
-                                        Serde.SignatureReader typeReaderResolver,
-                                        Serde.ReaderResolver readerResolver) {
-    return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
-      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
-        // Primitive arrays at the top level (e.g., int[] as a record component) need null checking
-        final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
-        yield nullCheckAndDelegate(primitiveArrayReader);
-      }
-      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
-        Class<?> clazz = (Class<?>) javaType;
-        if (refValueType.requiresResolution()) {
-          yield readerResolver.apply(clazz);
-        } else {
-          yield buildValueReader(refValueType, typeReaderResolver);
-        }
-      }
-      case TypeExpr.ArrayNode(var element, var componentType) -> {
-        final Serde.Reader elementReader;
-        if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
-          // For nested primitive arrays, wrap the primitive array reader with null checking
-          final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
-          elementReader = nullCheckAndDelegate(primitiveArrayReader);
-        } else {
-          elementReader = createReaderChain(element, customMarkers, typeReaderResolver, readerResolver);
-        }
-        final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
-        yield nullCheckAndDelegate(nonNullArrayReader);
-      }
-      case TypeExpr.ListNode(var element) -> {
-        final var elementReader = createReaderChain(element, customMarkers, typeReaderResolver, readerResolver);
-        final var nonNullListReader = createListReader(elementReader);
-        yield nullCheckAndDelegate(nonNullListReader);
-      }
-      case TypeExpr.MapNode(var key, var value) -> {
-        final var keyReader = createReaderChain(key, customMarkers, typeReaderResolver, readerResolver);
-        final var valueReader = createReaderChain(value, customMarkers, typeReaderResolver, readerResolver);
-        final var nonNullMapReader = createMapReader(keyReader, valueReader);
-        yield nullCheckAndDelegate(nonNullMapReader);
-      }
-      case TypeExpr.OptionalNode(var wrapped) -> {
-        final var valueReader = createReaderChain(wrapped, customMarkers, typeReaderResolver, readerResolver);
-        final var nonNullOptionalReader = createOptionalReader(valueReader);
-        yield nullCheckAndDelegate(nonNullOptionalReader);
-      }
-    };
-  }
-
-  static Serde.Writer createComponentWriter(
-      TypeExpr typeExpr,
-      MethodHandle getter,
-      Map<Class<?>, Integer> customMarkers,
-      Serde.WriterResolver typeWriterResolver) {
-    LOGGER.fine(() -> "Creating component writer for: " + typeExpr.toTreeString());
-
-    Serde.Writer writerChain = createWriterChain(typeExpr, customMarkers, typeWriterResolver);
-
-    return extractAndDelegateWriter(writerChain, getter);
-  }
-
-  /// Create writer chain for TypeExpr 
-  static Serde.Writer createWriterChain(
-      TypeExpr typeExpr,
-      Map<Class<?>, Integer> customMarkers,
-      Serde.WriterResolver typeWriterResolver) {
-    return switch (typeExpr) {
-      case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
-      case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
-      case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
-        Class<?> clazz = (Class<?>) javaType;
-        if (refValueType.requiresResolution()) {
-          yield typeWriterResolver.apply(clazz);
-        } else {
-          yield buildRefValueWriter(refValueType, javaType);
-        }
-      }
-      case TypeExpr.ArrayNode(var element, var ignored) -> {
-        Serde.Writer elementWriter = createWriterChain(element, customMarkers, typeWriterResolver);
-        yield createArrayRefWriter(elementWriter, element);
-      }
-      case TypeExpr.ListNode(var element) -> {
-        Serde.Writer elementWriter = createWriterChain(element, customMarkers, typeWriterResolver);
-        yield createListWriterInner(elementWriter);
-      }
-      case TypeExpr.MapNode(var key, var value) -> {
-        Serde.Writer keyWriter = createWriterChain(key, customMarkers, typeWriterResolver);
-        Serde.Writer valueWriter = createWriterChain(value, customMarkers, typeWriterResolver);
-        yield createMapWriterInner(keyWriter, valueWriter);
-      }
-      case TypeExpr.OptionalNode(var wrapped) -> {
-        Serde.Writer valueWriter = createWriterChain(wrapped, customMarkers, typeWriterResolver);
-        yield createOptionalWriterInner(valueWriter);
-      }
-    };
-  }
-
-  /// Build ref value writer for TypeExpr.RefValueType
-  static @NotNull Serde.Writer buildRefValueWriter(TypeExpr.RefValueType refValueType, Type javaType) {
-    return switch (refValueType) {
-      case BOOLEAN -> (buffer, obj) -> buffer.put((byte) ((boolean) obj ? 1 : 0));
-      case BYTE -> (buffer, obj) -> buffer.put((byte) obj);
-      case SHORT -> (buffer, obj) -> buffer.putShort((short) obj);
-      case CHARACTER -> (buffer, obj) -> buffer.putChar((char) obj);
-      case INTEGER -> (ByteBuffer buffer, Object object) -> {
-        final int result = (int) object;
-        final var position = buffer.position();
-        if (ZigZagEncoding.sizeOf(result) < Integer.BYTES) {
-          ZigZagEncoding.putInt(buffer, Markers.INTEGER_VAR.marker());
-          LOGGER.fine(() -> "Writing INTEGER_VAR value=" + result + " at position: " + position);
-          ZigZagEncoding.putInt(buffer, result);
-        } else {
-          ZigZagEncoding.putInt(buffer, Markers.INTEGER.marker());
-          LOGGER.fine(() -> "Writing INTEGER value=" + result + " at position: " + position);
-          buffer.putInt(result);
-        }
-      };
-      case LONG -> (ByteBuffer buffer, Object record) -> {
-        final long result = (long) record;
-        final var position = buffer.position();
-        if (ZigZagEncoding.sizeOf(result) < Long.BYTES) {
-          ZigZagEncoding.putInt(buffer, Markers.LONG_VAR.marker());
-          LOGGER.fine(() -> "Writing LONG_VAR value=" + result + " at position: " + position);
-          ZigZagEncoding.putLong(buffer, result);
-        } else {
-          ZigZagEncoding.putInt(buffer, Markers.LONG.marker());
-          LOGGER.finer(() -> "Writing LONG value=" + result + " at position: " + position);
-          buffer.putLong(result);
-        }
-      };
-      case FLOAT -> (buffer, obj) -> buffer.putFloat((float) obj);
-      case DOUBLE -> (buffer, obj) -> buffer.putDouble((double) obj);
-      case STRING -> (buffer, obj) -> {
-        final String str = (String) obj;
-        final byte[] bytes = str.getBytes(StandardCharsets.UTF_8);
-        ZigZagEncoding.putInt(buffer, bytes.length);
-        buffer.put(bytes);
-      };
-      case LOCAL_DATE -> (buffer, obj) -> {
-        final var localDate = (LocalDate) obj;
-        final int year = localDate.getYear();
-        final int month = localDate.getMonthValue();
-        final int day = localDate.getDayOfMonth();
-        ZigZagEncoding.putInt(buffer, year);
-        ZigZagEncoding.putInt(buffer, month);
-        ZigZagEncoding.putInt(buffer, day);
-      };
-      case LOCAL_DATE_TIME -> (buffer, obj) -> {
-        final var ldt = (LocalDateTime) obj;
-        ZigZagEncoding.putInt(buffer, ldt.getYear());
-        ZigZagEncoding.putInt(buffer, ldt.getMonthValue());
-        ZigZagEncoding.putInt(buffer, ldt.getDayOfMonth());
-        ZigZagEncoding.putInt(buffer, ldt.getHour());
-        ZigZagEncoding.putInt(buffer, ldt.getMinute());
-        ZigZagEncoding.putInt(buffer, ldt.getSecond());
-        ZigZagEncoding.putInt(buffer, ldt.getNano());
-      };
-      default -> throw new IllegalArgumentException("Unsupported ref value type: " + refValueType);
-    };
   }
 
   /// Build primitive array writer for TypeExpr.PrimitiveValueType (old version)

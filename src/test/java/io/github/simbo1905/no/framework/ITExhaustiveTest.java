@@ -336,15 +336,13 @@ public class ITExhaustiveTest implements ArbitraryProvider {
 
     StringBuilder importStatements = new StringBuilder();
     for (String imp : imports) {
-      importStatements.append("import ").append(imp).append("; ");
+      importStatements.append("import ").append(imp).append(";\n");
     }
 
     String template = """
         package %s;
         
         %s
-        import io.github.simbo1905.no.framework.TestEnum;
-        import io.github.simbo1905.no.framework.TestRecord;
         
         public record %s(%s value) {}
         """;
