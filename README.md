@@ -82,24 +82,35 @@ creating a binary payload that is 0.5x the size.
 resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary
 data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
 
-**No Framework Pickler is expressive** as it supports serializing a rich grammar of arbitrarily nested types. At a high level, the library supports **value types** and **container types**.
+**No Framework Pickler is expressive** as it supports serializing a rich grammar of arbitrarily nested types. At a high
+level, the library supports **value types** and **container types**.
 
 **Value Types** are the basic building blocks and include:
--   **Primitive Types:** `boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, `double`
--   **Reference Types:** Boxed primitives (`Integer`, `Long`, etc.), `String`, `java.util.UUID`, `java.time.LocalDate`, `java.time.LocalDateTime`
--   **User-Defined Types:** Any `record` or `enum` type.
+
+- **Primitive Types:** `boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, `double`
+- **Reference Types:** Boxed primitives (`Integer`, `Long`, etc.), `String`, `java.util.UUID`, `java.time.LocalDate`,
+  `java.time.LocalDateTime`
+- **User-Defined Types:** Any `record` or `enum` type.
 
 **Container Types** can hold value types or other container types, allowing for complex, nested data structures:
--   `Optional<T>`
--   `List<T>`
--   `Map<K, V>`
--   Arrays (`T[]`)
 
-This allows for arbitrarily complex structures like `List<Map<String, Optional<Integer[]>>>`. The library performs a deep analysis of a record's components to understand these structures, building an Abstract Syntax Tree (AST) to generate efficient serialization and deserialization logic.
+- `Optional<T>`
+- `List<T>`
+- `Map<K, V>`
+- Arrays (`T[]`)
 
-For a detailed explanation of the formal grammar and the type analysis architecture, please see [ARCHITECTURE.md](ARCHITECTURE.md). The full grammar is rigorously tested in `ITExhaustiveTests.java`, which uses property-based testing to dynamically generate, compile, and verify serialization round-trips for every supported type combination up to a depth of three nested containers.
+This allows for arbitrarily complex structures like `List<Map<String, Optional<Integer[]>>>`. The library performs a
+deep analysis of a record's components to understand these structures, building an Abstract Syntax Tree (AST) to
+generate efficient serialization and deserialization logic.
 
-When handling `sealed interface` hierarchies, all permitted subclasses must be either `record` types, `enum` types, or other `sealed interface`s that ultimately resolve to records or enums. This design allows you to work with modern Java's data-oriented features like record patterns and exhaustive `switch` statements.
+For a detailed explanation of the formal grammar and the type analysis architecture, please
+see [ARCHITECTURE.md](ARCHITECTURE.md). The full grammar is rigorously tested in `ITExhaustiveTests.java`, which uses
+property-based testing to dynamically generate, compile, and verify serialization round-trips for every supported type
+combination up to a depth of three nested containers.
+
+When handling `sealed interface` hierarchies, all permitted subclasses must be either `record` types, `enum` types, or
+other `sealed interface`s that ultimately resolve to records or enums. This design allows you to work with modern Java's
+data-oriented features like record patterns and exhaustive `switch` statements.
 
 **No Framework Pickler backwards compatibility** supports opt-in binary compatibility for adding new components to the
 end of your `record` types. You simply provide alternative constructors in your newer code to match the default
@@ -607,68 +618,153 @@ See [BACKWARDS_COMPATIBILITY.md](BACKWARDS_COMPATIBILITY.md) for details.
 
 # Wire Protocol
 
-The wire protocol is designed to be compact and efficient, with a focus on minimizing overhead. It does not use positive markers for user types; instead, it uses 64-bit hash-based signatures for identifying records and enums, ensuring type safety.
+The wire protocol is designed to be compact and efficient, with a focus on minimizing overhead. It does not use positive
+markers for user types; instead, it uses 64-bit hash-based signatures for identifying records and enums, ensuring type
+safety.
 
 ### Null Safety
 
 For any non-primitive field, a single byte marker is written to indicate nullability:
+
 - `Byte.MIN_VALUE`: Indicates that the following value is `null`.
 - `Byte.MAX_VALUE`: Indicates that the following value is present and not `null`.
 
-This applies to record components, collection elements, and map keys/values. Primitive fields are always written directly as they cannot be `null`.
+This applies to record components, collection elements, and map keys/values. Primitive fields are always written
+directly as they cannot be `null`.
 
 ### Value Types (Primitives, String, UUID, etc.)
 
 Most value types are written directly to the `ByteBuffer` without a type marker to save space.
-- **Primitives (`boolean`, `byte`, `short`, `char`, `float`, `double`):** Written using their standard `ByteBuffer` `put` methods.
-- **`String`:** Encoded as UTF-8. The length of the byte array is written first as a ZigZag-encoded integer, followed by the bytes themselves.
+
+- **Primitives (`boolean`, `byte`, `short`, `char`, `float`, `double`):** Written using their standard `ByteBuffer`
+  `put` methods.
+- **`String`:** Encoded as UTF-8. The length of the byte array is written first as a ZigZag-encoded integer, followed by
+  the bytes themselves.
 - **`UUID`:** Written as two `long` values (most significant and least significant bits).
 - **`LocalDate`:** Written as three ZigZag-encoded integers (year, month, day).
 - **`LocalDateTime`:** Written as seven ZigZag-encoded integers (year, month, day, hour, minute, second, nano).
 
 An exception is made for `int` and `long` to optimize for space. They can be written in one of two ways:
-- **Fixed-width:** A marker (`-6` for `INTEGER`, `-8` for `LONG`) is written, followed by the standard 4- or 8-byte value.
-- **Variable-width (Varint):** A marker (`-7` for `INTEGER_VAR`, `-9` for `LONG_VAR`) is written, followed by a ZigZag-encoded value. This is used when the value is small enough to fit in fewer bytes than the standard fixed width. The pickler automatically chooses the most compact representation.
+
+- **Fixed-width:** A marker (`-6` for `INTEGER`, `-8` for `LONG`) is written, followed by the standard 4- or 8-byte
+  value.
+- **Variable-width (Varint):** A marker (`-7` for `INTEGER_VAR`, `-9` for `LONG_VAR`) is written, followed by a
+  ZigZag-encoded value. This is used when the value is small enough to fit in fewer bytes than the standard fixed width.
+  The pickler automatically chooses the most compact representation.
 
 ### User-Defined Types (`Record` and `Enum`)
 
 User-defined types are not identified by integer markers. Instead, a 64-bit type signature is used.
-- **`Record`:** A 64-bit SHA-256 hash of the record's canonical signature (class name + component names and types) is written first. This is followed by the serialized data for each component in declaration order.
-- **`Enum`:** A 64-bit SHA-256 hash of the enum's signature (class name + constant names) is written, followed by the ZigZag-encoded ordinal of the enum constant.
 
-This approach ensures that the exact schema of the record or enum is respected during deserialization, preventing data corruption from schema mismatches unless compatibility mode is enabled.
+- **`Record`:** A 64-bit SHA-256 hash of the record's canonical signature (class name + component names and types) is
+  written first. This is followed by the serialized data for each component in declaration order.
+- **`Enum`:** A 64-bit SHA-256 hash of the enum's signature (class name + constant names) is written, followed by the
+  ZigZag-encoded ordinal of the enum constant.
+
+This approach ensures that the exact schema of the record or enum is respected during deserialization, preventing data
+corruption from schema mismatches unless compatibility mode is enabled.
 
 ### Container Types
 
 Container types are preceded by a ZigZag-encoded integer marker to identify their type.
 
-| Container / Type | Wire Marker | Description |
-|---|---|---|
-| `OPTIONAL_EMPTY` | -13 | An empty `Optional` |
-| `OPTIONAL_OF` | -14 | An `Optional` with a value |
-| `MAP` | -16 | A `Map` |
-| `LIST` | -17 | A `List` |
-| `ARRAY_RECORD` | -18 | An array of `Record` types |
-| `ARRAY_INTERFACE` | -19 | An array of `sealed interface` types |
-| `ARRAY_ENUM` | -20 | An array of `Enum` types |
-| `ARRAY_BOOLEAN` | -21 | An array of `Boolean` objects |
-| `ARRAY_BYTE` | -22 | An array of `Byte` objects |
-| `ARRAY_SHORT` | -23 | An array of `Short` objects |
-| `ARRAY_CHAR` | -24 | An array of `Character` objects |
-| `ARRAY_INT` | -25 | An array of `Integer` objects |
-| `ARRAY_LONG` | -26 | An array of `Long` objects |
-| `ARRAY_FLOAT` | -27 | An array of `Float` objects |
-| `ARRAY_DOUBLE` | -28 | An array of `Double` objects |
-| `ARRAY_STRING` | -29 | An array of `String` objects |
-| `ARRAY_UUID` | -30 | An array of `UUID` objects |
-| `ARRAY_LOCAL_DATE` | -31 | An array of `LocalDate` objects |
-| `ARRAY_LOCAL_DATE_TIME` | -32 | An array of `LocalDateTime` objects |
-| `ARRAY_ARRAY` | -33 | An array of arrays (`Object[][]`) |
-| `ARRAY_LIST` | -34 | An array of `List`s |
-| `ARRAY_MAP` | -35 | An array of `Map`s |
-| `ARRAY_OPTIONAL` | -36 | An array of `Optional`s |
+| Container / Type        | Wire Marker | Description                          |
+|-------------------------|-------------|--------------------------------------|
+| `OPTIONAL_EMPTY`        | -13         | An empty `Optional`                  |
+| `OPTIONAL_OF`           | -14         | An `Optional` with a value           |
+| `MAP`                   | -16         | A `Map`                              |
+| `LIST`                  | -17         | A `List`                             |
+| `ARRAY_RECORD`          | -18         | An array of `Record` types           |
+| `ARRAY_INTERFACE`       | -19         | An array of `sealed interface` types |
+| `ARRAY_ENUM`            | -20         | An array of `Enum` types             |
+| `ARRAY_BOOLEAN`         | -21         | An array of `Boolean` objects        |
+| `ARRAY_BYTE`            | -22         | An array of `Byte` objects           |
+| `ARRAY_SHORT`           | -23         | An array of `Short` objects          |
+| `ARRAY_CHAR`            | -24         | An array of `Character` objects      |
+| `ARRAY_INT`             | -25         | An array of `Integer` objects        |
+| `ARRAY_LONG`            | -26         | An array of `Long` objects           |
+| `ARRAY_FLOAT`           | -27         | An array of `Float` objects          |
+| `ARRAY_DOUBLE`          | -28         | An array of `Double` objects         |
+| `ARRAY_STRING`          | -29         | An array of `String` objects         |
+| `ARRAY_UUID`            | -30         | An array of `UUID` objects           |
+| `ARRAY_LOCAL_DATE`      | -31         | An array of `LocalDate` objects      |
+| `ARRAY_LOCAL_DATE_TIME` | -32         | An array of `LocalDateTime` objects  |
+| `ARRAY_ARRAY`           | -33         | An array of arrays (`Object[][]`)    |
+| `ARRAY_LIST`            | -34         | An array of `List`s                  |
+| `ARRAY_MAP`             | -35         | An array of `Map`s                   |
+| `ARRAY_OPTIONAL`        | -36         | An array of `Optional`s              |
 
-**Note:** Primitive arrays (`int[]`, `long[]`, etc.) are handled separately with their own markers for optimized encoding (e.g., using `BitSet` for `boolean[]`).
+**Note:** Primitive arrays (`int[]`, `long[]`, etc.) are handled separately with their own markers for optimized
+encoding (e.g., using `BitSet` for `boolean[]`).
+
+## Extending with Custom Types
+
+The framework can be extended to support any class by providing a `SerdeHandler`. This involves defining the
+serialization logic (sizing, writing, and reading) for the custom type and passing the handler to the `Pickler` factory.
+
+Here is an example demonstrating how to add support for `java.util.UUID`.
+
+**1. Define a Record with the Custom Type**
+
+First, define the record that will use the custom type.
+
+```java
+// A simple record that contains a custom UUID type and a primitive.
+public record EventRecord(UUID eventId, int eventCode) {
+}
+```
+
+**2. Create the Pickler with a Custom Handler**
+
+Use the `SerdeHandler.forClass(...)` factory method to fluently define the handler directly within the list passed to
+the `Pickler`.
+
+```java
+// The record instance to be serialized.
+final var originalRecord = new EventRecord(UUID.randomUUID(), 404);
+
+// Create the pickler, providing a list of custom handlers.
+final var pickler = Pickler.forClass(
+    EventRecord.class,
+    List.of(
+        // Define the handler for UUID fluently inside the list.
+        SerdeHandler.forClass(
+            UUID.class,
+            // Sizer: A UUID is always two longs.
+            (obj) -> 2 * Long.BYTES,
+            // Writer: Write the most and least significant bits.
+            (buffer, obj) -> {
+              UUID uuid = (UUID) obj;
+              buffer.putLong(uuid.getMostSignificantBits());
+              buffer.putLong(uuid.getLeastSignificantBits());
+            },
+            // Reader: Read the two longs and reconstruct the UUID.
+            (buffer) -> {
+              long most = buffer.getLong();
+              long least = buffer.getLong();
+              return new UUID(most, least);
+            }
+        )
+    )
+);
+
+// Perform the serialization and deserialization round-trip.
+final ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(originalRecord));
+pickler.
+
+serialize(buffer, originalRecord);
+buffer.
+
+flip();
+
+final var deserializedRecord = pickler.deserialize(buffer);
+
+// Verify the result.
+assertEquals(originalRecord, deserializedRecord);
+```
+
+By providing the `SerdeHandler`, the framework's type discovery and serialization logic will automatically use your
+custom implementation for `UUID` components within any record structure.
 
 ## Acknowledgements
 

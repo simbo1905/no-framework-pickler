@@ -24,68 +24,68 @@ public class CustomTypesTest {
 
   // Define the record that uses the custom types
   public record RecordWithCustomTypes(
-          UUID eventId,
-          String eventName,
-          SimpleTimeZone eventTimeZone
-  ) {}
-
-  // Define the SerdeHandlers (as shown in Step 1 and 2)
-  public static final SerdeHandler UUID_HANDLER = new SerdeHandler(
-          UUID.class,
-          1, // A unique positive marker for this custom type
-          (obj) -> 2 * Long.BYTES, // Sizer
-          (buffer, obj) -> { // Writer
-            UUID uuid = (UUID) obj;
-            buffer.putLong(uuid.getMostSignificantBits());
-            buffer.putLong(uuid.getLeastSignificantBits());
-          },
-          (buffer) -> { // Reader
-            long mostSigBits = buffer.getLong();
-            long leastSigBits = buffer.getLong();
-            return new UUID(mostSigBits, leastSigBits);
-          }
-  );
-
-  public static final SerdeHandler SIMPLE_TIME_ZONE_HANDLER = new SerdeHandler(
-          SimpleTimeZone.class,
-          2, // A unique positive marker
-          (obj) -> { // Sizer
-            SimpleTimeZone tz = (SimpleTimeZone) obj;
-            byte[] idBytes = tz.getID().getBytes(StandardCharsets.UTF_8);
-            // Size of raw offset + size of ID length + size of ID bytes
-            return Integer.BYTES + Integer.BYTES + idBytes.length;
-          },
-          (buffer, obj) -> { // Writer
-            SimpleTimeZone tz = (SimpleTimeZone) obj;
-            buffer.putInt(tz.getRawOffset());
-            byte[] idBytes = tz.getID().getBytes(StandardCharsets.UTF_8);
-            buffer.putInt(idBytes.length);
-            buffer.put(idBytes);
-          },
-          (buffer) -> { // Reader
-            int rawOffset = buffer.getInt();
-            int idLength = buffer.getInt();
-            byte[] idBytes = new byte[idLength];
-            buffer.get(idBytes);
-            String id = new String(idBytes, StandardCharsets.UTF_8);
-            return new SimpleTimeZone(rawOffset, id);
-          }
-  );
+      UUID eventId,
+      String eventName,
+      SimpleTimeZone eventTimeZone
+  ) {
+  }
 
   @Test
   void testCustomTypeHandlers() {
     // 1. Prepare test data
     final var originalRecord = new RecordWithCustomTypes(
-            UUID.randomUUID(),
-            "Framework Demo",
-            new SimpleTimeZone(3600000, "Europe/London")
+        UUID.randomUUID(),
+        "Framework Demo",
+        new SimpleTimeZone(3600000, "Europe/London")
+    );
+    // Define the SerdeHandlers (as shown in Step 1 and 2)
+    final SerdeHandler uuidHandler = new SerdeHandler(
+        UUID.class,
+        1, // A unique positive marker for this custom type
+        (obj) -> 2 * Long.BYTES, // Sizer
+        (buffer, obj) -> { // Writer
+          UUID uuid = (UUID) obj;
+          buffer.putLong(uuid.getMostSignificantBits());
+          buffer.putLong(uuid.getLeastSignificantBits());
+        },
+        (buffer) -> { // Reader
+          long mostSigBits = buffer.getLong();
+          long leastSigBits = buffer.getLong();
+          return new UUID(mostSigBits, leastSigBits);
+        }
+    );
+
+    final SerdeHandler timeZoneHandler = SerdeHandler.forClass(
+        SimpleTimeZone.class,
+        2, // A unique positive marker
+        (obj) -> { // Sizer
+          SimpleTimeZone tz = (SimpleTimeZone) obj;
+          byte[] idBytes = tz.getID().getBytes(StandardCharsets.UTF_8);
+          // Size of raw offset + size of ID length + size of ID bytes
+          return Integer.BYTES + Integer.BYTES + idBytes.length;
+        },
+        (buffer, obj) -> { // Writer
+          SimpleTimeZone tz = (SimpleTimeZone) obj;
+          buffer.putInt(tz.getRawOffset());
+          byte[] idBytes = tz.getID().getBytes(StandardCharsets.UTF_8);
+          buffer.putInt(idBytes.length);
+          buffer.put(idBytes);
+        },
+        (buffer) -> { // Reader
+          int rawOffset = buffer.getInt();
+          int idLength = buffer.getInt();
+          byte[] idBytes = new byte[idLength];
+          buffer.get(idBytes);
+          String id = new String(idBytes, StandardCharsets.UTF_8);
+          return new SimpleTimeZone(rawOffset, id);
+        }
     );
 
     // 2. Create the pickler with custom handlers
     final var pickler = Pickler.forClass(
-            RecordWithCustomTypes.class,
-            Map.of(),
-            List.of(UUID_HANDLER, SIMPLE_TIME_ZONE_HANDLER)
+        RecordWithCustomTypes.class,
+        Map.of(),
+        List.of(uuidHandler, timeZoneHandler)
     );
 
     // 3. Allocate a buffer and perform serialization

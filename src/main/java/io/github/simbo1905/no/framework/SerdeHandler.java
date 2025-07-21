@@ -22,4 +22,11 @@ public record SerdeHandler(
     Objects.requireNonNull(writer, "writer must not be null");
     Objects.requireNonNull(reader, "reader must not be null");
   }
+
+  static public <T> SerdeHandler forClass(Class<T> clazz, int marker,
+                                          Serde.Sizer sizer,
+                                          Serde.Writer writer,
+                                          Serde.Reader reader) {
+    return new SerdeHandler(clazz, marker, sizer, writer, reader);
+  }
 }
