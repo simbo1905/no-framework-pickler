@@ -1,4 +1,6 @@
-# Backwards Compatibility for Records and Enums in Framework Pickler
+# Backwards Compatibility in Framework Pickler
+
+## Project Overview
 
 When `DISABLED` which is our default model to make the feature opt-in:
 
@@ -44,4 +46,15 @@ When compared to JDK Serialization there are the following differences:
 - No Framework Pickler fails fast only if the reordered values have different raw or generic types.
 - No Framework Pickler does not detect reordered values that have the same raw or generic types.
 
-End. 
+## Compatibility Mode
+
+The compatibility mode is handled in `CompatibilityMode.java`. The compatibility mode can be set via system property
+`no.framework.Pickler.Compatibility`. The default is `DISABLED`.
+
+- **DISABLED**: The safe mode which is the default mode. Strictly no backwards compatibility. Fails fast on any schema
+  mismatch.
+- **ENABLED**: Opt-in mode. Emulates JDK serialization functionality with a risky corner case.
+- If you do opt-in **never** reorder existing fields or enum constants in your source file to avoid the risky corner
+  case of "swapping" components or enum constants when deserializing.
+
+End.
