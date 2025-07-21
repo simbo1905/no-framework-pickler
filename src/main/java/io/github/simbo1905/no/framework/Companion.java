@@ -1515,9 +1515,18 @@ sealed interface Companion permits Companion.Nothing {
           };
           yield nullCheckAndDelegate(interfaceReader);
         } else {
+            if (refValueType == TypeExpr.RefValueType.CUSTOM) {
+              final Serde.Reader customReader = buffer -> {
+                final var pickler = resolver.resolve(clazz);
+                return pickler.deserialize(buffer);
+              };
+              yield nullCheckAndDelegate(customReader);
+            }
+            // The old 'else' block remains for built-in types
           yield buildValueReader(refValueType, typeSignature -> {
             // For non-record types, use the existing buildRefValueReader approach
-            throw new UnsupportedOperationException("Type signature resolution not supported for non-record types");
+            final var pickler = resolver.resolveBySignature(typeSignature);
+            return pickler::deserialize;
           });
         }
       }

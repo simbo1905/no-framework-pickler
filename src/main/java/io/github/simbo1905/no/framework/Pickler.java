@@ -89,13 +89,19 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
               recordClassHierarchy.stream().map(Class::getName).collect(Collectors.joining(",")));
         });
 
+    // Create a set of custom handler types for efficient lookup
+    final var customHandlerTypes = customHandlers.stream()
+        .map(SerdeHandler::valueBasedLike)
+        .collect(Collectors.toSet());
+
     // Partition classes into legal and illegal
     final Map<Boolean, List<Class<?>>> legalAndIllegalClasses = recordClassHierarchy.stream()
         .collect(Collectors.partitioningBy(cls ->
-            cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive()
-                || String.class.equals(cls) || UUID.class.isAssignableFrom(cls) || LocalDate.class.isAssignableFrom(cls) || LocalDateTime.class.isAssignableFrom(cls)
-                || List.class.isAssignableFrom(cls) || Optional.class.isAssignableFrom(cls)
-                || Map.class.isAssignableFrom(cls) || BOXED_PRIMITIVES.contains(cls)
+            customHandlerTypes.contains(cls) || // <-- Add this line
+                cls.isRecord() || cls.isEnum() || cls.isSealed() || cls.isArray() || cls.isPrimitive() ||
+                String.class.equals(cls) || LocalDate.class.isAssignableFrom(cls) || LocalDateTime.class.isAssignableFrom(cls) ||
+                List.class.isAssignableFrom(cls) || Optional.class.isAssignableFrom(cls) ||
+                Map.class.isAssignableFrom(cls) || BOXED_PRIMITIVES.contains(cls)
         ));
 
     // Check for illegal classes
@@ -253,7 +259,13 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
         // This is primarily for deserializing interfaces/records from a stream,
         // which is not the main concern for the direct writer/sizer setup.
         // However, a reader for a component might need it.
-        throw new UnsupportedOperationException("Signature resolution not supported in direct build path: " + Long.toHexString(typeSignature));
+        final var handler = customHandlers.stream().filter(h -> h.marker() == typeSignature).findFirst();
+        if (handler.isPresent()) {
+          final var h = handler.get();
+          return new CustomSerde<>(h.sizer(), h.writer(), h.reader());
+        } else {
+          throw new UnsupportedOperationException("Signature resolution not supported in direct build path: " + Long.toHexString(typeSignature));
+        }
       }
     };
 
