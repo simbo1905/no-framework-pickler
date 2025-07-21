@@ -9,9 +9,9 @@ import java.util.Objects;
 public record SerdeHandler(
     Class<?> valueBasedLike,
     int marker,
-    Serde.Sizer sizer,
-    Serde.Writer writer,
-    Serde.Reader reader
+    Serdes.Sizer sizer,
+    Serdes.Writer writer,
+    Serdes.Reader reader
 ) {
   public SerdeHandler {
     Objects.requireNonNull(valueBasedLike, "valueBasedLike must not be null");
@@ -24,9 +24,9 @@ public record SerdeHandler(
   }
 
   static public <T> SerdeHandler forClass(Class<T> clazz, int marker,
-                                          Serde.Sizer sizer,
-                                          Serde.Writer writer,
-                                          Serde.Reader reader) {
+                                          Serdes.Sizer sizer,
+                                          Serdes.Writer writer,
+                                          Serdes.Reader reader) {
     return new SerdeHandler(clazz, marker, sizer, writer, reader);
   }
 }

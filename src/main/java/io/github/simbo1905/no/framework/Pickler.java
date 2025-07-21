@@ -18,7 +18,7 @@ import static io.github.simbo1905.no.framework.Companion.recordClassHierarchy;
 
 /// Main interface for the No Framework Pickler serialization library.
 /// Provides type-safe, reflection-free serialization for records and sealed interfaces.
-public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSerde, ManySerde, RecordSerde {
+public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, ManySerde, RecordSerde {
 
   Logger LOGGER = Logger.getLogger(Pickler.class.getName());
 
@@ -222,11 +222,11 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
     final var altSignature = Optional.ofNullable(typeSignatures.get(userType));
 
     // Pre-process custom handlers into efficient lookup maps
-    final Map<Class<?>, Serde.Sizer> customSizers = customHandlers.stream()
+    final Map<Class<?>, Serdes.Sizer> customSizers = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::sizer));
-    final Map<Class<?>, Serde.Writer> customWriters = customHandlers.stream()
+    final Map<Class<?>, Serdes.Writer> customWriters = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::writer));
-    final Map<Class<?>, Serde.Reader> customReaders = customHandlers.stream()
+    final Map<Class<?>, Serdes.Reader> customReaders = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
 
     // 1. Create a resolver specifically for the direct build path
@@ -243,12 +243,12 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
         // Handle custom types if necessary
         if (customReaders.containsKey(clazz)) {
           // This class is a custom type. Create a simple pickler for it.
-          final Serde.Sizer sizer = customSizers.get(clazz);
-          final Serde.Writer writer = customWriters.get(clazz);
-          final Serde.Reader reader = customReaders.get(clazz);
+          final Serdes.Sizer sizer = customSizers.get(clazz);
+          final Serdes.Writer writer = customWriters.get(clazz);
+          final Serdes.Reader reader = customReaders.get(clazz);
 
           // Return a new anonymous Pickler that wraps the custom handler's logic.
-          return new CustomSerde<>(sizer, writer, reader);
+          return new Serde<>(sizer, writer, reader);
         }
         // In a direct build, we don't expect to resolve other records.
         throw new UnsupportedOperationException("Direct resolver cannot resolve class: " + clazz.getName());
@@ -262,7 +262,7 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
         final var handler = customHandlers.stream().filter(h -> h.marker() == typeSignature).findFirst();
         if (handler.isPresent()) {
           final var h = handler.get();
-          return new CustomSerde<>(h.sizer(), h.writer(), h.reader());
+          return new Serde<>(h.sizer(), h.writer(), h.reader());
         } else {
           throw new UnsupportedOperationException("Signature resolution not supported in direct build path: " + Long.toHexString(typeSignature));
         }
@@ -276,9 +276,9 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
         customHandlers
     );
 
-    final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);
-    final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serde.Writer[]::new);
-    final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serde.Reader[]::new);
+    final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serdes.Sizer[]::new);
+    final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serdes.Writer[]::new);
+    final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serdes.Reader[]::new);
 
     return new RecordSerde<>(userType, typeSignature, altSignature, sizers, writers, readers);
   }
@@ -359,9 +359,9 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
         final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
         // Use callback-based component building
         final var componentSerdes = Companion.buildComponentSerdesWithCallback(recordClass, resolver, customHandlers);
-        final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);
-        final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serde.Writer[]::new);
-        final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serde.Reader[]::new);
+        final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serdes.Sizer[]::new);
+        final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serdes.Writer[]::new);
+        final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serdes.Reader[]::new);
 
         final var serde = new RecordSerde<>(recordClass, typeSignature, altSignature, sizers, writers, readers);
         serdes.put(recordClass, serde);

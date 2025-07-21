@@ -1,50 +1,44 @@
 // SPDX-FileCopyrightText: 2025 Simon Massey
 // SPDX-License-Identifier: Apache-2.0
 //
+
 package io.github.simbo1905.no.framework;
 
 import java.nio.ByteBuffer;
-import java.util.function.BiConsumer;
-import java.util.function.Function;
-import java.util.function.ToIntFunction;
+import java.util.Objects;
 
-sealed interface Serde permits Serde.Nothing {
-  enum Nothing implements Serde {}
+final class Serde<T> implements Pickler<T> {
+  private final Serdes.Sizer sizer;
+  private final Serdes.Writer writer;
+  private final Serdes.Reader reader;
 
-  interface Writer extends
-      BiConsumer<ByteBuffer, Object> {
-
-    /// Write an object to the ByteBuffer
-    default void write(ByteBuffer buffer, Object obj) {
-      accept(buffer, obj);
-    }
+  Serde(Serdes.Sizer sizer, Serdes.Writer writer, Serdes.Reader reader) {
+    this.sizer = Objects.requireNonNull(sizer);
+    this.writer = Objects.requireNonNull(writer);
+    this.reader = Objects.requireNonNull(reader);
   }
 
-  interface WriterResolver extends
-      Function<Class<?>, Writer> {
-
+  @Override
+  public int serialize(ByteBuffer buffer, T record) {
+    final int start = buffer.position();
+    writer.accept(buffer, record);
+    return buffer.position() - start;
   }
 
-  interface SizerResolver extends
-      Function<Class<?>, Sizer> {
+  @Override
+  public T deserialize(ByteBuffer buffer) {
+    @SuppressWarnings("unchecked")
+    T result = (T) reader.apply(buffer);
+    return result;
   }
 
-  interface Sizer extends ToIntFunction<Object> {
-    /// Get the size of an object of the given class
-    default int sizeOf(Object obj) {
-      return applyAsInt(obj);
-    }
+  @Override
+  public int maxSizeOf(T record) {
+    return sizer.applyAsInt(record);
   }
 
-  interface Reader extends
-      Function<ByteBuffer, Object> {
-
-    /// Read an object from the ByteBuffer
-    default Object read(ByteBuffer buffer) {
-      return apply(buffer);
-    }
-  }
-
-  interface SignatureReader extends Function<Long, Reader> {
+  @Override
+  public long typeSignature(Class<?> originalClass) {
+    throw new UnsupportedOperationException("Custom handlers do not have type signatures.");
   }
 }

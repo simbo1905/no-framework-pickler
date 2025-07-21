@@ -190,8 +190,8 @@ sealed interface Companion permits Companion.Nothing {
     }
   }
 
-  static Serde.Reader createArrayReader(
-      Serde.Reader elementReader, Class<?> componentType, TypeExpr element) {
+  static Serdes.Reader createArrayReader(
+      Serdes.Reader elementReader, Class<?> componentType, TypeExpr element) {
     LOGGER.fine(() -> "Creating array reader for component type: " + componentType.getName() + " and element: " + element.toTreeString());
     final int expectedMarker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
@@ -252,9 +252,9 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Writer createMapWriterInner(
-      Serde.Writer keyWriter,
-      Serde.Writer valueWriter) {
+  static Serdes.Writer createMapWriterInner(
+      Serdes.Writer keyWriter,
+      Serdes.Writer valueWriter) {
     return (buffer, obj) -> {
       Map<?, ?> map = (Map<?, ?>) obj;
       final int positionBeforeWrite = buffer.position();
@@ -284,9 +284,9 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Reader createMapReader(
-      Serde.Reader keyReader,
-      Serde.Reader valueReader) {
+  static Serdes.Reader createMapReader(
+      Serdes.Reader keyReader,
+      Serdes.Reader valueReader) {
     return buffer -> {
       int positionBeforeRead = buffer.position();
       int marker = ZigZagEncoding.getInt(buffer);
@@ -302,7 +302,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Reader createListReader(Serde.Reader elementReader) {
+  static Serdes.Reader createListReader(Serdes.Reader elementReader) {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
       assert marker == Markers.LIST.marker() : "Expected LIST marker";
@@ -313,7 +313,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Reader createOptionalReader(Serde.Reader valueReader) {
+  static Serdes.Reader createOptionalReader(Serdes.Reader valueReader) {
     return buffer -> {
       int marker = ZigZagEncoding.getInt(buffer);
       if (marker == Markers.OPTIONAL_EMPTY.marker()) {
@@ -326,7 +326,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Writer createOptionalWriterInner(Serde.Writer valueWriter) {
+  static Serdes.Writer createOptionalWriterInner(Serdes.Writer valueWriter) {
     LOGGER.fine(() -> "Creating optional writer with valueWriter: " + valueWriter);
     return (buffer, value) -> {
       Optional<?> optional = (Optional<?>) value;
@@ -343,7 +343,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Writer createListWriterInner(Serde.Writer elementWriter) {
+  static Serdes.Writer createListWriterInner(Serdes.Writer elementWriter) {
     return (buffer, value) -> {
       List<?> list = (List<?>) value;
       // Write LIST marker and size
@@ -362,7 +362,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Sizer createOptionalSizerInner(Serde.Sizer valueSizer) {
+  static Serdes.Sizer createOptionalSizerInner(Serdes.Sizer valueSizer) {
     LOGGER.fine(() -> "Creating optional sizer with delegate valueSizer: " + valueSizer);
     return (Object inner) -> {
       Optional<?> optional = (Optional<?>) inner;
@@ -377,7 +377,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Sizer createArraySizerInner(Serde.Sizer elementSizer) {
+  static Serdes.Sizer createArraySizerInner(Serdes.Sizer elementSizer) {
     LOGGER.fine(() -> "Creating array sizer with delegate elementSizer: " + elementSizer);
     return (Object inner) -> {
       if (inner == null) {
@@ -398,7 +398,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Sizer createListSizerInner(Serde.Sizer elementSizer) {
+  static Serdes.Sizer createListSizerInner(Serdes.Sizer elementSizer) {
     LOGGER.fine(() -> "Creating list sizer inner with delegate elementSizer: " + elementSizer);
     return (Object inner) -> {
       if (inner == null) {
@@ -421,8 +421,8 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Sizer createMapSizerInner
-      (Serde.Sizer keySizer, Serde.Sizer valueSizer) {
+  static Serdes.Sizer createMapSizerInner
+      (Serdes.Sizer keySizer, Serdes.Sizer valueSizer) {
     return (Object inner) -> {
       if (inner == null) {
         LOGGER.fine(() -> "Map is null, returning size 0");
@@ -451,7 +451,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Writer createArrayRefWriter(Serde.Writer elementWriter, TypeExpr element) {
+  static Serdes.Writer createArrayRefWriter(Serdes.Writer elementWriter, TypeExpr element) {
     LOGGER.fine(() -> "Creating array writer inner for element type: " + element.toTreeString());
     final int marker = switch (element) {
       case TypeExpr.RefValueNode(TypeExpr.RefValueType refValueType, Type ignored1) -> switch (refValueType) {
@@ -525,9 +525,9 @@ sealed interface Companion permits Companion.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          Serde.Writer writer = createLazyWriter(typeExpr, getter, resolver);
-          Serde.Reader reader = createLazyReader(typeExpr, resolver);
-          Serde.Sizer sizer = createLazySizer(typeExpr, getter, resolver);
+          Serdes.Writer writer = createLazyWriter(typeExpr, getter, resolver);
+          Serdes.Reader reader = createLazyReader(typeExpr, resolver);
+          Serdes.Sizer sizer = createLazySizer(typeExpr, getter, resolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
@@ -535,7 +535,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build primitive array writer for TypeExpr.PrimitiveValueType (old version)
-  static @NotNull Serde.Writer buildPrimitiveArrayWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Writer buildPrimitiveArrayWriterInner(TypeExpr.PrimitiveValueType primitiveType) {
     LOGGER.fine(() -> "Building writer chain for primitive array type: " + primitiveType);
     return switch (primitiveType) {
       case BOOLEAN -> (buffer, inner) -> {
@@ -660,7 +660,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build primitive value writer for TypeExpr.PrimitiveValueType
-  static @NotNull Serde.Writer buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Writer buildPrimitiveValueWriter(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (ByteBuffer buffer, Object result) -> buffer.put((byte) ((boolean) result ? 1 : 0));
       case BYTE -> (ByteBuffer buffer, Object result) -> buffer.put((byte) result);
@@ -700,7 +700,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Serde.Reader buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Reader buildPrimitiveValueReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -739,7 +739,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Serde.Reader buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Reader buildPrimitiveArrayReader(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN -> (buffer) -> {
         int marker = ZigZagEncoding.getInt(buffer);
@@ -836,7 +836,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Serde.Sizer buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Sizer buildPrimitiveArraySizer(TypeExpr.PrimitiveValueType primitiveType) {
     if (primitiveType == BOOLEAN) {
       return (Object value) -> 2 * Integer.BYTES + Array.getLength(value) * Byte.BYTES;
     } else if (primitiveType == BYTE) {
@@ -858,7 +858,7 @@ sealed interface Companion permits Companion.Nothing {
     }
   }
 
-  static @NotNull Serde.Sizer buildValueSizer(TypeExpr.RefValueType refValueType, Type javaType, Serde.SizerResolver typeSizerResolver) {
+  static @NotNull Serdes.Sizer buildValueSizer(TypeExpr.RefValueType refValueType, Type javaType, Serdes.SizerResolver typeSizerResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
@@ -881,7 +881,7 @@ sealed interface Companion permits Companion.Nothing {
     throw new AssertionError("Unsupported Java type: " + javaType);
   }
 
-  static @NotNull Serde.Sizer buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Sizer buildPrimitiveValueSizer(TypeExpr.PrimitiveValueType primitiveType) {
     return switch (primitiveType) {
       case BOOLEAN, BYTE -> (Object record) -> Byte.BYTES;
       case SHORT -> (Object record) -> Short.BYTES;
@@ -893,7 +893,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static @NotNull Serde.Sizer buildPrimitiveArraySizerInner(TypeExpr.PrimitiveValueType primitiveType) {
+  static @NotNull Serdes.Sizer buildPrimitiveArraySizerInner(TypeExpr.PrimitiveValueType primitiveType) {
     final int bytesPerElement = switch (primitiveType) {
       case BOOLEAN, BYTE -> Byte.BYTES;
       case SHORT -> Short.BYTES;
@@ -926,7 +926,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Sizer extractAndDelegate(Serde.Sizer delegate, MethodHandle accessor) {
+  static Serdes.Sizer extractAndDelegate(Serdes.Sizer delegate, MethodHandle accessor) {
     return (Object record) -> {
       final Object value;
       try {
@@ -944,7 +944,7 @@ sealed interface Companion permits Companion.Nothing {
     };
   }
 
-  static Serde.Writer extractAndDelegate(Serde.Writer delegate, MethodHandle
+  static Serdes.Writer extractAndDelegate(Serdes.Writer delegate, MethodHandle
       accessor) {
     final Class<?> type = accessor.type().returnType();
     if (type.isPrimitive()) {
@@ -985,19 +985,19 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Extract and delegate for Writer interface  
-  static Serde.Writer extractAndDelegateWriter(Serde.Writer delegate, MethodHandle accessor) {
+  static Serdes.Writer extractAndDelegateWriter(Serdes.Writer delegate, MethodHandle accessor) {
     return extractAndDelegate(delegate, accessor);
   }
 
   /// Build sizer chain with callback for complex types
-  static Serde.Sizer buildSizerChain(TypeExpr typeExpr, MethodHandle accessor,
-                                     Serde.SizerResolver complexResolver) {
+  static Serdes.Sizer buildSizerChain(TypeExpr typeExpr, MethodHandle accessor,
+                                      Serdes.SizerResolver complexResolver) {
     return extractAndDelegate(buildSizerChainInner(typeExpr, complexResolver), accessor);
   }
 
   /// Build sizer chain inner with callback delegation
-  static Serde.Sizer buildSizerChainInner(TypeExpr typeExpr,
-                                          Serde.SizerResolver complexResolver) {
+  static Serdes.Sizer buildSizerChainInner(TypeExpr typeExpr,
+                                           Serdes.SizerResolver complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var javaType) ->
@@ -1028,8 +1028,8 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value sizer with callback for complex types (RECORD, INTERFACE, ENUM)
-  static Serde.Sizer buildValueSizerInner(TypeExpr.RefValueType refValueType, Type javaType,
-                                          Serde.SizerResolver complexResolver) {
+  static Serdes.Sizer buildValueSizerInner(TypeExpr.RefValueType refValueType, Type javaType,
+                                           Serdes.SizerResolver complexResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN, BYTE -> obj -> obj == null ? Byte.BYTES : 2 * Byte.BYTES;
@@ -1053,14 +1053,14 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build writer chain with callback for complex types
-  static Serde.Writer buildWriterChain(TypeExpr typeExpr, MethodHandle accessor,
-                                       Serde.WriterResolver complexResolver) {
+  static Serdes.Writer buildWriterChain(TypeExpr typeExpr, MethodHandle accessor,
+                                        Serdes.WriterResolver complexResolver) {
     return extractAndDelegate(buildWriterChainInner(typeExpr, complexResolver), accessor);
   }
 
   /// Build writer chain inner with callback delegation
-  static Serde.Writer buildWriterChainInner(TypeExpr typeExpr,
-                                            Serde.WriterResolver complexResolver) {
+  static Serdes.Writer buildWriterChainInner(TypeExpr typeExpr,
+                                             Serdes.WriterResolver complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var javaType) ->
@@ -1091,8 +1091,8 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value writer with callback for complex types
-  static Serde.Writer buildValueWriter(TypeExpr.RefValueType refValueType, Type javaType,
-                                       Serde.WriterResolver complexResolver) {
+  static Serdes.Writer buildValueWriter(TypeExpr.RefValueType refValueType, Type javaType,
+                                        Serdes.WriterResolver complexResolver) {
     if (javaType instanceof Class<?> cls) {
       return switch (refValueType) {
         case BOOLEAN -> (buffer, obj) -> buffer.put((byte) ((boolean) obj ? 1 : 0));
@@ -1162,14 +1162,14 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build reader chain with callback for complex types
-  static Serde.Reader buildReaderChain(TypeExpr typeExpr,
-                                       Serde.SignatureReader complexResolver) {
+  static Serdes.Reader buildReaderChain(TypeExpr typeExpr,
+                                        Serdes.SignatureReader complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var ignored) -> buildValueReader(refValueType, complexResolver);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayReader(primitiveType);
       case TypeExpr.ArrayNode(var element, var ignored3) -> {
-        final Serde.Reader nonNullArrayReader;
+        final Serdes.Reader nonNullArrayReader;
         if (element instanceof TypeExpr.PrimitiveValueNode(var primitiveType, var ignored2)) {
           nonNullArrayReader = buildPrimitiveArrayReader(primitiveType);
         } else if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
@@ -1205,15 +1205,15 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Build value reader with callback for complex types
-  static Serde.Reader buildValueReader(TypeExpr.RefValueType refValueType,
-                                       Serde.SignatureReader complexResolver) {
-    final Serde.Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
+  static Serdes.Reader buildValueReader(TypeExpr.RefValueType refValueType,
+                                        Serdes.SignatureReader complexResolver) {
+    final Serdes.Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
     return nullCheckAndDelegate(primitiveReader);
   }
 
   /// Build ref value reader with callback for complex types
-  static Serde.Reader buildRefValueReader(TypeExpr.RefValueType refValueType,
-                                          Serde.SignatureReader complexResolver) {
+  static Serdes.Reader buildRefValueReader(TypeExpr.RefValueType refValueType,
+                                           Serdes.SignatureReader complexResolver) {
     return switch (refValueType) {
       case BOOLEAN -> buffer -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -1275,7 +1275,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Null check and delegate pattern for readers
-  static Serde.Reader nullCheckAndDelegate(Serde.Reader delegate) {
+  static Serdes.Reader nullCheckAndDelegate(Serdes.Reader delegate) {
     return buffer -> {
       final int positionBefore = buffer.position();
       final byte nullMarker = buffer.get();
@@ -1349,24 +1349,24 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy sizer that uses callback for record types
-  static Serde.Sizer createLazySizer(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
-    final Serde.Sizer sizerChain = createLazySizerChain(typeExpr, resolver);
+  static Serdes.Sizer createLazySizer(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
+    final Serdes.Sizer sizerChain = createLazySizerChain(typeExpr, resolver);
     return extractAndDelegate(sizerChain, getter);
   }
 
   /// Create lazy writer that uses callback for record types
-  static Serde.Writer createLazyWriter(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
-    final Serde.Writer writerChain = createLazyWriterChain(typeExpr, resolver);
+  static Serdes.Writer createLazyWriter(TypeExpr typeExpr, MethodHandle getter, DependencyResolver resolver) {
+    final Serdes.Writer writerChain = createLazyWriterChain(typeExpr, resolver);
     return extractAndDelegateWriter(writerChain, getter);
   }
 
   /// Create lazy reader that uses callback for record types
-  static Serde.Reader createLazyReader(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serdes.Reader createLazyReader(TypeExpr typeExpr, DependencyResolver resolver) {
     return createLazyReaderChain(typeExpr, resolver);
   }
 
   /// Create lazy sizer chain with callback delegation
-  static Serde.Sizer createLazySizerChain(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serdes.Sizer createLazySizerChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
@@ -1418,7 +1418,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy writer chain with callback delegation
-  static Serde.Writer createLazyWriterChain(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serdes.Writer createLazyWriterChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
@@ -1467,7 +1467,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Create lazy reader chain with callback delegation
-  static Serde.Reader createLazyReaderChain(TypeExpr typeExpr, DependencyResolver resolver) {
+  static Serdes.Reader createLazyReaderChain(TypeExpr typeExpr, DependencyResolver resolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
@@ -1477,7 +1477,7 @@ sealed interface Companion permits Companion.Nothing {
       case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
         if (clazz.isRecord()) {
-          final Serde.Reader recordReader = buffer -> {
+          final Serdes.Reader recordReader = buffer -> {
             buffer.getLong();
             final var pickler = resolver.resolve(clazz);
             return switch (pickler) {
@@ -1490,7 +1490,7 @@ sealed interface Companion permits Companion.Nothing {
           };
           yield nullCheckAndDelegate(recordReader);
         } else if (clazz.isEnum()) {
-          final Serde.Reader enumReader = buffer -> {
+          final Serdes.Reader enumReader = buffer -> {
             buffer.getLong();
             final var pickler = resolver.resolve(clazz);
             if (pickler instanceof EnumSerde<?> enumPickler) {
@@ -1501,7 +1501,7 @@ sealed interface Companion permits Companion.Nothing {
           };
           yield nullCheckAndDelegate(enumReader);
         } else if (clazz.isInterface()) {
-          final Serde.Reader interfaceReader = buffer -> {
+          final Serdes.Reader interfaceReader = buffer -> {
             final long typeSignature = buffer.getLong();
             // For interfaces, we need to resolve the concrete type at runtime
             final var pickler = resolver.resolveBySignature(typeSignature);
@@ -1515,14 +1515,14 @@ sealed interface Companion permits Companion.Nothing {
           };
           yield nullCheckAndDelegate(interfaceReader);
         } else {
-            if (refValueType == TypeExpr.RefValueType.CUSTOM) {
-              final Serde.Reader customReader = buffer -> {
-                final var pickler = resolver.resolve(clazz);
-                return pickler.deserialize(buffer);
-              };
-              yield nullCheckAndDelegate(customReader);
-            }
-            // The old 'else' block remains for built-in types
+          if (refValueType == TypeExpr.RefValueType.CUSTOM) {
+            final Serdes.Reader customReader = buffer -> {
+              final var pickler = resolver.resolve(clazz);
+              return pickler.deserialize(buffer);
+            };
+            yield nullCheckAndDelegate(customReader);
+          }
+          // The old 'else' block remains for built-in types
           yield buildValueReader(refValueType, typeSignature -> {
             // For non-record types, use the existing buildRefValueReader approach
             final var pickler = resolver.resolveBySignature(typeSignature);
@@ -1531,7 +1531,7 @@ sealed interface Companion permits Companion.Nothing {
         }
       }
       case TypeExpr.ArrayNode(var element, var componentType) -> {
-        final Serde.Reader elementReader;
+        final Serdes.Reader elementReader;
         if (element instanceof TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored2)) {
           final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
           elementReader = nullCheckAndDelegate(primitiveArrayReader);

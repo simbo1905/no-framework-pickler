@@ -38,29 +38,25 @@ ByteBuffer buffer = ByteBuffer.allocate(1024);
 
 // Given a tree of nodes:
 final var rootNode = new TreeNode.InternalNode("Root",
-    new TreeNode.InternalNode("Branch1", new TreeNode.LeafNode(42), new TreeNode.LeafNode(99)),
-    new TreeNode.InternalNode("Branch2", new TreeNode.LeafNode(123), TreeNode.empty()));
+    new TreeNode.InternalNode("Branch1",
+        new TreeNode.LeafNode(42),
+        new TreeNode.LeafNode(99)),
+    new TreeNode.InternalNode("Branch2",
+        new TreeNode.LeafNode(123),
+        TreeNode.empty()));
 
 // And a type safe pickler for the sealed interface:
 Pickler<TreeNode> treeNodePickler = Pickler.forClass(TreeNode.class);
 
 // When we serialize a tree of nodes to a ByteBuffer and load it back out again:
-treeNodePickler.
-
-serialize(buffer, rootNode);
-buffer.
-
-flip();
+treeNodePickler.serialize(buffer, rootNode);
+buffer.flip();
 
 TreeNode deserializedRoot = treeNodePickler.deserialize(buffer);
 
 // Then it has elegantly and safely reconstructed the entire tree structure
-if(TreeNode.
-
-areTreesEqual(rootNode, deserializedRoot) ){
-    System.out.
-
-println("The trees are equal!");
+if(TreeNode.areTreesEqual(rootNode, deserializedRoot) ){
+    System.out.println("The trees are equal!");
 }
 ```
 
@@ -112,23 +108,15 @@ int size = pickler.maxSizeOf(december);
 ByteBuffer buffer = ByteBuffer.allocate(size);
 
 // Serialize to a ByteBuffer
-pickler.
-
-serialize(buffer, december);
-buffer.
-
-flip();
+pickler.serialize(buffer, december);
+buffer.flip();
 
 // Deserialize from the ByteBuffer
 Month deserializedMonth = pickler.deserialize(buffer);
 
 // Verify the deserialized enum value
-if(!deserializedMonth.
-
-equals(december)){
-    throw new
-
-AssertionError("should not be reached");
+if(!deserializedMonth.equals(december)){
+  throw newAssertionError("should not be reached");
 }
 ```
 
@@ -191,12 +179,8 @@ final var pickler = Pickler.forClass(
 
 // Perform the serialization and deserialization round-trip.
 final ByteBuffer buffer = ByteBuffer.allocate(pickler.maxSizeOf(originalRecord));
-pickler.
-
-serialize(buffer, originalRecord);
-buffer.
-
-flip();
+pickler.serialize(buffer, originalRecord);
+buffer.flip();
 
 final var deserializedRecord = pickler.deserialize(buffer);
 
@@ -206,13 +190,6 @@ assertEquals(originalRecord, deserializedRecord);
 
 By providing the `SerdeHandler`, the framework's type discovery and serialization logic will automatically use your
 custom implementation for `UUID` components within any record structure.
-
-## Acknowledgements
-
-This library uses ZigZag-encoded LEB128-64b9B "varint" functionality written by Gil Tene of Azul Systems. The original
-identical code can be found
-at [github.com/HdrHistogram/HdrHistogram](https://github.com/HdrHistogram/HdrHistogram/blob/ad76bb512b510a37f6a55fdea32f8f3dd3355771/src/main/java/org/HdrHistogram/ZigZagEncoding.java).
-The code was released to the public domain under [CC0 1.0 Universal](http://creativecommons.org/publicdomain/zero/1.0/).
 
 ## Logging
 
@@ -230,3 +207,11 @@ mvn test -Dtest=RefactorTests,MachinaryTests -Djava.util.logging.ConsoleHandler.
 
 SPDX-FileCopyrightText: 2025 Simon Massey  
 SPDX-License-Identifier: Apache-2.0
+
+## Acknowledgements
+
+This library uses ZigZag-encoded LEB128-64b9B "varint" functionality written by Gil Tene of Azul Systems. The original
+identical code can be found
+at [github.com/HdrHistogram/HdrHistogram](https://github.com/HdrHistogram/HdrHistogram/blob/ad76bb512b510a37f6a55fdea32f8f3dd3355771/src/main/java/org/HdrHistogram/ZigZagEncoding.java).
+ZigZagEncoding was released to the public domain
+under [CC0 1.0 Universal](http://creativecommons.org/publicdomain/zero/1.0/).
