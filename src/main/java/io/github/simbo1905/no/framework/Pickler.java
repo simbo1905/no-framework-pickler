@@ -204,36 +204,6 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
     return classes;
   }
 
-  /// Create sizer resolver that handles enum types
-  private static Serde.SizerResolver createEnumSizerResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    return targetClass -> {
-      if (targetClass.isEnum() && enumToTypeSignatureMap.containsKey(targetClass)) {
-        // Enum size is constant: type signature + worst-case ordinal (no separate null marker needed)
-        return obj -> Long.BYTES + Integer.BYTES;
-      }
-      return null; // Let RecordSerde handle its own types
-    };
-  }
-
-  /// Create writer resolver that handles enum types
-  private static Serde.WriterResolver createEnumWriterResolver(Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
-    return targetClass -> {
-      if (targetClass.isEnum() && enumToTypeSignatureMap.containsKey(targetClass)) {
-        final Long enumTypeSignature = enumToTypeSignatureMap.get(targetClass);
-        return (buffer, obj) -> {
-          buffer.putLong(enumTypeSignature);
-          if (obj == null) {
-            ZigZagEncoding.putInt(buffer, Companion.NULL_MARKER); // -128 as sentinel for null enum
-          } else {
-            Enum<?> enumValue = (Enum<?>) obj;
-            ZigZagEncoding.putInt(buffer, enumValue.ordinal()); // ZigZag encode the ordinal
-          }
-        };
-      }
-      return null; // Let RecordSerde handle its own types
-    };
-  }
-
   /// Create RecordSerde
   private static <T> RecordSerde<T> createDirectRecordSerde(
       Class<T> userType, Map<Class<?>, Long> typeSignatures,
@@ -272,8 +242,7 @@ public sealed interface Pickler<T> permits CustomSerde, EmptyRecordSerde, EnumSe
           final Serde.Reader reader = customReaders.get(clazz);
 
           // Return a new anonymous Pickler that wraps the custom handler's logic.
-          final Pickler<?> result = new CustomSerde<>(sizer, writer, reader);
-          return result;
+          return new CustomSerde<>(sizer, writer, reader);
         }
         // In a direct build, we don't expect to resolve other records.
         throw new UnsupportedOperationException("Direct resolver cannot resolve class: " + clazz.getName());

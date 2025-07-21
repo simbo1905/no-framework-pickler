@@ -386,12 +386,6 @@ sealed interface TypeExpr permits
     INTEGER, LONG, FLOAT, DOUBLE,
     STRING, LOCAL_DATE, LOCAL_DATE_TIME,
     CUSTOM // For user-defined value-based types like UUID
-    ;
-
-    // The built-in types that are do not require resolution based on application code
-    public boolean requiresResolution() {
-      return (this == TypeExpr.RefValueType.CUSTOM || this == TypeExpr.RefValueType.RECORD || this == TypeExpr.RefValueType.INTERFACE || this == TypeExpr.RefValueType.ENUM);
-    }
   }
 
   /// Leaf node for primitive types

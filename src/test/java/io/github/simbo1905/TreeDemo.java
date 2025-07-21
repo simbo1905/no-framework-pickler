@@ -94,11 +94,11 @@ public class TreeDemo {
   }
 
   /// Leaf node with an integer value
-  public static record LeafNode(int value) implements TreeNode {
+  public record LeafNode(int value) implements TreeNode {
   }
 
   /// A sealed interface representing a node in a tree structure
-  public sealed static interface TreeNode permits InternalNode, LeafNode, TreeEnum {
+  public sealed interface TreeNode permits InternalNode, LeafNode, TreeEnum {
     /// Returns the empty tree node singleton
     static TreeNode empty() {
       return TreeEnum.EMPTY;

@@ -144,9 +144,7 @@ final class RecordSerde<T> implements Pickler<T> {
 
     final int componentsToRead = Math.min(wireCount, readers.length);
     Object[] components = new Object[readers.length];
-    IntStream.range(0, componentsToRead).forEach(i -> {
-      components[i] = readers[i].apply(buffer);
-    });
+    IntStream.range(0, componentsToRead).forEach(i -> components[i] = readers[i].apply(buffer));
 
     String compatibilityLog = "";
     if (wireCount < readers.length) {
