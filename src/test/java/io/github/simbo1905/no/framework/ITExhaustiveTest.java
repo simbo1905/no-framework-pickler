@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class ITExhaustiveTests implements ArbitraryProvider {
+public class ITExhaustiveTest implements ArbitraryProvider {
 
   @BeforeAll
   static void setupLogging() {

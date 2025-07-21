@@ -18,10 +18,6 @@ sealed interface TypeExpr permits
     TypeExpr.ArrayNode, TypeExpr.ListNode, TypeExpr.OptionalNode, TypeExpr.MapNode,
     TypeExpr.RefValueNode, TypeExpr.PrimitiveValueNode, TypeExpr.PrimitiveArrayNode {
 
-  /// A special marker for user-defined types that are serialized using a type signature.
-  /// This marker should never be written to the wire due to static analysis knowing we are dealing with a user type.
-  int VOID_MARKER = 0;
-
   /// Recursive descent parser for Java types - builds tree bottom-up with markers
   static TypeExpr analyzeType(Type type, Collection<SerdeHandler> customHandlers) {
     final var result = analyzeTypeInner(type, customHandlers);
@@ -29,7 +25,9 @@ sealed interface TypeExpr permits
     return result;
   }
 
-  private static @NotNull TypeExpr analyzeTypeInner(Type type, Collection<SerdeHandler> customHandlers) {
+  private static @NotNull TypeExpr analyzeTypeInner(
+      Type type,
+      Collection<SerdeHandler> customHandlers) {
     LOGGER.finer(() -> "Analyzing type: " + type);
 
     // Handle arrays first (both primitive arrays and object arrays)
@@ -388,7 +386,12 @@ sealed interface TypeExpr permits
     INTEGER, LONG, FLOAT, DOUBLE,
     STRING, LOCAL_DATE, LOCAL_DATE_TIME,
     CUSTOM // For user-defined value-based types like UUID
+    ;
 
+    // The built-in types that are do not require resolution based on application code
+    public boolean requiresResolution() {
+      return (this == TypeExpr.RefValueType.CUSTOM || this == TypeExpr.RefValueType.RECORD || this == TypeExpr.RefValueType.INTERFACE || this == TypeExpr.RefValueType.ENUM);
+    }
   }
 
   /// Leaf node for primitive types

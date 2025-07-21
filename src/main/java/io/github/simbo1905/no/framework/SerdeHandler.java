@@ -6,7 +6,7 @@ package io.github.simbo1905.no.framework;
 import java.util.Objects;
 
 /// Handler for custom value-based types with serialization logic
-record SerdeHandler(
+public record SerdeHandler(
     Class<?> valueBasedLike,
     int marker,
     Serde.Sizer sizer,

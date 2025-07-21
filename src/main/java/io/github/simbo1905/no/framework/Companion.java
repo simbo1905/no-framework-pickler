@@ -71,12 +71,14 @@ sealed interface Companion permits Companion.Nothing {
   byte NOT_NULL_MARKER = Byte.MAX_VALUE;
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
-  static Set<Class<?>> recordClassHierarchy(final Class<?> current) {
-    return recordClassHierarchyInner(current, new HashSet<>()).collect(Collectors.toSet());
+  static Set<Class<?>> recordClassHierarchy(final Class<?> current, Collection<SerdeHandler> customHandlers) {
+    return recordClassHierarchyInner(current, new HashSet<>(), customHandlers).collect(Collectors.toSet());
   }
 
   /// Discover all reachable types from a root class including sealed hierarchies and record components
-  static Stream<Class<?>> recordClassHierarchyInner(final Class<?> current, final Set<Class<?>> visited) {
+  static Stream<Class<?>> recordClassHierarchyInner(
+      final Class<?> current,
+      final Set<Class<?>> visited, Collection<SerdeHandler> customHandlers) {
     if (!visited.add(current)) {
       return Stream.empty();
     }
@@ -88,7 +90,7 @@ sealed interface Companion permits Companion.Nothing {
       // Include both the array type and its component type
       return Stream.concat(
           Stream.of(current),
-          recordClassHierarchyInner(componentType, visited)
+          recordClassHierarchyInner(componentType, visited, customHandlers)
       );
     }
 
@@ -115,14 +117,14 @@ sealed interface Companion permits Companion.Nothing {
                     }
                   }
 
-                  TypeExpr structure = TypeExpr.analyzeType(component.getGenericType(), Set.of());
+                  TypeExpr structure = TypeExpr.analyzeType(component.getGenericType(), customHandlers);
                   LOGGER.finer(() -> "Component " + component.getName() + " discovered types: " +
                       structure.toTreeString());
                   Stream<Class<?>> structureStream = TypeExpr.classesInAST(structure);
                   return Stream.concat(arrayStream, structureStream);
                 })
                 : Stream.empty()
-        ).flatMap(child -> recordClassHierarchyInner(child, visited))
+        ).flatMap(child -> recordClassHierarchyInner(child, visited, customHandlers))
     );
   }
 
@@ -520,17 +522,11 @@ sealed interface Companion permits Companion.Nothing {
       Collection<SerdeHandler> customHandlers,
       Serde.SizerResolver typeSizerResolver,
       Serde.WriterResolver typeWriterResolver,
-      Serde.ReaderResolver typeReaderResolver
+      Serde.ReaderResolver typeReaderResolver,
+      Serde.SignatureReader typeSignatureReader
   ) {
     LOGGER.fine(() -> "Building ComponentSerde[] for record: " + recordClass.getName());
 
-    // Pre-process custom handlers into efficient lookup maps
-    final Map<Class<?>, Serde.Sizer> customSizers = customHandlers.stream()
-        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::sizer));
-    final Map<Class<?>, Serde.Writer> customWriters = customHandlers.stream()
-        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::writer));
-    final Map<Class<?>, Serde.Reader> customReaders = customHandlers.stream()
-        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
     final Map<Class<?>, Integer> customMarkers = customHandlers.stream()
         .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::marker));
 
@@ -545,9 +541,9 @@ sealed interface Companion permits Companion.Nothing {
 
           LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
 
-          Serde.Writer writer = createComponentWriter(typeExpr, getter, customWriters, customMarkers, typeWriterResolver);
-          Serde.Reader reader = createComponentReader(typeExpr, customReaders, customMarkers, typeReaderResolver);
-          Serde.Sizer sizer = createComponentSizer(typeExpr, getter, customSizers, customMarkers, typeSizerResolver);
+          Serde.Writer writer = createComponentWriter(typeExpr, getter, customMarkers, typeWriterResolver);
+          Serde.Reader reader = createComponentReader(typeExpr, customMarkers, typeSignatureReader, typeReaderResolver);
+          Serde.Sizer sizer = createComponentSizer(typeExpr, getter, customMarkers, typeSizerResolver);
 
           return new ComponentSerde(writer, reader, sizer);
         })
@@ -557,77 +553,72 @@ sealed interface Companion permits Companion.Nothing {
   /// Build component serdes with lazy callback resolution
   static ComponentSerde[] buildComponentSerdesWithCallback(
       Class<?> recordClass,
-      DependencyResolver resolver
-  ) {
+      DependencyResolver resolver,
+      List<SerdeHandler> customHandlers) {
     LOGGER.fine(() -> "Building ComponentSerde[] with callback for record: " + recordClass.getName());
 
-    RecordComponent[] components = recordClass.getRecordComponents();
-    MethodHandle[] getters = resolveGetters(recordClass, components);
+    /*
+    TODO implement lazy callback resolution for component serdes
+     createLazySizer
+     createLazyWriter
+     createLazyReader
+     */
 
-    return IntStream.range(0, components.length)
-        .mapToObj(i -> {
-          RecordComponent component = components[i];
-          MethodHandle getter = getters[i];
-          TypeExpr typeExpr = TypeExpr.analyzeType(component.getGenericType(), List.of());
-
-          LOGGER.finer(() -> "Component " + i + " (" + component.getName() + "): " + typeExpr.toTreeString());
-
-          Serde.Sizer sizer = createLazySizer(typeExpr, getter, resolver);
-          Serde.Writer writer = createLazyWriter(typeExpr, getter, resolver);
-          Serde.Reader reader = createLazyReader(typeExpr, resolver);
-
-          return new ComponentSerde(writer, reader, sizer);
-        })
-        .toArray(ComponentSerde[]::new);
+    return null;
   }
 
-  static Serde.Sizer createComponentSizer(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Serde.Sizer> customSizers, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
+  static Serde.Sizer createComponentSizer(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
     LOGGER.fine(() -> "Creating component sizer for: " + typeExpr.toTreeString());
 
-    Serde.Sizer sizerChain = createSizerChain(typeExpr, customSizers, customMarkers, typeSizerResolver);
+    Serde.Sizer sizerChain = createSizerChain(typeExpr, customMarkers, typeSizerResolver);
 
     return extractAndDelegate(sizerChain, getter);
   }
 
-  static Serde.Sizer createSizerChain(TypeExpr typeExpr, Map<Class<?>, Serde.Sizer> customSizers, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
+  static Serde.Sizer createSizerChain(TypeExpr typeExpr, Map<Class<?>, Integer> customMarkers, Serde.SizerResolver typeSizerResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueSizer(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArraySizer(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
-        if (customSizers.containsKey(clazz)) {
-          yield customSizers.get(clazz);
+        if (refValueType.requiresResolution()) {
+          yield typeSizerResolver.apply(clazz);
         } else {
           yield buildValueSizer(refValueType, javaType, typeSizerResolver);
         }
       }
       case TypeExpr.ArrayNode(var element, var componentType) -> {
-        final var elementSizer = createSizerChain(element, customSizers, customMarkers, typeSizerResolver);
+        final var elementSizer = createSizerChain(element, customMarkers, typeSizerResolver);
         yield createArraySizerInner(elementSizer);
       }
       case TypeExpr.ListNode(var element) -> {
-        final var elementSizer = createSizerChain(element, customSizers, customMarkers, typeSizerResolver);
+        final var elementSizer = createSizerChain(element, customMarkers, typeSizerResolver);
         yield createListSizerInner(elementSizer);
       }
       case TypeExpr.MapNode(var key, var value) -> {
-        final var keySizer = createSizerChain(key, customSizers, customMarkers, typeSizerResolver);
-        final var valueSizer = createSizerChain(value, customSizers, customMarkers, typeSizerResolver);
+        final var keySizer = createSizerChain(key, customMarkers, typeSizerResolver);
+        final var valueSizer = createSizerChain(value, customMarkers, typeSizerResolver);
         yield createMapSizerInner(keySizer, valueSizer);
       }
       case TypeExpr.OptionalNode(var wrapped) -> {
-        final var valueSizer = createSizerChain(wrapped, customSizers, customMarkers, typeSizerResolver);
+        final var valueSizer = createSizerChain(wrapped, customMarkers, typeSizerResolver);
         yield createOptionalSizerInner(valueSizer);
       }
     };
   }
 
-  static Serde.Reader createComponentReader(TypeExpr typeExpr, Map<Class<?>, Serde.Reader> customReaders, Map<Class<?>, Integer> customMarkers, Serde.ReaderResolver typeReaderResolver) {
+  static Serde.Reader createComponentReader(
+      TypeExpr typeExpr,
+      Map<Class<?>, Integer> customMarkers, Serde.SignatureReader typeReaderResolver, Serde.ReaderResolver readerResolver) {
     LOGGER.fine(() -> "Creating component reader for: " + typeExpr.toTreeString());
 
-    return createReaderChain(typeExpr, customReaders, customMarkers, typeReaderResolver);
+    return createReaderChain(typeExpr, customMarkers, typeReaderResolver, readerResolver);
   }
 
-  static Serde.Reader createReaderChain(TypeExpr typeExpr, Map<Class<?>, Serde.Reader> customReaders, Map<Class<?>, Integer> customMarkers, Serde.ReaderResolver typeReaderResolver) {
+  static Serde.Reader createReaderChain(TypeExpr typeExpr,
+                                        Map<Class<?>, Integer> customMarkers,
+                                        Serde.SignatureReader typeReaderResolver,
+                                        Serde.ReaderResolver readerResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> {
@@ -637,8 +628,8 @@ sealed interface Companion permits Companion.Nothing {
       }
       case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
-        if (customReaders.containsKey(clazz)) {
-          yield customReaders.get(clazz);
+        if (refValueType.requiresResolution()) {
+          yield readerResolver.apply(clazz);
         } else {
           yield buildValueReader(refValueType, typeReaderResolver);
         }
@@ -650,68 +641,73 @@ sealed interface Companion permits Companion.Nothing {
           final var primitiveArrayReader = buildPrimitiveArrayReader(primitiveType);
           elementReader = nullCheckAndDelegate(primitiveArrayReader);
         } else {
-          elementReader = createReaderChain(element, customReaders, customMarkers, typeReaderResolver);
+          elementReader = createReaderChain(element, customMarkers, typeReaderResolver, readerResolver);
         }
         final var nonNullArrayReader = createArrayReader(elementReader, componentType, element);
         yield nullCheckAndDelegate(nonNullArrayReader);
       }
       case TypeExpr.ListNode(var element) -> {
-        final var elementReader = createReaderChain(element, customReaders, customMarkers, typeReaderResolver);
+        final var elementReader = createReaderChain(element, customMarkers, typeReaderResolver, readerResolver);
         final var nonNullListReader = createListReader(elementReader);
         yield nullCheckAndDelegate(nonNullListReader);
       }
       case TypeExpr.MapNode(var key, var value) -> {
-        final var keyReader = createReaderChain(key, customReaders, customMarkers, typeReaderResolver);
-        final var valueReader = createReaderChain(value, customReaders, customMarkers, typeReaderResolver);
+        final var keyReader = createReaderChain(key, customMarkers, typeReaderResolver, readerResolver);
+        final var valueReader = createReaderChain(value, customMarkers, typeReaderResolver, readerResolver);
         final var nonNullMapReader = createMapReader(keyReader, valueReader);
         yield nullCheckAndDelegate(nonNullMapReader);
       }
       case TypeExpr.OptionalNode(var wrapped) -> {
-        final var valueReader = createReaderChain(wrapped, customReaders, customMarkers, typeReaderResolver);
+        final var valueReader = createReaderChain(wrapped, customMarkers, typeReaderResolver, readerResolver);
         final var nonNullOptionalReader = createOptionalReader(valueReader);
         yield nullCheckAndDelegate(nonNullOptionalReader);
       }
     };
   }
 
-  static Serde.Writer createComponentWriter(TypeExpr typeExpr, MethodHandle getter, Map<Class<?>, Serde.Writer> customWriters, Map<Class<?>, Integer> customMarkers, Serde.WriterResolver typeWriterResolver) {
+  static Serde.Writer createComponentWriter(
+      TypeExpr typeExpr,
+      MethodHandle getter,
+      Map<Class<?>, Integer> customMarkers,
+      Serde.WriterResolver typeWriterResolver) {
     LOGGER.fine(() -> "Creating component writer for: " + typeExpr.toTreeString());
 
-    Serde.Writer writerChain = createWriterChain(typeExpr, customWriters, customMarkers, typeWriterResolver);
+    Serde.Writer writerChain = createWriterChain(typeExpr, customMarkers, typeWriterResolver);
 
     return extractAndDelegateWriter(writerChain, getter);
   }
 
   /// Create writer chain for TypeExpr 
-  static Serde.Writer createWriterChain(TypeExpr typeExpr, Map<Class<?>, Serde.Writer> customWriters, Map<Class<?>, Integer> customMarkers, Serde.WriterResolver typeWriterResolver) {
+  static Serde.Writer createWriterChain(
+      TypeExpr typeExpr,
+      Map<Class<?>, Integer> customMarkers,
+      Serde.WriterResolver typeWriterResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueWriter(primitiveType);
       case TypeExpr.PrimitiveArrayNode(var primitiveType, var ignored) -> buildPrimitiveArrayWriterInner(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var javaType) -> {
         Class<?> clazz = (Class<?>) javaType;
-        if (customWriters.containsKey(clazz)) {
-          yield customWriters.get(clazz);
-        } else if (refValueType == TypeExpr.RefValueType.RECORD || refValueType == TypeExpr.RefValueType.INTERFACE || refValueType == TypeExpr.RefValueType.ENUM) {
+        if (refValueType.requiresResolution()) {
           yield typeWriterResolver.apply(clazz);
         } else {
           yield buildRefValueWriter(refValueType, javaType);
         }
       }
       case TypeExpr.ArrayNode(var element, var ignored) -> {
-        Serde.Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer elementWriter = createWriterChain(element, customMarkers, typeWriterResolver);
         yield createArrayRefWriter(elementWriter, element);
       }
       case TypeExpr.ListNode(var element) -> {
-        Serde.Writer elementWriter = createWriterChain(element, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer elementWriter = createWriterChain(element, customMarkers, typeWriterResolver);
         yield createListWriterInner(elementWriter);
       }
       case TypeExpr.MapNode(var key, var value) -> {
-        Serde.Writer keyWriter = createWriterChain(key, customWriters, customMarkers, typeWriterResolver);
-        Serde.Writer valueWriter = createWriterChain(value, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer keyWriter = createWriterChain(key, customMarkers, typeWriterResolver);
+        Serde.Writer valueWriter = createWriterChain(value, customMarkers, typeWriterResolver);
         yield createMapWriterInner(keyWriter, valueWriter);
       }
       case TypeExpr.OptionalNode(var wrapped) -> {
-        Serde.Writer valueWriter = createWriterChain(wrapped, customWriters, customMarkers, typeWriterResolver);
+        Serde.Writer valueWriter = createWriterChain(wrapped, customMarkers, typeWriterResolver);
         yield createOptionalWriterInner(valueWriter);
       }
     };
@@ -1410,7 +1406,7 @@ sealed interface Companion permits Companion.Nothing {
 
   /// Build reader chain with callback for complex types
   static Serde.Reader buildReaderChain(TypeExpr typeExpr,
-                                       Serde.ReaderResolver complexResolver) {
+                                       Serde.SignatureReader complexResolver) {
     return switch (typeExpr) {
       case TypeExpr.PrimitiveValueNode(var primitiveType, var ignored) -> buildPrimitiveValueReader(primitiveType);
       case TypeExpr.RefValueNode(var refValueType, var ignored) -> buildValueReader(refValueType, complexResolver);
@@ -1453,14 +1449,14 @@ sealed interface Companion permits Companion.Nothing {
 
   /// Build value reader with callback for complex types
   static Serde.Reader buildValueReader(TypeExpr.RefValueType refValueType,
-                                       Serde.ReaderResolver complexResolver) {
+                                       Serde.SignatureReader complexResolver) {
     final Serde.Reader primitiveReader = buildRefValueReader(refValueType, complexResolver);
     return nullCheckAndDelegate(primitiveReader);
   }
 
   /// Build ref value reader with callback for complex types
   static Serde.Reader buildRefValueReader(TypeExpr.RefValueType refValueType,
-                                          Serde.ReaderResolver complexResolver) {
+                                          Serde.SignatureReader complexResolver) {
     return switch (refValueType) {
       case BOOLEAN -> buffer -> buffer.get() != 0;
       case BYTE -> ByteBuffer::get;
@@ -1540,7 +1536,7 @@ sealed interface Companion permits Companion.Nothing {
   }
 
   /// Compute type signatures for all record classes using streams using the generic type information
-  static Map<Class<?>, Long> computeRecordTypeSignatures(List<Class<?>> recordClasses) {
+  static Map<Class<?>, Long> computeRecordTypeSignatures(List<Class<?>> recordClasses, Collection<SerdeHandler> customHandlers) {
     return recordClasses.stream()
         .filter(Class::isRecord) // Only process actual record classes
         .collect(Collectors.toMap(
@@ -1548,7 +1544,7 @@ sealed interface Companion permits Companion.Nothing {
             clz -> {
               final var components = clz.getRecordComponents();
               final var typeExprs = Arrays.stream(components)
-                  .map(comp -> TypeExpr.analyzeType(comp.getGenericType(), Set.of()))
+                  .map(comp -> TypeExpr.analyzeType(comp.getGenericType(), customHandlers))
                   .toArray(TypeExpr[]::new);
               final var signature = hashClassSignature(clz, components, typeExprs);
               LOGGER.finer(() -> "Computed type signature for " + clz.getName() + ": 0x" + Long.toHexString(signature));

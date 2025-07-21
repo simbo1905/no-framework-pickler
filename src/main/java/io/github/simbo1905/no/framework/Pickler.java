@@ -42,14 +42,27 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
   /// @param clazz The root class (record, enum, or sealed interface)
   /// @return A pickler instance
   static <T> Pickler<T> forClass(Class<T> clazz) {
-    return forClass(clazz, Map.of());
+    return forClass(clazz, Map.of(), List.of());
   }
 
   /// Factory method for creating a unified pickler for any type using refactored architecture
   /// @param clazz The root class (record, enum, or sealed interface)
   /// @param typeSignatures A map of class signatures to type signatures for backwards compatibility
   /// @return A pickler instance
-  static <T> Pickler<T> forClass(Class<T> clazz, Map<Class<?>, Long> typeSignatures) {
+  static <T> Pickler<T> forClass(
+      Class<T> clazz, Map<Class<?>, Long> typeSignatures) {
+    return forClass(clazz, typeSignatures, List.of());
+  }
+
+  /// Factory method for creating a unified pickler for any type using refactored architecture
+  /// @param clazz The root class (record, enum, or sealed interface)
+  /// @param typeSignatures A map of class signatures to type signatures for backwards compatibility
+  /// @param customHandlers A list of custom handlers for value-based types
+  /// @return A pickler instance
+  static <T> Pickler<T> forClass(
+      Class<T> clazz, Map<Class<?>, Long> typeSignatures,
+      List<SerdeHandler> customHandlers
+  ) {
     Objects.requireNonNull(clazz, "Class must not be null");
     if (!clazz.isRecord() && !clazz.isEnum() && !clazz.isSealed()) {
       throw new IllegalArgumentException("Class must be a record, enum, or sealed interface: " + clazz);
@@ -65,7 +78,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
         });
 
     // Phase 1: Discover all reachable record types
-    final var recordClassHierarchy = recordClassHierarchy(clazz);
+    final var recordClassHierarchy = recordClassHierarchy(clazz, customHandlers);
 
     // As classes may be renamed or moved, we need to ensure that the type signatures map given by the user is a reachable class
     typeSignatures.keySet().stream().filter(k -> !recordClassHierarchy.contains(k))
@@ -115,7 +128,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
             Companion::hashEnumSignature
         ));
 
-    final var dependencies = analyzeDependencies(new HashSet<>(recordClasses));
+    final var dependencies = analyzeDependencies(new HashSet<>(recordClasses), customHandlers);
 
     // Check for empty record first
     if (clazz.isRecord() && clazz.getRecordComponents().length == 0) {
@@ -135,21 +148,21 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
     } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
-      return createDirectRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap);
+      return createDirectRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap, customHandlers);
     } else {
       // Complex case: multiple records or dependencies require ManySerde
       LOGGER.fine(() -> "Creating ManySerde for complex record: " + clazz.getName());
-      return createManySerde(clazz, allPicklerClasses, typeSignatures);
+      return createManySerde(clazz, allPicklerClasses, typeSignatures, customHandlers);
     }
   }
 
   /// Analyze dependencies between record types to determine delegation needs
-  private static Map<Class<?>, Set<Class<?>>> analyzeDependencies(Set<Class<?>> recordClasses) {
+  private static Map<Class<?>, Set<Class<?>>> analyzeDependencies(Set<Class<?>> recordClasses, Collection<SerdeHandler> customHandlers) {
     final var dependencies = new HashMap<Class<?>, Set<Class<?>>>();
 
     for (Class<?> recordClass : recordClasses) {
       final var dependencySet = Arrays.stream(recordClass.getRecordComponents())
-          .map(component -> TypeExpr.analyzeType(component.getGenericType(), List.of()))
+          .map(component -> TypeExpr.analyzeType(component.getGenericType(), customHandlers))
           .flatMap(typeExpr -> classesInAST(typeExpr).stream())
           .filter(recordClasses::contains) // Only dependencies within our record hierarchy
           .collect(Collectors.toSet());
@@ -243,25 +256,39 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
   }
 
   /// Create RecordSerde
-  private static <T> RecordSerde<T> createDirectRecordSerde(Class<T> userType, Map<Class<?>, Long> typeSignatures, Map<Class<Enum<?>>, Long> enumToTypeSignatureMap) {
+  private static <T> RecordSerde<T> createDirectRecordSerde(
+      Class<T> userType, Map<Class<?>, Long> typeSignatures,
+      Map<Class<Enum<?>>, Long> enumToTypeSignatureMap,
+      List<SerdeHandler> customHandlers
+  ) {
     final var recordClasses = List.<Class<?>>of(userType);
-    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
+    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses, customHandlers);
     final var typeSignature = recordTypeSignatures.get(userType);
     final var altSignature = Optional.ofNullable(typeSignatures.get(userType));
+
+    // Pre-process custom handlers into efficient lookup maps
+    final Map<Class<?>, Serde.Sizer> customSizers = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::sizer));
+    final Map<Class<?>, Serde.Writer> customWriters = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::writer));
+    final Map<Class<?>, Serde.Reader> customReaders = customHandlers.stream()
+        .collect(Collectors.toMap(SerdeHandler::valueBasedLike, SerdeHandler::reader));
 
     // Create resolvers that handle enum types
     final Serde.SizerResolver sizerResolver = createEnumSizerResolver(enumToTypeSignatureMap);
     final Serde.WriterResolver writerResolver = createEnumWriterResolver(enumToTypeSignatureMap);
     final Serde.ReaderResolver readerResolver = createEnumReaderResolver(enumToTypeSignatureMap);
-
+    final Serde.SignatureReader signatureReader = typeSignature2 -> {
+      throw new AssertionError("SignatureReader TODO");
+    };
     // Create component serdes directly without external resolvers
-    final var customHandlers = List.<SerdeHandler>of();
     final var componentSerdes = Companion.buildComponentSerdes(
         userType,
         customHandlers,
         sizerResolver,
         writerResolver,
-        readerResolver
+        readerResolver,
+        signatureReader
     );
 
     final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);
@@ -275,7 +302,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
   private static <T> ManySerde<T> createManySerde(
       Class<T> rootClass,
       Set<Class<?>> allClasses,
-      Map<Class<?>, Long> typeSignatures) {
+      Map<Class<?>, Long> typeSignatures, List<SerdeHandler> customHandlers) {
 
     // Create the shared resolver map that all instances will use
     final var serdes = new HashMap<Class<?>, Pickler<?>>();
@@ -285,7 +312,7 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
     final var recordClasses = allClasses.stream()
         .filter(Class::isRecord)
         .toList();
-    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses);
+    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses, customHandlers);
 
     // Create dependency resolver callback with type signature resolution
     // FIXME this can be a functional interface in ManySerde and we can use a lambda directly
@@ -345,9 +372,8 @@ public sealed interface Pickler<T> permits EmptyRecordSerde, EnumSerde, ManySerd
       if (recordClass.isRecord() && recordClass.getRecordComponents().length > 0) {
         final var typeSignature = recordTypeSignatures.get(recordClass);
         final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
-
         // Use callback-based component building
-        final var componentSerdes = Companion.buildComponentSerdesWithCallback(recordClass, resolver);
+        final var componentSerdes = Companion.buildComponentSerdesWithCallback(recordClass, resolver, customHandlers);
         final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serde.Sizer[]::new);
         final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serde.Writer[]::new);
         final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serde.Reader[]::new);

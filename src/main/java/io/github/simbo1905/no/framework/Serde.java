@@ -46,6 +46,9 @@ sealed interface Serde permits Serde.Nothing {
   }
 
   interface ReaderResolver extends
-      Function<Long, Reader> {
+      Function<Class<?>, Reader> {
+  }
+
+  interface SignatureReader extends Function<Long, Reader> {
   }
 }
