@@ -542,7 +542,7 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
         .forEach(enumClass -> {
           final var typeSignature = Companion.hashEnumSignature(enumClass);
           final var altSignature = Optional.ofNullable(typeSignatures.get(enumClass));
-          @SuppressWarnings("rawtypes") final var enumSerde = new EnumSerde(enumClass, typeSignature, altSignature);
+          @SuppressWarnings({"rawtypes", "unchecked"}) final var enumSerde = new EnumSerde(enumClass, typeSignature, altSignature);
           serdes.put(enumClass, enumSerde);
           typeSignatureToSerde.put(typeSignature, enumSerde);
         });
