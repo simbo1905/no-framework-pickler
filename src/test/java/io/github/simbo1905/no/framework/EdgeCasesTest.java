@@ -32,6 +32,12 @@ public class EdgeCasesTest {
     public record SpecialValuesRecord(float[] specialFloats, double[] specialDoubles) {
     }
 
+    public static record LinkedListNode(int value, LinkedListNode next) {
+        public LinkedListNode(int value) {
+            this(value, null);
+        }
+    }
+
     @Test
     void testEmptyTypes() {
         final var record = new EmptyTypesRecord();
@@ -78,5 +84,21 @@ public class EdgeCasesTest {
         final var deserialized = pickler.deserialize(buffer);
         assertThat(deserialized.specialFloats()).containsExactly(record.specialFloats());
         assertThat(deserialized.specialDoubles()).containsExactly(record.specialDoubles());
+    }
+
+    @Test
+    void testLinkedListSerialization() {
+        // Create a sample linked list: 1 -> 2 -> 3
+        final var linkedList = new LinkedListNode(1, new LinkedListNode(2, new LinkedListNode(3)));
+        final var pickler = Pickler.forClass(LinkedListNode.class);
+        final var maxSizeOfRecord = pickler.maxSizeOf(linkedList);
+        final ByteBuffer buffer = ByteBuffer.allocate(maxSizeOfRecord + 64); // Add some extra space for safety
+        final int bytesWritten = pickler.serialize(buffer, linkedList);
+        assertThat(bytesWritten).isLessThanOrEqualTo(maxSizeOfRecord);
+        buffer.flip();
+        final var deserialized = pickler.deserialize(buffer);
+        assertThat(deserialized)
+            .as("Deserialized linked list should equal the original linked list")
+            .isEqualTo(linkedList);
     }
 }

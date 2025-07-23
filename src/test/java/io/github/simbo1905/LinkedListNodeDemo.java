@@ -11,10 +11,11 @@ import java.nio.ByteBuffer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class LinkedListNodeDemo {
+
   public record LinkedListNode(int value, LinkedListNode next) {
-    public LinkedListNode(int value) {
-      this(value, null);
-    }
+      public LinkedListNode(int value) {
+          this(value, null);
+      }
   }
 
   public static void main(String[] args) {
