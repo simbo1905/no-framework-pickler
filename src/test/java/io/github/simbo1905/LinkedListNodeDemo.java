@@ -1,4 +1,8 @@
+// SPDX-FileCopyrightText: 2025 Simon Massey
+// SPDX-License-Identifier: Apache-2.0
+//
 package io.github.simbo1905;
+
 
 import io.github.simbo1905.no.framework.Pickler;
 
@@ -7,10 +11,11 @@ import java.nio.ByteBuffer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class LinkedListNodeDemo {
+
   public record LinkedListNode(int value, LinkedListNode next) {
-    public LinkedListNode(int value) {
-      this(value, null);
-    }
+      public LinkedListNode(int value) {
+          this(value, null);
+      }
   }
 
   public static void main(String[] args) {

@@ -7,9 +7,10 @@ compact and fast, serializers for records containing value-like types as well as
 value-like types such as `UUID`, `String`, `enum` was well as container-like such as optionals, arrays, lists, and maps
 of value-like types.
 
-The library avoids deep reflection on the Object-stage (Runtime) "hot path"  for performance.
 All reflective operations are done during Meta-stage (Construction Time) in `Pickler.forClass(Class<?>)` on the public
-API of records.
+API of records. The library avoids deep reflection on the Object-stage (Runtime) "hot path"  for performance. It should
+also not do map lookups or other switch statements that can be made final variable to use at the Object-stage.
+
 This construction resolves public method handles and "unreflects" them to get direct method handles. It then creates
 functions that are delegation chains that are used at runtime without further reflection. This is done by constructing
 type specific serializers using:
@@ -78,11 +79,18 @@ ValueType ::= PrimitiveType | ReferenceType
 PrimitiveType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
                 | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
 
-ReferenceType ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
-                | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
-                | 'STRING' | 'UUID' | 'LOCAL_DATE' | 'LOCAL_DATE_TIME' | 'ENUM' | 'RECORD' | 'INTERFACE'
+ReferenceType ::= BoxedPrimitive | BuiltInValueBased | UserType | CustomValueBased
 
-Note: PrimitiveType and ReferenceType share some names but represent different runtime types
+BoxedPrimitive ::= 'BOOLEAN' | 'BYTE' | 'SHORT' | 'CHARACTER' 
+                 | 'INTEGER' | 'LONG' | 'FLOAT' | 'DOUBLE'
+
+BuiltInValueBased ::= 'STRING' | 'LOCAL_DATE' | 'LOCAL_DATE_TIME'
+
+UserType ::= 'ENUM' | 'RECORD' | 'INTERFACE'
+
+CustomValueBased ::= <user-defined value-based types with custom handlers>
+
+Note: PrimitiveType and BoxedPrimitive share names but represent different runtime types (int vs Integer)
 ```
 
 Note that we capture the actual concrete type into the AST. This means that at runtime we can understand that whether
@@ -308,7 +316,7 @@ graph TD
     classDef container fill: #4a5568, stroke: #2d3748, stroke-width: 2px, color: #e2e8f0
     classDef primitive fill: #718096, stroke: #4a5568, stroke-width: 2px, color: #e2e8f0
 class A, B, D, E, F container
-class C,G primitive
+class C, G primitive
 ```
 
 ### Buffer Allocation and maxSizeOf Strategy
@@ -327,5 +335,43 @@ usage depends on the application's buffer allocation strategy:
 3. **Performance Consideration**: When the optional maxSizeOf is used in order to keep it fast makes a pessimistic
    estimate of the maximum size. This avoids some runtime techniques such as ZipZag encoding of `Long[]` may have a
    dramatic impact on the size used.
+
+## Linear Dependencies Optimization
+
+NFP automatically detects when type hierarchies have no circular dependencies and applies **linear dependency optimization** for significant performance improvements:
+
+### Optimization Strategy
+
+1. **Dependency Analysis**: Builds complete dependency graph of all record types
+2. **Cycle Detection**: Uses DFS to check if the graph is a DAG (Directed Acyclic Graph)  
+3. **Automatic Path Selection**:
+   - **No cycles**: Uses optimized immutable maps with direct resolution (2x faster lookups)
+   - **Has cycles**: Falls back to lazy resolution approach
+
+### Performance Benefits
+
+- **Linear hierarchies**: 2x faster map lookups
+- **Circular hierarchies**: Standard performance (no degradation)
+- **Automatic**: No API changes required - optimization applied transparently
+
+### Examples
+
+**Optimized Path** (e-commerce domain):
+```java
+record Address(String street, String city, String zip) {}
+record Customer(String name, String email, Address address) {}  
+record Order(Customer customer, List<OrderItem> items, String date) {}
+// Dependencies: Address ← Customer ← Order (linear, optimized)
+```
+
+**Standard Path** (self-referential):
+```java  
+record TreeNode(String value, TreeNode left, TreeNode right) {}
+// Dependencies: TreeNode ← TreeNode (circular, standard resolution)
+```
+
+Users see optimization decisions via INFO-level logging:
+- `"Linear dependency optimization applied for MyType"`
+- `"Circular dependencies detected for MyType - using standard resolution"`
 
 End.

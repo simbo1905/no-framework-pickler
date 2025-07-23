@@ -8,7 +8,7 @@
 #   ./mvn-test-no-boilerplate.sh -Dtest=RefactorTests#testList -Djava.util.logging.ConsoleHandler.level=INFO
 #   ./mvn-test-no-boilerplate.sh -Dtest=RefactorTests#testList -Djava.util.logging.ConsoleHandler.level=FINER
 
-mvn test -P relaxed "$@" 2>&1 | awk '
+mvnd test -P relaxed "$@" 2>&1 | awk '
 BEGIN { 
     scanning_started = 0
     compilation_section = 0

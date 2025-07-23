@@ -9,24 +9,26 @@ import org.jetbrains.annotations.NotNull;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
-
-import static io.github.simbo1905.no.framework.Companion.hashClassSignature;
+import java.util.Optional;
 
 /// Specialized handler for records with no components (empty records)
+@SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 final class EmptyRecordSerde<T> implements Pickler<T> {
   final Class<?> userType;
   final long typeSignature;
+  final Optional<Long> altTypeSignature;
   final T singleton;
 
   @SuppressWarnings("unchecked")
-  public EmptyRecordSerde(@NotNull Class<?> userType) {
+  public EmptyRecordSerde(@NotNull Class<?> userType, long typeSignature, Optional<Long> altTypeSignature) {
     assert userType.isRecord() : "User type must be a record: " + userType;
 
     final var components = userType.getRecordComponents();
     assert components != null && components.length == 0 : "Empty record must have no components: " + userType;
 
     this.userType = userType;
-    this.typeSignature = hashClassSignature(userType, components, new TypeExpr[0]);
+    this.typeSignature = typeSignature;
+    this.altTypeSignature = altTypeSignature;
 
     // Create singleton instance
     try {
@@ -53,7 +55,9 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
     LOGGER.fine(() -> "EmptyRecordSerde " + userType.getName() + " Serializing empty record " + userType.getSimpleName() + " with type signature 0x" +
         Long.toHexString(typeSignature) + " at position " + buffer.position());
     buffer.putLong(typeSignature);
+    LOGGER.finer(() -> "EmptyRecordSerde wrote type signature 0x" + Long.toHexString(typeSignature) + " at position " + (buffer.position() - Long.BYTES) + " to " + (buffer.position() - 1));
     ZigZagEncoding.putInt(buffer, 0); // Empty record has zero components
+    LOGGER.finer(() -> "EmptyRecordSerde wrote component count 0 at position " + (buffer.position() - ZigZagEncoding.sizeOf(0)) + " to " + (buffer.position() - 1));
     return Long.BYTES + ZigZagEncoding.sizeOf(0); // Type signature + zero component count
   }
 
@@ -72,6 +76,21 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
     return singleton;
   }
 
+  /// Package-private deserialization method that assumes the type signature has already been read
+  /// and validated by the caller (e.g., RefValueReader)
+  T deserializeWithoutSignature(ByteBuffer buffer) {
+    Objects.requireNonNull(buffer);
+    buffer.order(ByteOrder.BIG_ENDIAN);
+    LOGGER.fine(() -> "EmptyRecordSerde " + userType.getSimpleName() +
+        " deserializeWithoutSignature() at position " + buffer.position());
+
+    final int count = ZigZagEncoding.getInt(buffer);
+    LOGGER.finer(() -> "EmptyRecordSerde read component count " + count + " from position " + (buffer.position() - ZigZagEncoding.sizeOf(count)) + " to " + (buffer.position() - 1));
+    assert count == 0 : "Empty record should have zero components, but got " + count;
+    LOGGER.finer(() -> "EmptyRecordSerde returning singleton instance of " + userType.getSimpleName());
+    return singleton;
+  }
+
   @Override
   public int maxSizeOf(T record) {
     Objects.requireNonNull(record);
@@ -79,7 +98,7 @@ final class EmptyRecordSerde<T> implements Pickler<T> {
       throw new IllegalArgumentException("Expected " + userType + " but got " + record.getClass());
     }
 
-    return Byte.BYTES + Long.BYTES; // Only type signature and zero component counnt
+    return Byte.BYTES + Long.BYTES; // Only type signature and zero component count
   }
 
   @Override

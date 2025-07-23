@@ -4,12 +4,10 @@
 package io.github.simbo1905;
 
 import io.github.simbo1905.no.framework.Pickler;
-import io.github.simbo1905.no.framework.tree.InternalNode;
-import io.github.simbo1905.no.framework.tree.LeafNode;
-import io.github.simbo1905.no.framework.tree.TreeNode;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.ByteBuffer;
+import java.util.Objects;
 
 public class TreeDemo {
   public static void main(String[] args) {
@@ -58,5 +56,69 @@ public class TreeDemo {
     final var internal2 = new InternalNode("Branch2", leaf3, TreeNode.empty());  // Right side is empty
     final var internal3 = new InternalNode("Branch3", TreeNode.empty(), leaf4);  // Left side is empty
     return new InternalNode("Root", internal1, new InternalNode("SubRoot", internal2, internal3));
+  }
+
+  /// Internal node that may have left and right children
+  public record InternalNode(String name, TreeNode left, TreeNode right) implements TreeNode {
+    public InternalNode {
+      Objects.requireNonNull(name, "name cannot be null");
+      Objects.requireNonNull(left, "left cannot be null - use TreeNode.empty() instead");
+      Objects.requireNonNull(right, "right cannot be null - use TreeNode.empty() instead");
+    }
+
+    /**
+     * Custom equals method that properly handles null children
+     */
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      InternalNode that = (InternalNode) o;
+
+      if (!name.equals(that.name)) return false;
+      if (!Objects.equals(left, that.left)) return false;
+      return Objects.equals(right, that.right);
+    }
+
+    /**
+     * Custom hashCode method that properly handles null children
+     */
+    @Override
+    public int hashCode() {
+      int result = name.hashCode();
+      result = 31 * result + (left != null ? left.hashCode() : 0);
+      result = 31 * result + (right != null ? right.hashCode() : 0);
+      return result;
+    }
+  }
+
+  /// Leaf node with an integer value
+  public record LeafNode(int value) implements TreeNode {
+  }
+
+  /// A sealed interface representing a node in a tree structure
+  public sealed interface TreeNode permits InternalNode, LeafNode, TreeEnum {
+    /// Returns the empty tree node singleton
+    static TreeNode empty() {
+      return TreeEnum.EMPTY;
+    }
+
+    static boolean areTreesEqual(TreeNode l, TreeNode r) {
+      return switch (l) {
+        case TreeEnum.EMPTY -> r == TreeEnum.EMPTY;
+        case LeafNode(var v1) -> r instanceof LeafNode(var v2) && v1 == v2;
+        case InternalNode(String n1, TreeNode i1, TreeNode i2) ->
+            r instanceof InternalNode(String n2, TreeNode j1, TreeNode j2) &&
+                n1.equals(n2) &&
+                areTreesEqual(i1, j1) &&
+                areTreesEqual(i2, j2);
+      };
+    }
+  }
+
+  /// Enum representing an empty node in the tree
+  public enum TreeEnum implements TreeNode {
+    EMPTY
   }
 }
