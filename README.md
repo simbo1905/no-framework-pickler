@@ -86,6 +86,7 @@ No Framework Pickler enforces that the root type passed to `Pickler.forClass()` 
 - A `sealed interface` that permits mixtures of `record` or `enum` types
 - A `sealed interface` that permits mixtures of `record` or `enum` types or nested `sealed interface` of `record` or
   `enum` types to any level
+- The components of all records are data types that are part of the EBNF grammer in the [ARCHITECTUR.md](ARCHITECTUR.md)  
 
 ### Basic Record Serialization
 
