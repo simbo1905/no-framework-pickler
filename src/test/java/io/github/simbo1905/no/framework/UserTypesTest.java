@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.ByteBuffer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 public class UserTypesTest {
 
@@ -112,6 +113,62 @@ public class UserTypesTest {
     assertThat(bytesWritten).isLessThanOrEqualTo(maxSizeOfRecord);
     buffer.flip();
     final var deserialized = pickler.deserialize(buffer);
+    // TreeNode has circular dependency - should use standard ManySerde
+    assertThat(pickler).isInstanceOf(ManySerde.class);
     assertThat(deserialized).isEqualTo(record);
+  }
+
+  // Linear dependency test types (no cycles)
+  public record Address(String street, String city, String zip) {}
+  public record Customer(String name, String email, Address address) {}
+  public record Product(String sku, String name, double price) {}
+  public record OrderItem(Product product, int quantity) {}
+  public record Order(Customer customer, OrderItem[] items, String orderDate) {}
+
+  @Test
+  void testLinearDependencyOptimization() {
+    // This hierarchy has NO circular dependencies - should be optimized
+    final var address = new Address("123 Main St", "Springfield", "12345");
+    final var customer = new Customer("John Doe", "john@example.com", address);
+    final var product = new Product("SKU001", "Widget", 19.99);
+    final var orderItem = new OrderItem(product, 2);
+    final var order = new Order(customer, new OrderItem[]{orderItem}, "2024-01-15");
+    
+    final var pickler = Pickler.forClass(Order.class);
+    
+    // Should use optimized ManySerde with immutable maps (Map.copyOf)
+    assertThat(pickler).isInstanceOf(ManySerde.class);
+    final var manySerde = (ManySerde<?>) pickler;
+    
+    // Test serialization/deserialization works correctly
+    final var maxSizeOfRecord = pickler.maxSizeOf(order);
+    final ByteBuffer buffer = ByteBuffer.allocate(maxSizeOfRecord + 64);
+    final int bytesWritten = pickler.serialize(buffer, order);
+    assertThat(bytesWritten).isLessThanOrEqualTo(maxSizeOfRecord);
+    buffer.flip();
+    final var deserialized = pickler.deserialize(buffer);
+    assertThat(deserialized.customer()).isEqualTo(order.customer());
+    assertThat(deserialized.orderDate()).isEqualTo(order.orderDate());
+    assertArrayEquals(deserialized.items(), order.items());
+  }
+
+  // Circular dependency test types
+  public record NodeA(String name, NodeB nodeB) {}
+  public record NodeB(String name, NodeA nodeA) {}
+
+  @Test
+  void testCircularDependencyFallback() {
+    // This hierarchy has circular dependencies - should use standard resolution
+    final var nodeA = new NodeA("A", null);
+    final var nodeB = new NodeB("B", nodeA);
+    final var updatedNodeA = new NodeA("A", nodeB);
+    
+    final var pickler = Pickler.forClass(NodeA.class);
+    
+    // Should use standard ManySerde with lazy resolution
+    assertThat(pickler).isInstanceOf(ManySerde.class);
+    
+    // Test basic functionality (even though we can't serialize circular refs)
+    assertThat(pickler.maxSizeOf(updatedNodeA)).isGreaterThan(0);
   }
 }

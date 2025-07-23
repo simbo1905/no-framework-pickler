@@ -134,7 +134,11 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
             Companion::hashEnumSignature
         ));
 
-    final var dependencies = analyzeDependencies(new HashSet<>(recordClasses), customHandlers);
+    final var analysis = analyzeDependencies(new HashSet<>(recordClasses), customHandlers);
+    LOGGER.fine(() -> "Dependency analysis for " + clazz.getName() + ": hasCycles=" + analysis.hasCycles() + 
+        ", dependencies=" + analysis.dependencies() + 
+        ", topologicalOrder=" + (analysis.topologicalOrder() != null ? 
+            analysis.topologicalOrder().stream().map(Class::getSimpleName).collect(Collectors.joining("->")) : "null"));
 
     // Check for empty record first
     if (clazz.isRecord() && clazz.getRecordComponents().length == 0) {
@@ -151,19 +155,32 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
       @SuppressWarnings("rawtypes") final var enumClass = (Class) clazz;
       @SuppressWarnings({"unchecked", "rawtypes"}) final Pickler<T> enumPickler = new EnumSerde(enumClass, typeSignature, altTypeSignature);
       return enumPickler;
-    } else if (recordClasses.size() == 1 && dependencies.getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
+    } else if (recordClasses.size() == 1 && analysis.dependencies().getOrDefault(clazz, Set.of()).isEmpty() && clazz.isRecord()) {
       // Simple case: single record with no record/enum dependencies
       LOGGER.fine(() -> "Creating RecordSerde for simple record: " + clazz.getName());
       return createDirectRecordSerde(clazz, typeSignatures, enumToTypeSignatureMap, customHandlers);
     } else {
       // Complex case: multiple records or dependencies require ManySerde
-      LOGGER.fine(() -> "Creating ManySerde for complex record: " + clazz.getName());
-      return createManySerde(clazz, allPicklerClasses, typeSignatures, customHandlers);
+      if (!analysis.hasCycles()) {
+        LOGGER.info(() -> "Linear dependency optimization applied for " + clazz.getName());
+        return createOptimizedManySerde(clazz, allPicklerClasses, typeSignatures, customHandlers, analysis);
+      } else {
+        LOGGER.info(() -> "Circular dependencies detected for " + clazz.getName() + " - using standard resolution");
+        return createManySerde(clazz, allPicklerClasses, typeSignatures, customHandlers);
+      }
     }
   }
 
-  /// Analyze dependencies between record types to determine delegation needs
-  private static Map<Class<?>, Set<Class<?>>> analyzeDependencies(Set<Class<?>> recordClasses, Collection<SerdeHandler> customHandlers) {
+  /// Result of dependency analysis including cycle detection and topological ordering
+  record DependencyAnalysis(
+      Map<Class<?>, Set<Class<?>>> dependencies,
+      boolean hasCycles,
+      List<Class<?>> topologicalOrder  // null if hasCycles
+  ) {
+  }
+
+  /// Analyze dependencies between record types to determine delegation needs and detect cycles
+  private static DependencyAnalysis analyzeDependencies(Set<Class<?>> recordClasses, Collection<SerdeHandler> customHandlers) {
     final var dependencies = new HashMap<Class<?>, Set<Class<?>>>();
 
     for (Class<?> recordClass : recordClasses) {
@@ -176,7 +193,95 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
       dependencies.put(recordClass, dependencySet);
     }
 
-    return dependencies;
+    // Detect cycles using DFS
+    final var visited = new HashSet<Class<?>>();
+    final var recursionStack = new HashSet<Class<?>>();
+    boolean hasCycles = false;
+
+    for (Class<?> recordClass : recordClasses) {
+      if (!visited.contains(recordClass)) {
+        if (hasCycleDFS(recordClass, dependencies, visited, recursionStack)) {
+          hasCycles = true;
+          break;
+        }
+      }
+    }
+
+    // If no cycles, compute topological order
+    List<Class<?>> topologicalOrder = null;
+    if (!hasCycles) {
+      topologicalOrder = computeTopologicalOrder(recordClasses, dependencies);
+    }
+
+    return new DependencyAnalysis(Map.copyOf(dependencies), hasCycles, topologicalOrder);
+  }
+
+  /// DFS-based cycle detection
+  private static boolean hasCycleDFS(Class<?> node, Map<Class<?>, Set<Class<?>>> dependencies,
+                                     Set<Class<?>> visited, Set<Class<?>> recursionStack) {
+    visited.add(node);
+    recursionStack.add(node);
+
+    final var deps = dependencies.getOrDefault(node, Set.of());
+    for (Class<?> dependency : deps) {
+      if (!visited.contains(dependency)) {
+        if (hasCycleDFS(dependency, dependencies, visited, recursionStack)) {
+          return true;
+        }
+      } else if (recursionStack.contains(dependency)) {
+        return true; // Back edge found - cycle detected
+      }
+    }
+
+    recursionStack.remove(node);
+    return false;
+  }
+
+  /// Compute topological ordering using Kahn's algorithm
+  private static List<Class<?>> computeTopologicalOrder(Set<Class<?>> classes, Map<Class<?>, Set<Class<?>>> dependencies) {
+    final var inDegree = new HashMap<Class<?>, Integer>();
+    final var result = new ArrayList<Class<?>>();
+    final var queue = new ArrayDeque<Class<?>>();
+
+    // Initialize in-degree counts - count incoming edges (who depends on me)
+    for (Class<?> cls : classes) {
+      inDegree.put(cls, 0);
+    }
+    // For each class, increment in-degree of classes it depends on
+    for (Map.Entry<Class<?>, Set<Class<?>>> entry : dependencies.entrySet()) {
+      for (Class<?> dependency : entry.getValue()) {
+        inDegree.merge(dependency, 1, Integer::sum);
+      }
+    }
+
+    // Find all nodes that depend on nothing (empty dependency set)
+    LOGGER.fine(() -> "Dependencies: " + dependencies);
+    classes.stream()
+        .filter(cls -> dependencies.getOrDefault(cls, Set.of()).isEmpty())
+        .peek(cls -> LOGGER.fine(() -> "Adding to queue (no dependencies): " + cls.getSimpleName()))
+        .forEach(queue::offer);
+
+    // Process nodes in topological order
+    while (!queue.isEmpty()) {
+      final var current = queue.poll();
+      result.add(current);
+
+      // Remove current from all dependency sets, and add newly dependency-free nodes to queue
+      final var updatedDependencies = new HashMap<>(dependencies);
+      for (Map.Entry<Class<?>, Set<Class<?>>> entry : updatedDependencies.entrySet()) {
+        final var cls = entry.getKey();
+        final var deps = new HashSet<>(entry.getValue());
+        if (deps.remove(current)) {
+          dependencies.put(cls, deps);
+          if (deps.isEmpty()) {
+            LOGGER.fine(() -> "Adding to queue (dependencies now empty): " + cls.getSimpleName());
+            queue.offer(cls);
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   /// Extract all classes referenced in a TypeExpr AST
@@ -375,6 +480,92 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
     }
 
     return new ManySerde<>(rootClass, serdes, typeSignatureToSerde);
+  }
+
+  /// Create optimized ManySerde for acyclic hierarchies using topological ordering
+  private static <T> ManySerde<T> createOptimizedManySerde(
+      Class<T> rootClass,
+      Set<Class<?>> allClasses,
+      Map<Class<?>, Long> typeSignatures,
+      List<SerdeHandler> customHandlers,
+      DependencyAnalysis analysis) {
+
+    assert !analysis.hasCycles() : "Cannot create optimized ManySerde for cyclic dependencies";
+    
+    LOGGER.info(() -> "Optimized pickler created for " + rootClass.getName() + 
+        " (" + allClasses.size() + " types in topological order)");
+    
+    // Build picklers in topological order - no lazy resolution needed
+    final var serdes = new HashMap<Class<?>, Pickler<?>>();
+    final var typeSignatureToSerde = new HashMap<Long, Pickler<?>>();
+
+    // Compute type signatures for all record classes
+    final var recordClasses = allClasses.stream()
+        .filter(Class::isRecord)
+        .toList();
+    final var recordTypeSignatures = Companion.computeRecordTypeSignatures(recordClasses, customHandlers);
+
+    // Create a simple resolver that looks up already-built picklers
+    final Companion.DependencyResolver resolver = new Companion.DependencyResolver() {
+      @Override
+      public Pickler<?> resolve(Class<?> targetClass) {
+        final var serde = serdes.get(targetClass);
+        assert serde != null : "Pickler for " + targetClass + " should already be built in topological order";
+        return serde;
+      }
+
+      @Override
+      public Pickler<?> resolveBySignature(long typeSignature) {
+        final var serde = typeSignatureToSerde.get(typeSignature);
+        assert serde != null : "Pickler for signature 0x" + Long.toHexString(typeSignature) + " should already be built";
+        return serde;
+      }
+    };
+
+    // Build picklers in topological order
+    final var topologicalOrder = analysis.topologicalOrder();
+    assert topologicalOrder != null : "Topological order should be available for acyclic hierarchies";
+
+    // First pass: empty records and enums
+    allClasses.stream()
+        .filter(cls -> cls.isRecord() && cls.getRecordComponents().length == 0)
+        .forEach(recordClass -> {
+          final var typeSignature = recordTypeSignatures.get(recordClass);
+          final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
+          final var serde = new EmptyRecordSerde<>(recordClass, typeSignature, altSignature);
+          serdes.put(recordClass, serde);
+          typeSignatureToSerde.put(typeSignature, serde);
+        });
+
+    allClasses.stream()
+        .filter(Class::isEnum)
+        .forEach(enumClass -> {
+          final var typeSignature = Companion.hashEnumSignature(enumClass);
+          final var altSignature = Optional.ofNullable(typeSignatures.get(enumClass));
+          @SuppressWarnings("rawtypes") final var enumSerde = new EnumSerde(enumClass, typeSignature, altSignature);
+          serdes.put(enumClass, enumSerde);
+          typeSignatureToSerde.put(typeSignature, enumSerde);
+        });
+
+    // Second pass: build records in topological order
+    topologicalOrder.stream()
+        .filter(cls -> cls.isRecord() && cls.getRecordComponents().length > 0)
+        .forEach(recordClass -> {
+          final var typeSignature = recordTypeSignatures.get(recordClass);
+          final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
+          
+          final var componentSerdes = Companion.buildComponentSerdesWithCallback(recordClass, resolver, customHandlers);
+          final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serdes.Sizer[]::new);
+          final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serdes.Writer[]::new);
+          final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serdes.Reader[]::new);
+          final var recordSerde = new RecordSerde<>(recordClass, typeSignature, altSignature, sizers, writers, readers);
+          
+          serdes.put(recordClass, recordSerde);
+          typeSignatureToSerde.put(typeSignature, recordSerde);
+        });
+
+    // Use Map.copyOf for JVM-optimized immutable maps
+    return new ManySerde<>(rootClass, Map.copyOf(serdes), Map.copyOf(typeSignatureToSerde));
   }
 
   /// In order to support optional backwards compatibility, we need to be able to tell the newer pickler what is the

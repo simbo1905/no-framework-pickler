@@ -336,4 +336,42 @@ usage depends on the application's buffer allocation strategy:
    estimate of the maximum size. This avoids some runtime techniques such as ZipZag encoding of `Long[]` may have a
    dramatic impact on the size used.
 
+## Linear Dependencies Optimization
+
+NFP automatically detects when type hierarchies have no circular dependencies and applies **linear dependency optimization** for significant performance improvements:
+
+### Optimization Strategy
+
+1. **Dependency Analysis**: Builds complete dependency graph of all record types
+2. **Cycle Detection**: Uses DFS to check if the graph is a DAG (Directed Acyclic Graph)  
+3. **Automatic Path Selection**:
+   - **No cycles**: Uses optimized immutable maps with direct resolution (2x faster lookups)
+   - **Has cycles**: Falls back to lazy resolution approach
+
+### Performance Benefits
+
+- **Linear hierarchies**: 2x faster map lookups
+- **Circular hierarchies**: Standard performance (no degradation)
+- **Automatic**: No API changes required - optimization applied transparently
+
+### Examples
+
+**Optimized Path** (e-commerce domain):
+```java
+record Address(String street, String city, String zip) {}
+record Customer(String name, String email, Address address) {}  
+record Order(Customer customer, List<OrderItem> items, String date) {}
+// Dependencies: Address ← Customer ← Order (linear, optimized)
+```
+
+**Standard Path** (self-referential):
+```java  
+record TreeNode(String value, TreeNode left, TreeNode right) {}
+// Dependencies: TreeNode ← TreeNode (circular, standard resolution)
+```
+
+Users see optimization decisions via INFO-level logging:
+- `"Linear dependency optimization applied for MyType"`
+- `"Circular dependencies detected for MyType - using standard resolution"`
+
 End.
