@@ -8,6 +8,8 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.ToIntFunction;
 
+/// Core serialization interfaces for reading, writing, and sizing objects.
+/// These functional interfaces enable efficient code generation at construction time.
 sealed interface Serdes permits Serdes.Nothing {
   enum Nothing implements Serdes {}
 
