@@ -135,10 +135,10 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
         ));
 
     final var analysis = analyzeDependencies(new HashSet<>(recordClasses), customHandlers);
-    LOGGER.fine(() -> "Dependency analysis for " + clazz.getName() + ": hasCycles=" + analysis.hasCycles() + 
-        ", dependencies=" + analysis.dependencies() + 
-        ", topologicalOrder=" + (analysis.topologicalOrder() != null ? 
-            analysis.topologicalOrder().stream().map(Class::getSimpleName).collect(Collectors.joining("->")) : "null"));
+    LOGGER.fine(() -> "Dependency analysis for " + clazz.getName() + ": hasCycles=" + analysis.hasCycles() +
+        ", dependencies=" + analysis.dependencies() +
+        ", topologicalOrder=" + (analysis.topologicalOrder() != null ?
+        analysis.topologicalOrder().stream().map(Class::getSimpleName).collect(Collectors.joining("->")) : "null"));
 
     // Check for empty record first
     if (clazz.isRecord() && clazz.getRecordComponents().length == 0) {
@@ -162,10 +162,10 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
     } else {
       // Complex case: multiple records or dependencies require ManySerde
       if (!analysis.hasCycles()) {
-        LOGGER.info(() -> "Linear dependency optimization applied for " + clazz.getName());
+        LOGGER.fine(() -> "Linear dependency optimization applied for " + clazz.getName());
         return createOptimizedManySerde(clazz, allPicklerClasses, typeSignatures, customHandlers, analysis);
       } else {
-        LOGGER.info(() -> "Circular dependencies detected for " + clazz.getName() + " - using standard resolution");
+        LOGGER.fine(() -> "Circular dependencies detected for " + clazz.getName() + " - using standard resolution");
         return createManySerde(clazz, allPicklerClasses, typeSignatures, customHandlers);
       }
     }
@@ -491,10 +491,10 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
       DependencyAnalysis analysis) {
 
     assert !analysis.hasCycles() : "Cannot create optimized ManySerde for cyclic dependencies";
-    
-    LOGGER.info(() -> "Optimized pickler created for " + rootClass.getName() + 
+
+    LOGGER.fine(() -> "Optimized pickler created for " + rootClass.getName() +
         " (" + allClasses.size() + " types in topological order)");
-    
+
     // Build picklers in topological order - no lazy resolution needed
     final var serdes = new HashMap<Class<?>, Pickler<?>>();
     final var typeSignatureToSerde = new HashMap<Long, Pickler<?>>();
@@ -553,13 +553,13 @@ public sealed interface Pickler<T> permits Serde, EmptyRecordSerde, EnumSerde, M
         .forEach(recordClass -> {
           final var typeSignature = recordTypeSignatures.get(recordClass);
           final var altSignature = Optional.ofNullable(typeSignatures.get(recordClass));
-          
+
           final var componentSerdes = Companion.buildComponentSerdesWithCallback(recordClass, resolver, customHandlers);
           final var sizers = Arrays.stream(componentSerdes).map(ComponentSerde::sizer).toArray(Serdes.Sizer[]::new);
           final var writers = Arrays.stream(componentSerdes).map(ComponentSerde::writer).toArray(Serdes.Writer[]::new);
           final var readers = Arrays.stream(componentSerdes).map(ComponentSerde::reader).toArray(Serdes.Reader[]::new);
           final var recordSerde = new RecordSerde<>(recordClass, typeSignature, altSignature, sizers, writers, readers);
-          
+
           serdes.put(recordClass, recordSerde);
           typeSignatureToSerde.put(typeSignature, recordSerde);
         });

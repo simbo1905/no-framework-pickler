@@ -12,8 +12,10 @@ import java.util.stream.Stream;
 
 import static io.github.simbo1905.no.framework.Pickler.LOGGER;
 
-/// Public sealed interface for the Type Expression protocol with marker support
-/// All type expression nodes are nested within this interface to provide a clean API
+/// Abstract Syntax Tree representation for type structures in Java serialization.
+/// Implements recursive descent parsing to build tree nodes for containers (arrays, lists, maps, optionals)
+/// and leaf nodes for value types (primitives, records, enums, custom types).
+/// Tree structure enables multi-stage programming with compile-time specialization.
 sealed interface TypeExpr permits
     TypeExpr.ArrayNode, TypeExpr.ListNode, TypeExpr.OptionalNode, TypeExpr.MapNode,
     TypeExpr.RefValueNode, TypeExpr.PrimitiveValueNode, TypeExpr.PrimitiveArrayNode {
@@ -211,11 +213,6 @@ sealed interface TypeExpr permits
     if (clazz == java.time.LocalDateTime.class) {
       return RefValueType.LOCAL_DATE_TIME;
     }
-    // FIXME WARNING WARNING UUID will be handled like String to get more tests fixed WARNING WARNING
-    if (clazz == java.util.UUID.class) {
-      return RefValueType.STRING; // UUID will be handled like String for now
-    }
-
     // Handle user-defined types
     if (clazz.isEnum()) {
       return RefValueType.ENUM;
@@ -292,9 +289,10 @@ sealed interface TypeExpr permits
       }
     }
 
+    /// The container itself is not a primitive
     @Override
     public boolean isPrimitive() {
-      return false; // The container itself is not a primitive
+      return false;
     }
 
     @Override
