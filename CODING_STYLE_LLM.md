@@ -3,9 +3,9 @@
 This file is a Gen AI summary of CODING_STYLE.md to use less tokens of context window. Read the original file for full details.
 
 IMPORTANT: We do TDD so all code must include targeted unit tests.
-IMPORTANT: Never disable tests written for logic that we are yet to write we do Red-Green-Refactor coding. 
+IMPORTANT: Never disable tests written for logic that we are yet to write we do Red-Green-Refactor coding.
 
-## Core Principles
+## Core Principles ##
 
 * Use Records for all data structures. Use sealed interfaces for protocols.
 * Prefer static methods with Records as parameters
@@ -23,18 +23,18 @@ IMPORTANT: Never disable tests written for logic that we are yet to write we do 
 * Use `final var` for local variables, parameters, and destructured fields
 * Apply JEP 371 "Local Classes and Interfaces" for cohesive files with narrow APIs
 
-## Data-Oriented Programming
+## Data-Oriented Programming ##
 
 * Separate data (immutable Records) from behavior (never utility classes always static methods)
 * Use immutable generic data structures (maps, lists, sets) and take defense copies in constructors
 * Write pure functions that don't modify state
 * Leverage Java 21+ features:
-    * Records for immutable data
-    * Pattern matching for structural decomposition
-    * Sealed classes for exhaustive switches
-    * Virtual threads for concurrent processing
+  * Records for immutable data
+  * Pattern matching for structural decomposition
+  * Sealed classes for exhaustive switches
+  * Virtual threads for concurrent processing
 
-## Package Structure
+## Package Structure ##
 
 * Use default (package-private) access as the standard. Do not use 'private' or 'public' by default.
 * Limit public to genuine cross-package APIs
@@ -42,18 +42,18 @@ IMPORTANT: Never disable tests written for logic that we are yet to write we do 
 * Limit private to security-related code
 * Avoid anti-patterns: boilerplate OOP, excessive layering, dependency injection overuse
 
-## Constants and Magic Numbers
+## Constants and Magic Numbers ##
 
 * **NEVER use magic numbers** - always use enum constants
 * **NEVER write large if-else-if statements over known types** - will not be exhaustive and creates bugs when new types are added. Use exhaustive switch statements over bounded sets such as enum values or sealed interface permits
 * **Wire protocol markers**: Use `Constants.TYPE.wireMarker()` not hardcoded negative numbers like `-2`
 * **Type markers**: Use `Constants.TYPE.marker()` not hardcoded positive numbers like `2`
 * **Type lookups**: Use `Constants.fromMarker(byte)` for reverse lookups
-* **Examples**: 
-  * ❌ `ZigZagEncoding.putInt(buffer, -2)` 
+* **Examples**:
+  * ❌ `ZigZagEncoding.putInt(buffer, -2)`
   * ✅ `ZigZagEncoding.putInt(buffer, Constants.BOOLEAN.wireMarker())`
 
-## Functional Style
+## Functional Style ##
 
 * Combine Records + static methods for functional programming
 * Emphasize immutability and explicit state transformations
@@ -65,11 +65,11 @@ IMPORTANT: Never disable tests written for logic that we are yet to write we do 
 * Chain operations without intermediate variables
 * Support immutability throughout processing
 * Example: `IntStream.range(0, 100).filter(i -> i % 2 == 0).sum()` instead of counting loops
-* Always use final variables in functional style. 
+* Always use final variables in functional style.
 * Prefer `final var` with self documenting names over `int i` or `String s` but its not possible to do that on a `final` variable that is not yet initialized so its a weak preference not a strong one.
 * Avoid just adding new functionality to the top of a method to make an early return. It is fine to have a simple guard statement. Yet general you should pattern match over the input to do different things with the same method. Adding special case logic is a code smell that should be avoided.
 
-## Documentation using JEP 467 Markdown documentation
+## Documentation using JEP 467 Markdown documentation ##
 
 IMPORTANT: You must not write JavaDoc comments that start with `/**` and end with `*/`
 IMPORTANT: You must "JEP 467: Markdown Documentation Comments" that start all lines with `///`
@@ -94,23 +94,25 @@ Here is an example of the correct format for documentation comments:
 /// @see     java.lang.Object#equals(java.lang.Object)
 ```
 
-## Logging
+## Logging ##
 
-- Use Java's built-in logging: `java.util.logging.Logger`
-- Log levels: Use appropriate levels (FINE, FINER, INFO, WARNING, SEVERE)
-  - **FINE**: Production-level debugging, default for most debug output
-  - **FINER**: Verbose debugging, detailed internal flow, class resolution details
-  - **INFO**: Important runtime information
-- LOGGER is a static field: `static final Logger LOGGER = Logger.getLogger(ClassName.class.getName());`
-- Use lambda logging for performance: `LOGGER.fine(() -> "message " + variable);`
-- **Testing with Verbose Logs**: Use system property override in test commands:
+* Use Java's built-in logging: `java.util.logging.Logger`
+* Log levels: Use appropriate levels (FINE, FINER, INFO, WARNING, SEVERE)
+  * **FINE**: Production-level debugging, default for most debug output
+  * **FINER**: Verbose debugging, detailed internal flow, class resolution details
+  * **INFO**: Important runtime information
+* LOGGER is a static field: `static final Logger LOGGER = Logger.getLogger(ClassName.class.getName());`
+* Use lambda logging for performance: `LOGGER.fine(() -> "message " + variable);`
+* **Testing with Verbose Logs**: Use system property override in test commands:
+
   ```bash
   mvn test -Dtest=MachineryTests#testMethod -Djava.util.logging.ConsoleHandler.level=FINER
   ```
 
-## Maven Utilities and Scripts
+## Maven Utilities and Scripts ##
 
 **For project utilities that need dependencies**: Use Maven exec instead of complex classpath management:
+
 ```bash
 # Run utility classes with all project dependencies
 mvn exec:java -Dexec.mainClass="org.sample.UtilityClass" -q
@@ -120,19 +122,20 @@ mvn exec:java -Dexec.mainClass="org.sample.UtilityClass" -q
 ```
 
 **Critical Lessons from Benchmarking**:
-- **Measure ACTUAL test data**: Import real benchmark records, don't create fake copies that fall out of date
-- **Use Maven exec for utilities**: Avoid complex classpath setup when project dependencies are needed
-- **Records must be public**: NFP requires public records for reflection access
+
+* **Measure ACTUAL test data**: Import real benchmark records, don't create fake copies that fall out of date
+* **Use Maven exec for utilities**: Avoid complex classpath setup when project dependencies are needed
+* **Records must be public**: NFP requires public records for reflection access
 
 
-## Modern Java Singleton Pattern: Sealed Interfaces
+## Modern Java Singleton Pattern: Sealed Interfaces ##
 
 **Anti-Pattern**: Traditional singleton classes with private constructors and static instances are legacy should be avoided.
 
-**Modern Pattern**: Use sealed interfaces, with nested  with static methods that only has a nested record that is the configuration object to use with 
+**Modern Pattern**: Use sealed interfaces, with nested  with static methods that only has a nested record that is the configuration object to use with
 the default methods
 
-### Implementation
+### Implementation ##
 
 ```java
 /// Modern Java companion object pattern avoiding singleton anti-patterns
@@ -153,7 +156,7 @@ public sealed interface LoggingControl permits LoggingControl.Config {
 }
 ```
 
-### Benefits
+### Benefits ##
 
 1. **No instantiation possible**: Interface cannot be constructed directly
 2. **Functional style**: Static methods provide clean API without state
@@ -161,7 +164,7 @@ public sealed interface LoggingControl permits LoggingControl.Config {
 4. **Configuration via records**: Immutable configuration objects instead of mutable state
 5. **Modern Java idioms**: Uses features introduced in Java 17+ (sealed types, records)
 
-### Usage
+### Usage ##
 
 ```java
 // Clean functional calls - no instances, no singletons
@@ -171,15 +174,21 @@ LoggingControl.setupCleanLogging(new LoggingControl.Config(Level.FINER)); // Cus
 
 This pattern replaces traditional singleton anti-patterns with modern, functional Java that is easier to test, reason about, and maintain.
 
-### Assertions and Input Validation
+### Assertions and Input Validation ##
 
-1.  On the public API entry points use `Objects.assertNonNull()` to ensure that the inputs are legal.
-  - e.g. the input of  `Pickler.forClass(Class<T> type)` is immediate checked for null.
+1. On the public API entry points use `Objects.assertNonNull()` to ensure that the inputs are legal.
+
+  * e.g. the input of  `Pickler.forClass(Class<T> type)` is immediate checked for null.
+
 2. After that on internal method that should be passed only valid data use `assert` to ensure that the data is valid.
-  - e.g. use `assert x==y: "unexpected x="+x+" y="+y;` as `mvn` base should be run with `-ea` to enable assertions.
+
+  * e.g. use `assert x==y: "unexpected x="+x+" y="+y;` as `mvn` base should be run with `-ea` to enable assertions.
+
 3. Often there is an `orElseThrow()` which can be used so the only reason to use `assert` is to add more logging to the error message.
+
 4. Consider using the validations of `Object` and `Arrays` ane the like to ensure that the data is valid.
-  - e.g. `Objects.requireNonNull(type, "type must not be null")` or `Arrays.checkIndex(index, array.length)`.
+
+  * e.g. `Objects.requireNonNull(type, "type must not be null")` or `Arrays.checkIndex(index, array.length)`.
 
 ## Case Study 1: 
 
