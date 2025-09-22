@@ -5,8 +5,8 @@
 When `DISABLED` which is our default model to make the feature opt-in:
 
 - We compute a hash of the type signature at pickler creation time:
-    - `records` uses the first 8-byes of a SHA256 of the record class full name, component types and names
-    - `enums` uses the first 8-byes of a SHA256 of the enum class full name and enum constant names
+  - `records` uses the first 8-byes of a SHA256 of the record class full name, component types and names
+  - `enums` uses the first 8-byes of a SHA256 of the enum class full name and enum constant names
 - The precomputed hash written out as a `long` value
 - The written `long` is read back at deserialization time and compared against the local precomputed version.
 - The runtime check is `long != long` which is a fast primitive operation.
@@ -38,11 +38,11 @@ of the record definition.
 When compared to JDK Serialization there are the following differences:
 
 - `java.io.ObjectInputStream`:
-    - Fails fast if you have renamed `enum` constants or `record` components.
-    - Has no problem with reordering `enum` constants or `record`.
+  - Fails fast if you have renamed `enum` constants or `record` components.
+  - Has no problem with reordering `enum` constants or `record`.
 - No Framework Pickler:
-    - Fails fast if you have reordered `record` components that have different raw or generic types.
-    - Has no problem with renaming `enum` constants or `record` components as long as you do not reorder them.
+  - Fails fast if you have reordered `record` components that have different raw or generic types.
+  - Has no problem with renaming `enum` constants or `record` components as long as you do not reorder them.
 - No Framework Pickler fails fast only if the reordered values have different raw or generic types.
 - No Framework Pickler does not detect reordered values that have the same raw or generic types.
 

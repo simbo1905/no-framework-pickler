@@ -78,6 +78,19 @@ creating a binary payload that is 0.5x the size.
 resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary
 data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
 
+## Project Goals
+
+No Framework Pickler is designed around these core principles:
+
+- **Zero Dependencies**: No external libraries, frameworks, or build-time dependencies
+- **Zero Annotations**: Uses Java's type system directly without requiring any annotations
+- **Modern Java First**: Built for Java 21+ leveraging records, sealed interfaces, and pattern matching
+- **Data-Oriented Programming**: Separates immutable data structures (records) from behavior (static methods)
+- **Type Safety**: Compile-time guarantees with no reflection on hot paths
+- **Performance**: Fast serialization through direct method handles with compact binary format
+- **Simplicity**: Single-line API (`Pickler.forClass()`) with no configuration files or code generation
+- **Security by Design**: Only legal Java construction paths, no arbitrary object creation from untrusted data
+
 ## Usage
 
 No Framework Pickler enforces that the root type passed to `Pickler.forClass()` must be either:
@@ -143,7 +156,7 @@ we don't write component names to the wire. This keeps the wire format compact b
 
 For details on compatibility modes, see [BACKWARDS_COMPATIBILITY.md](BACKWARDS_COMPATIBILITY.md).
 
-**2. Create the Pickler with a Custom Handler**
+## Create the Pickler with a Custom Handler
 
 Use the `SerdeHandler.forClass(...)` factory method to fluently define the handler directly within the list passed to
 the `Pickler`.
@@ -207,6 +220,16 @@ mvn test -Dtest=RefactorTests,MachinaryTests -Djava.util.logging.ConsoleHandler.
 
 SPDX-FileCopyrightText: 2025 Simon Massey  
 SPDX-License-Identifier: Apache-2.0
+
+## Augmented Intelligence (AI) Welcomed
+
+AI as **Augmented Intelligence** is most welcome here. Contributions that enhance *human + agent collaboration* are encouraged. If you want to suggest new agent‑workflows, prompt patterns, or improvements in tooling / validation / introspection, please submit amendments to **AGENTS.md** via standalone PRs. Your ideas make the difference.
+
+When submitting Issues or PRs, please use a "deep research" tool to sanity check your proposal. Then **before** submission un your submission through a strong model with a prompt such as:
+
+> "Please review the AGENTS.md and README.md along with this draft PR/Issue and check that it does not have any gaps and why it might be insufficient, incomplete, lacking a concrete example, duplicating prior issues or PRs, or not be aligned with the project goals or non‑goals."
+
+Please attach the output of that model’s review to your Issue or PR.
 
 ## Acknowledgements
 

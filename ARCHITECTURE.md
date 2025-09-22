@@ -26,7 +26,7 @@ The implementation uses a **parallel sequence of structural tags and concrete ty
 
 The analysis performs **recursive descent parsing** of Java's `Type` hierarchy:
 
-1. **Container Recognition**: Identifies parameterized types (List<T>, Map<K,V>, Optional<T>) and arrays (T[])
+1. **Container Recognition**: Identifies parameterized types (List\<T\>, Map\<K,V\>, Optional\<T\>) and arrays (T[])
 2. **Recursive Decomposition**: Recursively analyzes type arguments to arbitrary depth
 3. **AST Construction**: Builds parallel sequences of structural tags and concrete types
 4. **Termination**: Reaches leaf nodes at primitive/user-defined types
@@ -40,19 +40,19 @@ construction enables **compile-time specialization** through **multi-stage progr
 The AST distinguishes between value and container types at the implementation level:
 
 - **ValueNode**: Represents logical values rather than containers (array, list, map, optional, ...)
-    - **PrimitiveValueNode**: Represents Java primitive types (`int.class`, `boolean.class`, etc.)
-    - **RefValueNode**: Represents reference types including boxed primitives (`Integer.class`, `Boolean.class`),
-      `String`, `UUID`, enums, records, and interfaces
+  - **PrimitiveValueNode**: Represents Java primitive types (`int.class`, `boolean.class`, etc.)
+  - **RefValueNode**: Represents reference types including boxed primitives (`Integer.class`, `Boolean.class`),
+    `String`, `UUID`, enums, records, and interfaces
 - **Containers**: Represents arrays, list, optionals, and maps
-    - **ArrayNode**: Represents arrays (e.g., `int[]`, `Integer[]`)
-    - **ListNode**: Represents lists (e.g., `List<String>`)
-    - **OptionalNode**: Represents optionals (e.g., `Optional<Double>`)
-    - **MapNode**: Represents maps (e.g., `Map<String, Integer>`)
+  - **ArrayNode**: Represents arrays (e.g., `int[]`, `Integer[]`)
+  - **ListNode**: Represents lists (e.g., `List<String>`)
+  - **OptionalNode**: Represents optionals (e.g., `Optional<Double>`)
+  - **MapNode**: Represents maps (e.g., `Map<String, Integer>`)
 
 At runtime, we also make a distinction between built-in and user types. With user types we support both records, enums
 and nested sealed interfaces of those types
 
-# Readable AST Grammar with Parenthesized Notation
+## Readable AST Grammar with Parenthesized Notation
 
 ## EBNF Grammar
 
@@ -132,7 +132,7 @@ Breaking it down:
 
 **Tree representation:**
 
-```
+```text
 LIST(
   MAP(
     String,
@@ -196,11 +196,11 @@ opt into" value types semantics for the user types that by default will have ref
 Pickler is humbly attempting to understand how this dualism will work and to be arranged a way that in the future may be
 able to take advantage of the future Java features.
 
-#### AST Construction Algorithm
+### AST Construction Algorithm
 
 The **recursive descent parser** implements the following algorithm:
 
-1. **Container Recognition**: Identifies parameterized types (List<T>, Map<K,V>, Optional<T>) and arrays (T[])
+1. **Container Recognition**: Identifies parameterized types (List\<T\>, Map\<K,V\>, Optional\<T\>) and arrays (T[])
 2. **Recursive Decomposition**: Recursively analyzes type arguments to arbitrary depth using **typing context**
    preservation
 3. **AST Construction**: Builds parallel sequences of structural tags and concrete types maintaining **type environment
@@ -212,7 +212,7 @@ The **recursive descent parser** implements the following algorithm:
 
 ### Example Analysis: `List<Map<String, Optional<int[]>[]>>`
 
-```
+```text
 Input: List<Map<String, Optional<int[]>[]>>
 
 Step 1: Recognize outer container
@@ -255,7 +255,7 @@ Final AST: LIST(MAP(String, ARRAY(OPTIONAL(ARRAY(int)))))
 
 ### Detailed Trace with Type Environment
 
-```
+```text
 parseType("List<Map<String, Optional<int[]>[]>>")
 ├─ recognize: List<...>
 ├─ extract type parameter: Map<String, Optional<int[]>[]>
@@ -291,7 +291,7 @@ parseType("List<Map<String, Optional<int[]>[]>>")
 
 ### Type Environment (Γ) at Each Step
 
-```
+```text
 Γ₀: { current: "List<Map<String, Optional<int[]>[]>>" }
 Γ₁: { current: "Map<String, Optional<in[]>[]>", parent: List }
 Γ₂: { current: "String", parent: Map.key }
@@ -357,6 +357,7 @@ NFP automatically detects when type hierarchies have no circular dependencies an
 ### Examples
 
 **Optimized Path** (e-commerce domain):
+
 ```java
 record Address(String street, String city, String zip) {}
 record Customer(String name, String email, Address address) {}  
@@ -365,12 +366,14 @@ record Order(Customer customer, List<OrderItem> items, String date) {}
 ```
 
 **Standard Path** (self-referential):
+
 ```java  
 record TreeNode(String value, TreeNode left, TreeNode right) {}
 // Dependencies: TreeNode ← TreeNode (circular, standard resolution)
 ```
 
 Users see optimization decisions via INFO-level logging:
+
 - `"Linear dependency optimization applied for MyType"`
 - `"Circular dependencies detected for MyType - using standard resolution"`
 
