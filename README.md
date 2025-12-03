@@ -65,7 +65,8 @@ hierarchy of records. There are no annotations. There are no build-time steps. T
 you
 need to map to your regular code. There is no special configuration files. It is just Java Records and Sealed
 Interfaces.
-You get all the convenience that the built-in JDK serialization with none of the downsides.
+You get all the convenience of the built-in JDK serialization with none of the downsides by simply using Java records as 
+you data types. 
 
 **No Framework Pickler is fast** as it avoids deep reflection on the hot path by using the JDK's `unreflect` on the
 resolved the public constructors and public component accessors of the Java records. This work is one once when the
