@@ -65,8 +65,6 @@ hierarchy of records. There are no annotations. There are no build-time steps. T
 you
 need to map to your regular code. There is no special configuration files. It is just Java Records and Sealed
 Interfaces.
-You get all the convenience of the built-in JDK serialization with none of the downsides by simply using Java records as 
-you data types. 
 
 **No Framework Pickler is fast** as it avoids deep reflection on the hot path by using the JDK's `unreflect` on the
 resolved the public constructors and public component accessors of the Java records. This work is one once when the
@@ -78,6 +76,14 @@ creating a binary payload that is 0.5x the size.
 **No Framework Pickler is safer** than many alternative approaches including JDK Serialization itself. The pickler
 resolves the legal code paths that regular Java code would take when creating the pickler; not when it is reading binary
 data. Bad data on the wire will never result in mal-constructed data structures with undefined behaviour.
+
+**No Framework Pickler ❤️ Data Oriented Programming** you get out-of-the-box exhaustive switch statements because no 
+codebase should be left behind. Go forth and detructure your the compact binary messages like it is 2025. 
+
+You get all the convenience of the built-in JDK serialization with none of the downsides by simply using Java records as 
+your data types. Java enum types are also supported. There is alao support for "value" types with a plugin mechanism with 
+a demo that maps `java.util.UUID`. The Java language is moving towards allowing you to define custom value types that the 
+JVM optimises so if-and-when those appear we can plug those into this library. 
 
 ## Project Goals
 
@@ -91,6 +97,11 @@ No Framework Pickler is designed around these core principles:
 - **Performance**: Fast serialization through direct method handles with compact binary format
 - **Simplicity**: Single-line API (`Pickler.forClass()`) with no configuration files or code generation
 - **Security by Design**: Only legal Java construction paths, no arbitrary object creation from untrusted data
+- **Safety over Speed**: No `Unsafe` hacks and only shallow reflection on the record component public methods 
+and public constructors.
+- **Safety over Space**: Guard rails where there can be and a clear “here be dragons” when you opt-in to 
+things that can swap rhe binary between record components of you reorder the source code order of 
+components of the same type.
 
 ## Usage
 
