@@ -81,7 +81,7 @@ data. Bad data on the wire will never result in mal-constructed data structures 
 codebase should be left behind. Go forth and detructure your the compact binary messages like it is 2025. 
 
 You get all the convenience of the built-in JDK serialization with none of the downsides by simply using Java records as 
-your data types. Java enum types are also supported. There is alao support for "value" types with a plugin mechanism with 
+your data types. Java enum types are also supported. There is also support for "value" types with a plugin mechanism with 
 a demo that maps `java.util.UUID`. The Java language is moving towards allowing you to define custom value types that the 
 JVM optimises so if-and-when those appear we can plug those into this library. 
 
@@ -99,9 +99,8 @@ No Framework Pickler is designed around these core principles:
 - **Security by Design**: Only legal Java construction paths, no arbitrary object creation from untrusted data
 - **Safety over Speed**: No `Unsafe` hacks and only shallow reflection on the record component public methods 
 and public constructors.
-- **Safety over Space**: Guard rails where there can be and a clear “here be dragons” when you opt-in to 
-things that can swap rhe binary between record components of you reorder the source code order of 
-components of the same type.
+- **Safety over Space**: Guard rails where there can be, and a clear “here be dragons” when you opt-in to 
+things that can swap data between components  if you record components of the same type in your source code.
 
 ## Usage
 
@@ -109,7 +108,7 @@ No Framework Pickler enforces that the root type passed to `Pickler.forClass()` 
 
 - A `record` type
 - A `sealed interface` that permits mixtures of `record` or `enum` types
-- A `sealed interface` that permits mixtures of `record` or `enum` types or nested `sealed interface` of `record` or
+- A `sealed interface` that permits mixtures of `record` or `enum` types or nested `sealed interfaces` of `record` or
   `enum` types to any level
 
 ### Basic Record Serialization
@@ -119,7 +118,7 @@ No Framework Pickler enforces that the root type passed to `Pickler.forClass()` 
 public record Month(Season season, String name) {
 }
 
-/// Define a simple enum with no fields so no custom constructor. It **must** be public
+/// Define a simple enum with no fields, so no custom constructor. It **must** be public
 public enum Season {SPRING, SUMMER, FALL, WINTER}
 
 // Create an instance
